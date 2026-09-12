@@ -2,7 +2,7 @@
 
 import type { ModelProfile } from "@kunoworld/sdk";
 import Link from "next/link";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type RefObject } from "react";
 
 import { CertificateView } from "@/components/verify/CertificateView";
 import { useCertificate } from "@/components/verify/useCertificate";
@@ -42,6 +42,7 @@ export function Inspector({
   onUseLastFrame,
   onCopyLink,
   onOpenFilm,
+  titleRef,
 }: {
   entry: LibraryEntry | null;
   film: FilmState | undefined;
@@ -53,6 +54,8 @@ export function Inspector({
   onUseLastFrame: (e: LibraryEntry) => void;
   onCopyLink: (e: LibraryEntry) => void;
   onOpenFilm: (e: LibraryEntry) => void;
+  /** Focus lands here when a take is opened, so the keyboard follows the selection. */
+  titleRef?: RefObject<HTMLHeadingElement | null>;
 }) {
   const [tab, setTab] = useState<Tab>("take");
   const ids = useId();
@@ -79,7 +82,9 @@ export function Inspector({
     <div className={styles.inspector}>
       <header className={styles.head}>
         <div className={styles.titleRow}>
-          <h2 className={styles.title}>{stockLabel(profile, entry.profileId)}</h2>
+          <h2 className={styles.title} ref={titleRef} tabIndex={-1}>
+            {stockLabel(profile, entry.profileId)}
+          </h2>
           <button type="button" className={`btn btn-small btn-quiet ${styles.close}`} onClick={onClose}>
             Close
           </button>

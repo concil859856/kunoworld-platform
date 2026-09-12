@@ -307,11 +307,29 @@ function RetakeWindow({
       <div className={styles.windowInputs}>
         <label>
           From
-          <input type="number" min={0} max={max} step={0.1} value={start} onChange={(e) => onChange(Number(e.target.value), end)} />s
+          <input
+            type="number"
+            min={0}
+            max={max}
+            step={0.1}
+            value={start}
+            aria-label="Retake window start in seconds"
+            onChange={(e) => onChange(Number(e.target.value), end)}
+          />
+          s
         </label>
         <label>
           to
-          <input type="number" min={0} max={max} step={0.1} value={end} onChange={(e) => onChange(start, Number(e.target.value))} />s
+          <input
+            type="number"
+            min={0}
+            max={max}
+            step={0.1}
+            value={end}
+            aria-label="Retake window end in seconds"
+            onChange={(e) => onChange(start, Number(e.target.value))}
+          />
+          s
         </label>
         {duration ? <span className={styles.muted}>of {duration.toFixed(1)} s</span> : <span className={styles.muted}>clip length unknown</span>}
       </div>

@@ -56,12 +56,14 @@ export function Steps({ entry, variant = "bar" }: { entry: Pick<LibraryEntry, "s
   return (
     <ol className={styles.list} role="list">
       {ORDER.map((step, i) => (
-        <li key={step} data-state={state(i)}>
+        <li key={step} data-state={state(i)} aria-current={state(i) === "current" ? "step" : undefined}>
           <span className={styles.dot} aria-hidden="true" />
           <span className={styles.text}>
             <span className={styles.name}>
               {step === "generating" && state(i) === "current" ? stepLabel(entry) : LABEL[step]}
-              {state(i) === "current" && <span className="sr-only"> (current step)</span>}
+              <span className="sr-only">
+                {state(i) === "done" ? " — done" : state(i) === "current" ? " — current step" : " — not started"}
+              </span>
             </span>
             {state(i) === "current" && DETAIL[step] && <span className={styles.detail}>{DETAIL[step]}</span>}
           </span>

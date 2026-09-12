@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type DragEvent, type ReactNode } from "react";
+import { useId, useState, type DragEvent, type ReactNode } from "react";
 
 import type { MediaItem } from "./composerState";
 import styles from "./MediaSlot.module.css";
@@ -53,11 +53,12 @@ export function MediaSlot({
   invalid?: boolean;
 }) {
   const [over, setOver] = useState(false);
+  const ids = useId();
 
   if (item) {
     const duration = item.info.duration ? ` · ${item.info.duration.toFixed(1)} s` : "";
     return (
-      <figure className={styles.slot} data-filled="true" data-size={size} data-invalid={invalid}>
+      <figure className={styles.slot} data-filled="true" data-size={size} data-invalid={invalid} aria-label={`${label}: ${item.name}${duration}`}>
         <Preview item={item} />
         <figcaption className={styles.caption}>
           {badge && <span className={styles.badge}>{badge}</span>}
@@ -98,12 +99,17 @@ export function MediaSlot({
       onDragLeave={() => setOver(false)}
       onDrop={onDrop}
     >
+      {/* An explicit aria-label keeps the slot's name exactly the label: the note,
+          the "+" and any counter become its description instead. */}
       <input
         type="file"
         className="sr-only"
         accept={accept}
         multiple={multiple}
         disabled={disabled}
+        aria-label={label}
+        aria-invalid={invalid || undefined}
+        aria-describedby={note ? `${ids}-note` : undefined}
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
           if (files.length && onFiles) onFiles(files);
@@ -113,8 +119,14 @@ export function MediaSlot({
       <span className={styles.plus} aria-hidden="true">
         +
       </span>
-      <span className={styles.label}>{label}</span>
-      {note && <span className={styles.note}>{note}</span>}
+      <span className={styles.label} aria-hidden="true">
+        {label}
+      </span>
+      {note && (
+        <span className={styles.note} id={`${ids}-note`}>
+          {note}
+        </span>
+      )}
     </label>
   );
 }

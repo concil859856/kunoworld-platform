@@ -14,7 +14,7 @@
   --c-amber-line: rgba(230, 163, 74, 0.42);
   --c-paper: #ede5d8; /* silver-print paper: text */
   --c-paper-2: #cfc5b6;
-  --c-fixer: #7d7468; /* fixer grey: decorative muted */
+  --c-fixer: #9c9182; /* fixer grey: the quietest text tone, still ≥4.5:1 on every surface */
   --c-muted: #a09485; /* muted text that still reads at small sizes */
   --c-error: #e4775c;
   --c-error-soft: rgba(228, 119, 92, 0.12);
