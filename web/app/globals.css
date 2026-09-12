@@ -129,3 +129,20 @@ body{margin:0;background:var(--background);color:var(--foreground);font-family:A
 @media(prefers-reduced-motion:reduce){.world-stage,.depth-card{transform:none!important}.film-frame{animation:none!important}.depth-card .scene-image img{transform:none!important}.depth-shine{display:none}}
 
 .studio-home-link{display:flex;align-items:center;gap:6px;font-size:12px;color:#a6c3bf}.studio-home-link:hover{color:#c7f8eb}.studio-shell{font-family:Kuno Sans,Arial,sans-serif}.studio-shell .brand{font-size:23px}.studio-shell .prompt-box textarea{font-size:15px}.studio-shell .scene-image img{object-fit:cover}@media(max-width:1100px){.studio-home-link{display:none}}
+
+/* The monogram, filled with currentColor so it follows the inverting nav. 393x256 is
+   the intrinsic size of public/logo-mark-wide.png. */
+.logo-mark {
+  display: inline-block;
+  flex: none;
+  width: calc(var(--logo-size, 28px) * 393 / 256);
+  height: var(--logo-size, 28px);
+  background: currentColor;
+  -webkit-mask: url("/logo-mark-wide.png") center / contain no-repeat;
+  mask: url("/logo-mark-wide.png") center / contain no-repeat;
+}
+
+/* The studio sidebar tinted its mark; keep that. */
+.studio-shell .brand .logo-mark {
+  color: #a6edda;
+}
