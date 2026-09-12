@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 1, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/platform/web/src/components/fx/Reveal.module.css"],"sourcesContent":[".reveal {\n  opacity: 0;\n  transform: translate3d(0, 22px, 0);\n  transition:\n    opacity 900ms var(--ease-slow) var(--reveal-delay, 0s),\n    transform 900ms var(--ease-slow) var(--reveal-delay, 0s);\n  will-change: opacity, transform;\n}\n\n.reveal[data-shown=\"true\"] {\n  opacity: 1;\n  transform: none;\n  will-change: auto;\n}\n\n/* No JavaScript, no observer: show the content rather than hiding it forever. */\n@media (scripting: none) {\n  .reveal {\n    opacity: 1;\n    transform: none;\n  }\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .reveal {\n    opacity: 1;\n    transform: none;\n    transition: none;\n  }\n}\n"],"names":[],"mappings":"AAAA;;;;;;;AASA;;;;;;AAOA;EACE;;;;;;AAMF;EACE"}}]
-}

@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///video/platform/web/app/layout.tsx"],"sourcesContent":["import type { Metadata } from \"next\";\nimport \"./globals.css\";\nexport const metadata: Metadata = { title: \"KunoWorld — Think it. Make it move.\", description: \"Explore a new world of AI video. Create with text and images, discover MiniMax H3 and LTX-2.5, and build with the KunoWorld video protocol.\" };\nexport default function RootLayout({children}: Readonly<{children: React.ReactNode}>) {return <html lang=\"en\" className=\"dark\"><body>{children}</body></html>}\n"],"names":["metadata","title","description","RootLayout","children","lang","className"],"mappings":";;;;;;;;;AAEO,MAAMA,WAAqB;IAAEC,OAAO;IAAuCC,aAAa;AAA8I;AAC9N,SAASC,WAAW,EAACC,QAAQ,EAAwC;IAAG,qBAAO,iQAAC;QAAKC,MAAK;QAAKC,WAAU;kBAAO,cAAA,iQAAC;sBAAMF;;;;;;;;;;;AAAuB"}},
-    {"offset": {"line": 42, "column": 0}, "map": {"version":3,"sources":["file:///video/platform/web/node_modules/next/src/server/route-modules/app-page/vendored/rsc/react-jsx-dev-runtime.ts"],"sourcesContent":["module.exports = (\n  require('../../module.compiled') as typeof import('../../module.compiled')\n).vendored['react-rsc']!.ReactJsxDevRuntime\n"],"names":["module","exports","require","vendored","ReactJsxDevRuntime"],"mappings":"AAAAA,OAAOC,OAAO,GACZC,QAAQ,yIACRC,QAAQ,CAAC,YAAY,CAAEC,kBAAkB","ignoreList":[0]}}]
-}

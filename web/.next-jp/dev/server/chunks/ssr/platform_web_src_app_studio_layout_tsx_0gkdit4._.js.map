@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///video/platform/web/src/app/studio/layout.tsx"],"sourcesContent":["import { Header } from \"@/components/site/Header\";\n\nexport default function StudioLayout({ children }: Readonly<{ children: React.ReactNode }>) {\n  return (\n    <div data-surface=\"studio\">\n      <Header variant=\"studio\" />\n      <main id=\"main\">{children}</main>\n    </div>\n  );\n}\n"],"names":["StudioLayout","children","variant","id"],"mappings":";;;;;AAAA;;;AAEe,SAASA,aAAa,EAAEC,QAAQ,EAA2C;IACxF,qBACE,iQAAC;QAAI,gBAAa;;0BAChB,iQAAC,iKAAM;gBAACC,SAAQ;;;;;;0BAChB,iQAAC;gBAAKC,IAAG;0BAAQF;;;;;;;;;;;;AAGvB"}}]
-}

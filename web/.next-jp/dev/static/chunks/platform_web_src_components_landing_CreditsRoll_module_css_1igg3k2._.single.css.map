@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 1, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/platform/web/src/components/landing/CreditsRoll.module.css"],"sourcesContent":[".figure {\n  display: grid;\n  gap: 12px;\n}\n\n.roll {\n  position: relative;\n  height: 460px;\n  overflow: hidden;\n  background: #050403;\n  border: 1px solid var(--line);\n  border-radius: var(--radius-s);\n  mask-image: linear-gradient(to bottom, transparent 0, #000 16%, #000 84%, transparent 100%);\n}\n\n.crawl {\n  animation: crawl 34s linear infinite;\n  animation-play-state: paused;\n}\n\n.roll[data-running=\"true\"] .crawl {\n  animation-play-state: running;\n}\n\n.roll:hover .crawl {\n  animation-play-state: paused;\n}\n\n.crawl > section {\n  border: 0;\n  background: transparent;\n  padding-block: 40px;\n}\n\n@keyframes crawl {\n  from {\n    transform: translateY(460px);\n  }\n  to {\n    transform: translateY(-100%);\n  }\n}\n\n.caption {\n  font-size: 12px;\n  color: var(--c-muted);\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .roll {\n    height: auto;\n    mask-image: none;\n  }\n\n  .crawl {\n    animation: none;\n  }\n}\n"],"names":[],"mappings":"AAAA;;;;;AAKA;;;;;;;;;;;AAUA;;;;AAKA;;;;AAIA;;;;AAIA;;;;;;AAMA;;;;;;;;;;AASA;;;;;AAKA;EACE;;;;;;EAKA"}}]
-}
