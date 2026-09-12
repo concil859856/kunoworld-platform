@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { ConnectButton } from "./ConnectDialog";
 import styles from "./Header.module.css";
+import { LogoMark } from "./LogoMark";
 
 const NAV = [
   { href: "/studio", label: "Studio" },
@@ -24,6 +25,7 @@ export function Header({ variant = "site" }: { variant?: "site" | "studio" }) {
         Skip to content
       </a>
       <Link href="/" className={styles.wordmark} aria-label="KunoWorld, home">
+        <LogoMark height={22} />
         <span aria-hidden="true">
           Kuno<em>World</em>
         </span>

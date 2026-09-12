@@ -3,6 +3,7 @@ import Link from "next/link";
 import { LINKS } from "@/lib/config";
 
 import styles from "./Footer.module.css";
+import { LogoMark } from "./LogoMark";
 
 export function Footer() {
   return (
@@ -11,7 +12,10 @@ export function Footer() {
       <div className={`wrap ${styles.grid}`}>
         <div className={styles.brand}>
           <p className={`display ${styles.wordmark}`}>
-            Kuno<em>World</em>
+            <LogoMark height={26} className={styles.mark} />
+            <span>
+              Kuno<em>World</em>
+            </span>
           </p>
           <p className={styles.tag}>A private film studio. Encrypted on your device, opened only inside sealed hardware.</p>
         </div>

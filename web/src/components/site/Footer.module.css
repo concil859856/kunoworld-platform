@@ -20,8 +20,15 @@
 }
 
 .wordmark {
+  display: flex;
+  align-items: center;
+  gap: 11px;
   font-size: 30px;
   color: var(--c-paper);
+}
+
+.mark {
+  flex: none;
 }
 
 .wordmark em {
