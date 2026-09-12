@@ -42,6 +42,64 @@ test.describe("narrow screens", () => {
   });
 });
 
+/*
+ * Mobile is a guarantee, not a spot check: every public page, at every width we claim to
+ * support, must lay out without a sideways scrollbar and without anything spilling past
+ * the viewport. 320px is the narrowest phone still in use; 1024 catches the tablet
+ * breakpoints where multi-column grids collapse.
+ */
+const WIDTHS = [320, 375, 414, 768, 1024];
+const PAGES = ["/", "/studio", "/verify", "/network", "/developers"];
+
+test.describe("every width", () => {
+  for (const width of WIDTHS) {
+    test(`nothing overflows at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 820 });
+      for (const path of PAGES) {
+        await page.goto(path);
+        // Presence, not visibility: the studio hides its "Studio" title at narrow widths
+        // where the rail collapses, and that is intentional. We only need the page to have
+        // rendered before measuring it.
+        await expect(page.locator("h1").first()).toBeAttached();
+        await page.waitForTimeout(400);
+
+        expect(await horizontalOverflow(page), `sideways scroll on ${path} at ${width}px`).toBeLessThanOrEqual(1);
+
+        // A page without a sideways scrollbar can still have an element poking out from
+        // under a clip. Deliberate horizontal scrollers (the custody filmstrip, wide
+        // tables, code blocks) are the exception: their content is meant to be wider than
+        // the screen, so we check that the scroller itself fits and skip what's inside it.
+        const spills = await page.evaluate((w) => {
+          const insideScroller = (el: Element | null): boolean => {
+            for (let node = el; node && node !== document.body; node = node.parentElement) {
+              const s = getComputedStyle(node);
+              if ((s.overflowX === "auto" || s.overflowX === "scroll") && node.scrollWidth > node.clientWidth) return true;
+            }
+            return false;
+          };
+          const bad: string[] = [];
+          for (const el of Array.from(document.body.querySelectorAll("*"))) {
+            const style = getComputedStyle(el);
+            if (style.position === "fixed" || style.visibility === "hidden" || style.display === "none") continue;
+            const box = el.getBoundingClientRect();
+            if (box.width === 0 || box.height === 0) continue;
+            if (insideScroller(el.parentElement)) continue;
+            // Parked off-canvas drawers (the studio's library and inspector at narrow
+            // widths) sit wholly outside the viewport until opened, which is correct.
+            // A genuine cut-off straddles an edge: partly on screen, partly lost.
+            if (box.left >= w || box.right <= 0) continue;
+            if (box.right > w + 1.5 || box.left < -1.5) {
+              bad.push(`${el.tagName.toLowerCase()}.${(el.className || "").toString().split(" ")[0]} [${Math.round(box.left)}…${Math.round(box.right)}]`);
+            }
+          }
+          return bad.slice(0, 5);
+        }, width);
+        expect(spills, `elements spilling past ${width}px on ${path}`).toEqual([]);
+      }
+    });
+  }
+});
+
 test.describe("reduced motion", () => {
   test.use({ reducedMotion: "reduce" });
 

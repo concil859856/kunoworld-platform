@@ -1,10 +1,20 @@
 .composer {
   display: grid;
+  /* An implicit `auto` column is sized to the widest row's min-content — the tab strip,
+     around 370px — which pushes the whole studio sideways on a small phone. minmax(0, 1fr)
+     lets the column shrink below that so the tab strip scrolls instead of the page. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   padding: 10px 18px 14px;
   border-top: 1px solid var(--line-2);
   background: #0e0c0a;
   box-shadow: 0 -20px 40px -20px rgba(0, 0, 0, 0.6);
+}
+
+/* A shrinkable track is not enough: every grid item still takes its own min-content as an
+   automatic minimum, so the row wrapping the tab strip would hold the composer at ~370px. */
+.composer > * {
+  min-width: 0;
 }
 
 .top {
@@ -13,11 +23,16 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 8px 16px;
+  min-width: 0;
 }
 
 .tabs {
   display: flex;
   gap: 2px;
+  /* Without these the row claims its full min-content width as a flex/grid item and the
+     overflow-x never engages. */
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -424,6 +439,10 @@
   .top {
     flex-direction: column;
     align-items: stretch;
+    /* Wrapping is meaningless once the row stacks, and it is actively harmful: in a
+       wrapping column the line's cross-size comes from the widest item's content, so the
+       tab strip would stretch to its own ~370px instead of the phone's width. */
+    flex-wrap: nowrap;
   }
 
   .top > :last-child {
