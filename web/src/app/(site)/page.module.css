@@ -4,7 +4,11 @@
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  padding-block: clamp(36px, 7vw, 88px) clamp(40px, 6vw, 72px);
+  display: grid;
+  align-content: end;
+  /* Tall enough to read as a screen of footage, never taller than the viewport. */
+  min-height: min(92svh, 880px);
+  padding-block: clamp(96px, 18vh, 200px) clamp(30px, 5vw, 54px);
 }
 
 /* Ambient light only: the safelight while the print develops, tungsten once it's done. */
@@ -37,7 +41,21 @@
 
 .heroInner {
   display: grid;
-  gap: clamp(18px, 3vw, 34px);
+  gap: clamp(16px, 2.4vw, 26px);
+}
+
+/* The provenance line for the reel behind the headline: sample footage, not network output. */
+.footageNote {
+  width: 100%;
+  max-width: var(--maxw);
+  margin-inline: auto;
+  margin-top: clamp(20px, 4vw, 40px);
+  padding-inline: var(--gutter);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  letter-spacing: 0.05em;
+  color: var(--c-fixer);
 }
 
 .headline {

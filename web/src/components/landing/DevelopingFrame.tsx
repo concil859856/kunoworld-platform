@@ -171,7 +171,12 @@ function compile(gl: WebGLRenderingContext, type: number, source: string): WebGL
   return shader;
 }
 
-export function DevelopingFrame() {
+/**
+ * `background` fills its container edge to edge and drops the film-edge strip: that mode is
+ * the hero's stand-in until real footage exists, where a caption and a replay control would
+ * collide with the headline.
+ */
+export function DevelopingFrame({ background = false }: { background?: boolean } = {}) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const replayRef = useRef<() => void>(() => {});
@@ -298,7 +303,7 @@ export function DevelopingFrame() {
   }, []);
 
   return (
-    <div ref={wrapRef} className={styles.frame} data-phase="dark">
+    <div ref={wrapRef} className={`${styles.frame} ${background ? styles.background : ""}`} data-phase="dark">
       <div className={styles.gate}>
         <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
         <div className={styles.fallback} aria-hidden="true" />
@@ -306,15 +311,17 @@ export function DevelopingFrame() {
           An illustration: a lighthouse on a headland at dusk slowly develops out of darkness, like a photographic print.
         </p>
       </div>
-      <div className={styles.edge}>
-        <span className="mono" aria-hidden="true">
-          KW 5219 ▸ 047 · 2.39:1
-        </span>
-        <span className={styles.caption}>A procedural still, developed live in your browser — not a model output.</span>
-        <button type="button" className={styles.replay} onClick={() => replayRef.current()}>
-          Develop again
-        </button>
-      </div>
+      {!background && (
+        <div className={styles.edge}>
+          <span className="mono" aria-hidden="true">
+            KW 5219 ▸ 047 · 2.39:1
+          </span>
+          <span className={styles.caption}>A procedural still, developed live in your browser — not a model output.</span>
+          <button type="button" className={styles.replay} onClick={() => replayRef.current()}>
+            Develop again
+          </button>
+        </div>
+      )}
     </div>
   );
 }

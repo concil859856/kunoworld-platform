@@ -1,17 +1,20 @@
 import { priceUsd } from "@kunoworld/sdk";
 import Link from "next/link";
 
+import { Reveal } from "@/components/fx/Reveal";
 import { CheckFilm } from "@/components/landing/CheckFilm";
 import { CreditsRoll } from "@/components/landing/CreditsRoll";
 import { CustodyStrip } from "@/components/landing/CustodyStrip";
-import { DevelopingFrame } from "@/components/landing/DevelopingFrame";
+import { HeroReel } from "@/components/landing/HeroReel";
 import { FilmStocks } from "@/components/landing/FilmStocks";
+import { ModeGrid } from "@/components/landing/ModeGrid";
 import { StagesTonight } from "@/components/landing/StagesTonight";
 import { Code } from "@/components/site/Code";
 import { LiveModelsProvider } from "@/components/site/LiveModels";
 import { CATALOG, isH3, ratesOf, variantLabel } from "@/lib/catalog";
 import { RELAY_RETENTION_DAYS } from "@/lib/config";
 import { rate, usd } from "@/lib/format";
+import { FOOTAGE_NOTE } from "@/lib/reel";
 
 import styles from "./page.module.css";
 
@@ -52,14 +55,14 @@ const COMPARISON: Array<[string, string, string]> = [
 export default function Home() {
   return (
     <LiveModelsProvider>
-      <section className={styles.hero} aria-labelledby="hero-title">
+      <section className={styles.hero} aria-labelledby="hero-title" data-hero="true">
+        <HeroReel />
         <div className={`wrap ${styles.heroInner}`}>
           <p className="eyebrow">A private AI film studio · MiniMax H3 &amp; LTX-2.5</p>
           <h1 id="hero-title" className={`display ${styles.headline}`}>
             Films develop <br />
             in the <em>dark.</em>
           </h1>
-          <DevelopingFrame />
           <div className={styles.heroFoot}>
             <p className={styles.sub}>
               KunoWorld makes video inside sealed hardware. Your prompts, images and footage are encrypted on your device
@@ -69,12 +72,30 @@ export default function Home() {
               <Link href="/studio" className="btn btn-primary">
                 Start creating
               </Link>
-              <Link href="#check" className="btn">
-                See the proof
+              <Link href="#modes" className="btn">
+                See what it makes
               </Link>
             </div>
           </div>
         </div>
+        <p className={styles.footageNote}>{FOOTAGE_NOTE}</p>
+      </section>
+
+      <section id="modes" className={`wrap ${styles.section}`} aria-labelledby="modes-title">
+        <Reveal className={styles.head}>
+          <div>
+            <p className="eyebrow">Ten ways in</p>
+            <h2 id="modes-title" className={`display ${styles.h2}`}>
+              However the shot <em>starts.</em>
+            </h2>
+          </div>
+          <p className={styles.intro}>
+            Most services give you a prompt box and an image slot. KunoWorld routes ten kinds of request across two
+            model families — keyframes pinned to timecodes, a scene built from your own cast, picture driven by your
+            soundtrack, a single window retaken. Every one of them runs sealed.
+          </p>
+        </Reveal>
+        <ModeGrid />
       </section>
 
       <section className={styles.section} aria-labelledby="custody-title">

@@ -1,0 +1,166 @@
+{
+  "$comment": [
+    "The site's footage. Each entry is generated once by scripts/assets.mjs and committed to public/reel/.",
+    "",
+    "HONESTY RULE: `source` decides the label the site shows. Nothing here was made by the KunoWorld",
+    "network — these are reference renders from the same open weights our miners run, generated on fal.",
+    "When we have GPUs, regenerate through our own gateway and set source to 'kuno' so the clips carry a",
+    "real certificate. Never label a fal render as network output.",
+    "",
+    "endpoint: a fal model id. fast = $0.04/s @1080p, pro = $0.06/s. duration is in seconds (6..20).",
+    "Keep hero clips on pro and everything else on fast; see the budget line printed by the script."
+  ],
+  "defaults": {
+    "source": "ltx-reference",
+    "resolution": "1080p",
+    "fps": 25,
+    "duration": 6,
+    "generate_audio": false
+  },
+  "clips": [
+    {
+      "id": "hero-lighthouse",
+      "role": "hero",
+      "endpoint": "fal-ai/ltx-2/text-to-video",
+      "prompt": "Slow aerial push over a dark restless sea at dusk toward a lighthouse on a black headland, its lamp sweeping a beam across low cloud, amber tungsten light raking the water, anamorphic lens flare, deep shadows, 35mm film grain, cinematic",
+      "alt": "An aerial shot drifting over a dark sea at dusk toward a lighthouse sweeping its beam across low cloud."
+    },
+    {
+      "id": "hero-wave",
+      "role": "hero",
+      "endpoint": "fal-ai/ltx-2/text-to-video",
+      "prompt": "A wave breaking in slow motion on black volcanic sand at golden hour, backlit spray catching warm low sun, shallow depth of field, long lens, cinematic, film grain",
+      "alt": "A wave breaking in slow motion on black sand, its spray backlit by a low sun."
+    },
+    {
+      "id": "hero-horizon",
+      "role": "hero",
+      "endpoint": "fal-ai/ltx-2/text-to-video",
+      "prompt": "Drifting low and slow over a glassy calm sea at first light, a clean horizon line dividing amber sky from deep indigo water, distant haze, long lens, anamorphic, cinematic",
+      "alt": "A low, slow drift over a glassy sea at first light, with a clean horizon between amber sky and indigo water."
+    },
+    {
+      "id": "hero-darkroom",
+      "role": "hero",
+      "endpoint": "fal-ai/ltx-2/text-to-video",
+      "prompt": "Macro shot of a photographic print developing in a chemical tray under deep red safelight, a coastline slowly appearing out of blank paper, gentle ripples, dust in the air, shallow focus, cinematic",
+      "alt": "A photographic print developing in a tray under red safelight, a coastline appearing out of blank paper."
+    },
+
+    {
+      "id": "mode-text",
+      "role": "mode",
+      "mode": "text_to_video",
+      "endpoint": "fal-ai/ltx-2/text-to-video/fast",
+      "prompt": "A lighthouse keeper climbs a spiral iron staircase with a lantern, warm light spilling up the stone wall, camera following from below, cinematic, film grain",
+      "alt": "A keeper climbing a spiral staircase with a lantern, light spilling up the stone wall."
+    },
+    {
+      "id": "mode-image",
+      "role": "mode",
+      "mode": "image_to_video",
+      "endpoint": "fal-ai/ltx-2/text-to-video/fast",
+      "prompt": "A still harbour at dawn slowly comes alive: fishing boats rocking, gulls crossing frame, mist lifting off the water, locked-off camera, cinematic",
+      "alt": "A still harbour at dawn coming alive as boats rock and mist lifts off the water."
+    },
+    {
+      "id": "mode-first-last",
+      "role": "mode",
+      "mode": "first_last_frame",
+      "endpoint": "fal-ai/ltx-2/text-to-video/fast",
+      "prompt": "A continuous move from a closed weathered door to a wide clifftop view of the sea beyond it, smooth dolly through the doorway, dusk light, cinematic",
+      "alt": "A dolly from a closed weathered door out to a wide clifftop view of the sea."
+    },
+    {
+      "id": "mode-keyframes",
+      "role": "mode",
+      "mode": "keyframes",
+      "endpoint": "fal-ai/ltx-2/text-to-video/fast",
+      "prompt": "A storm builds over a beach in three beats: calm shallow water, then wind flattening the grass, then rain sweeping across the sand, continuous camera, cinematic",
+      "alt": "A storm building over a beach in three beats, from calm water to rain sweeping the sand."
+    },
+    {
+      "id": "mode-reference",
+      "role": "mode",
+      "mode": "reference_to_video",
+      "endpoint": "fal-ai/ltx-2/text-to-video/fast",
+      "prompt": "A woman in a yellow raincoat walks a stone pier in heavy weather, holding her hood against the wind, sea spray bursting over the wall beside her, handheld, cinematic",
+      "alt": "A woman in a yellow raincoat walking a stone pier as spray bursts over the wall."
+    },
+    {
+      "id": "mode-audio",
+      "role": "mode",
+      "mode": "audio_to_video",
+      "endpoint": "fal-ai/ltx-2/text-to-video/fast",
+      "generate_audio": true,
+      "prompt": "Rain drumming on the window of a coastal cottage at night, a paraffin lamp guttering on the sill, water running down the glass, distant surf, cinematic, atmospheric",
+      "alt": "Rain running down the window of a coastal cottage at night, a lamp guttering on the sill."
+    },
+    {
+      "id": "mode-retake",
+      "role": "mode",
+      "mode": "retake",
+      "endpoint": "fal-ai/ltx-2/text-to-video/fast",
+      "prompt": "A rowing boat tied to a jetty rocks gently in the swell, rope creaking, reflections breaking on the water, locked-off camera, overcast light, cinematic",
+      "alt": "A rowing boat rocking against a jetty, reflections breaking on the water."
+    },
+    {
+      "id": "mode-extend",
+      "role": "mode",
+      "mode": "extend_video",
+      "endpoint": "fal-ai/ltx-2/text-to-video/fast",
+      "duration": 10,
+      "prompt": "A long unbroken drift along a shoreline at dusk, tide pulling back over wet sand, the light slowly failing, distant headland, cinematic, film grain",
+      "alt": "A long unbroken drift along a shoreline at dusk as the tide pulls back over wet sand."
+    },
+    {
+      "id": "mode-last",
+      "role": "mode",
+      "mode": "last_frame",
+      "endpoint": "fal-ai/ltx-2/text-to-video/fast",
+      "prompt": "A gull glides in and settles on a weathered harbour post, wings folding, sea behind it out of focus, arriving on a held final composition, cinematic",
+      "alt": "A gull gliding in and settling on a harbour post, arriving at a held final composition."
+    },
+    {
+      "id": "mode-edit",
+      "role": "mode",
+      "mode": "video_edit",
+      "endpoint": "fal-ai/ltx-2/text-to-video/fast",
+      "prompt": "A quiet stretch of coast road in daylight shifts to heavy snowfall, the same road and same camera move, snow settling on the tarmac, cinematic",
+      "alt": "A coast road in daylight shifting to heavy snowfall on the same camera move."
+    },
+
+    {
+      "id": "stock-h3",
+      "role": "stock",
+      "family": "minimax-h3",
+      "endpoint": "fal-ai/ltx-2/text-to-video",
+      "generate_audio": true,
+      "prompt": "Close on a fisherman's weathered face in a wheelhouse at night, instrument light on his skin, he glances up and speaks a few words, rain on the glass behind him, cinematic portrait",
+      "alt": "A fisherman's face in a wheelhouse at night, lit by instruments, speaking a few words."
+    },
+    {
+      "id": "stock-ltx",
+      "role": "stock",
+      "family": "ltx-2.5",
+      "endpoint": "fal-ai/ltx-2/text-to-video/fast",
+      "prompt": "A fast low pass over breaking surf toward a rocky shore, spray flying past the lens, bright overcast light, high shutter speed, crisp detail, cinematic",
+      "alt": "A fast low pass over breaking surf toward a rocky shore, spray flying past the lens."
+    },
+
+    {
+      "id": "custody-seal",
+      "role": "texture",
+      "endpoint": "fal-ai/ltx-2/text-to-video/fast",
+      "prompt": "Extreme macro of warm amber light moving through smoked glass and brushed metal, slow abstract drift, dust motes, deep black background, cinematic, no text",
+      "alt": "Abstract amber light moving slowly through smoked glass and brushed metal."
+    },
+    {
+      "id": "network-stages",
+      "role": "texture",
+      "endpoint": "fal-ai/ltx-2/text-to-video/fast",
+      "prompt": "Slow drift past racks of server hardware in a dark room, small amber status lights breathing in the black, shallow focus, no text, no logos, cinematic",
+      "alt": "A slow drift past dark server racks, amber status lights breathing in the black."
+    }
+  ]
+}

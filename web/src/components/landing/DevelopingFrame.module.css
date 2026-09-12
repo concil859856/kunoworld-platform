@@ -4,6 +4,23 @@
   gap: 10px;
 }
 
+/* Background mode: fill the hero instead of sitting in it as a framed plate. */
+.background {
+  position: absolute;
+  inset: 0;
+  display: block;
+  gap: 0;
+}
+
+.background .gate {
+  position: absolute;
+  inset: 0;
+  aspect-ratio: auto;
+  max-width: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .gate {
   position: relative;
   aspect-ratio: 2.39 / 1;
