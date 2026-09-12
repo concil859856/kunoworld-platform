@@ -14,6 +14,7 @@ import { SpatialScene, DepthCard } from "@/components/spatial-scene";
 import profilesData from "@/lib/profiles.json";
 import { useComposer } from "@/lib/composerState";
 import { useLibrary } from "@/lib/useLibrary";
+import { makeClient, useApiKey } from "@/lib/kuno";
 import { isActive } from "@/lib/library";
 import { Composer, type Submission } from "@/components/studio/Composer";
 import type { GoldenManifest, ModelProfile, ModelsResponse } from "@kunoworld/sdk";
@@ -57,6 +58,27 @@ export default function Home() {
   const profilesList=models?.models??profiles;
   const composer=useComposer(profilesList);
   const library=useLibrary(client,sessionKey);
+  const storedKey=useApiKey();
+  // Development convenience: when a gateway is explicitly configured and this browser
+  // already holds an API key, connect without the dialog. The dialog stays the production
+  // path, where you pin your own golden manifest; here the SDK trusts the one the gateway
+  // publishes. Gated on the raw env var rather than API_BASE, which defaults to localhost
+  // and would make every deployment look "configured".
+  useEffect(()=>{
+    const base=process.env.NEXT_PUBLIC_KUNO_API;
+    if(client||!base||!storedKey)return;
+    let alive=true;
+    void (async()=>{
+      try{
+        const c=makeClient(storedKey);
+        const available=await c.models(0);
+        if(!alive)return;
+        setClient(c);setSessionKey(storedKey);setActiveModels(available.models);setModels(available);
+        setStatus("Connected to the development gateway.");
+      }catch{/* leave the dialog as the way in */}
+    })();
+    return()=>{alive=false;};
+  },[client,storedKey]);
   const textarea=useRef<HTMLTextAreaElement>(null);
   const profile=profiles.find(p=>p.id===model)!;
   const limits=profile.limits;
