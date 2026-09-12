@@ -34,7 +34,7 @@ test.describe("narrow screens", () => {
   });
 
   test("other pages fit 400px", async ({ page }) => {
-    for (const path of ["/verify", "/network", "/developers"]) {
+    for (const path of ["/verify", "/models", "/developers"]) {
       await page.goto(path);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       expect(await horizontalOverflow(page), `overflow on ${path}`).toBeLessThanOrEqual(1);
@@ -49,7 +49,7 @@ test.describe("narrow screens", () => {
  * breakpoints where multi-column grids collapse.
  */
 const WIDTHS = [320, 375, 414, 768, 1024];
-const PAGES = ["/", "/studio", "/verify", "/network", "/developers"];
+const PAGES = ["/", "/studio", "/verify", "/models", "/developers"];
 
 test.describe("every width", () => {
   for (const width of WIDTHS) {
@@ -119,8 +119,14 @@ test.describe("reduced motion", () => {
     const settled = page.locator('[data-phase="lit"], [data-hero="true"] video');
     await expect(settled.first()).toBeAttached({ timeout: 10_000 });
 
-    const grainAnimation = await page.evaluate(() => getComputedStyle(document.querySelector(".grain") as Element).animationName);
-    expect(grainAnimation).toBe("none");
+    // Nothing anywhere may still be animating, which is stronger than checking one layer.
+    const animating = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("*"))
+        .filter((el) => getComputedStyle(el).animationName !== "none")
+        .map((el) => `${el.tagName.toLowerCase()}.${(el.className || "").toString().split(" ")[0]}`)
+        .slice(0, 5),
+    );
+    expect(animating).toEqual([]);
 
     // No hero video may be playing under reduced motion.
     const playing = await page.evaluate(() =>

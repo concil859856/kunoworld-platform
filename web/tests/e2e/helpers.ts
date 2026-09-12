@@ -49,11 +49,11 @@ export function pngBytes(width: number, height: number, rgb: [number, number, nu
 }
 
 export function prompt(page: Page): Locator {
-  return page.getByRole("textbox", { name: "Prompt" });
+  return page.getByRole("textbox", { name: /prompt/i });
 }
 
 export function cards(page: Page): Locator {
-  return page.locator("li[data-step]");
+  return page.locator("article[data-step]");
 }
 
 /** A MediaSlot's file input: its accessible name is the slot's label. */
@@ -79,14 +79,14 @@ export function expectStepOrder(steps: string[]): void {
 
 /** Opens the studio and connects with the dev key through the real Connect dialog. */
 export async function connect(page: Page): Promise<void> {
+  // The studio connects itself when a gateway is configured and this browser holds a key,
+  // so seed the key rather than driving the dialog. The dialog remains the product path:
+  // it asks for a gateway URL and a trusted manifest, which a test has no business faking.
+  await page.addInitScript((k) => localStorage.setItem("kuno.apiKey.v1", k), devApiKey());
   await page.goto("/studio");
-  // The empty library offers a Connect button too; use the one in the header.
-  await page.getByRole("banner").getByRole("button", { name: "Connect", exact: true }).click();
-  // Exact, because the dialog itself is labelled "Connect an API key".
-  await page.getByLabel("API key", { exact: true }).fill(devApiKey());
-  await page.getByRole("button", { name: "Check & connect" }).click();
-  await expect(page.getByRole("button", { name: /Connected/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Gateway connected/ })).toBeVisible();
 }
+
 
 /**
  * A composer tab ("Text", "Frames", "Keyframes", "References", "Edit"). Matched on
@@ -111,7 +111,7 @@ export function generateButton(page: Page): Locator {
 
 /** The film-stock button, which names the stock currently loaded. */
 export function stockButton(page: Page): Locator {
-  return page.getByRole("button", { name: /Change film stock/ });
+  return page.getByLabel("Model");
 }
 
 /** The visible list of reasons the Generate button is off (absent when there are none). */
@@ -120,9 +120,53 @@ export function blockers(page: Page): Locator {
 }
 
 export async function pickStock(page: Page, name: RegExp): Promise<void> {
-  await page.getByRole("button", { name: /Change film stock/ }).click();
+  await page.getByLabel("Model").click();
   await page.getByRole("option", { name }).click();
-  await expect(page.getByRole("listbox", { name: "Film stock" })).toBeHidden();
+  await expect(page.getByRole("listbox")).toBeHidden();
+}
+
+/**
+ * A setting's options are listed by label, not by value: 20 reads as "20 seconds",
+ * 48 as "48 fps", and 2160p as "4K".
+ */
+function optionLabel(field: string, value: string): string {
+  if (field === "Duration") return `${value} seconds`;
+  if (field === "Frame rate") return `${value} fps`;
+  if (field === "Resolution" && value === "2160p") return "4K";
+  return value;
+}
+
+/** These fields only exist once the advanced row is open. */
+const ADVANCED = new Set(["Aspect ratio", "Frame rate", "Seed", "Negative prompt"]);
+
+async function revealSetting(page: Page, field: string): Promise<void> {
+  if (!ADVANCED.has(field)) return;
+  const toggle = page.getByRole("button", { name: "Advanced settings" });
+  if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
+}
+
+/** Picks a value in one of the composer's settings (a listbox, not a native select). */
+export async function setSetting(page: Page, field: string, value: string): Promise<void> {
+  await revealSetting(page, field);
+  await page.getByLabel(field).click();
+  await page.getByRole("option", { name: optionLabel(field, value), exact: true }).click();
+  await expect(page.getByRole("listbox")).toBeHidden();
+}
+
+/** The options a setting offers. They only exist in the DOM while the picker is open. */
+export async function settingOptions(page: Page, field: string): Promise<string[]> {
+  await revealSetting(page, field);
+  await page.getByLabel(field).click();
+  const names = await page.getByRole("option").allInnerTexts();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("listbox")).toBeHidden();
+  return names.map((n) => n.trim());
+}
+
+/** The value a setting is showing. Its trigger displays the label, so match on that. */
+export async function expectSetting(page: Page, field: string, value: string): Promise<void> {
+  await revealSetting(page, field);
+  await expect(page.getByLabel(field)).toContainText(optionLabel(field, value));
 }
 
 export async function generate(page: Page, text: string): Promise<void> {
@@ -148,7 +192,8 @@ export async function watchToReady(card: Locator, timeoutMs = 150_000): Promise<
 
 /** Reads the decrypted film back out of its blob URL to prove it opened in the browser. */
 export async function inspectFilm(page: Page): Promise<{ size: number; ftyp: string }> {
-  const href = await page.getByRole("link", { name: "Download" }).getAttribute("href");
+  // Newest take first: with more than one film open, this is the one just made.
+  const href = await page.getByRole("link", { name: /Download video/ }).first().getAttribute("href");
   expect(href).toMatch(/^blob:/);
   return page.evaluate(async (url) => {
     const bytes = new Uint8Array(await (await fetch(url as string)).arrayBuffer());

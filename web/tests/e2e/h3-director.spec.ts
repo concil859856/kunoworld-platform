@@ -89,7 +89,8 @@ test("Edit and Extend both run a source clip through MiniMax H3 Director", async
   await pickEditOp(page, "Extend");
   await expect(stockButton(page)).toContainText("Director");
   await generate(page, "Carry on past the cut: the camera keeps drifting right");
-  const second = cards(page).last();
+  // Newest take first on the shelf.
+  const second = cards(page).first();
   expectStepOrder(await watchToReady(second));
   await expect(inspector(page)).toContainText("Extend");
   expect((await inspectFilm(page)).ftyp).toBe("ftyp");

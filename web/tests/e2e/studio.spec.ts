@@ -55,6 +55,8 @@ test("library survives a reload and re-opens the film", async ({ page }) => {
   await watchToReady(cards(page).first());
 
   await page.reload();
+  // A reload lands on Create; the takes are kept in the library, not in the page.
+  await page.getByRole("button", { name: "My creations" }).click();
 
   await expect(page.getByRole("button", { name: /Open take: Rain on a tram window/ })).toBeVisible();
   const card = cards(page).first();

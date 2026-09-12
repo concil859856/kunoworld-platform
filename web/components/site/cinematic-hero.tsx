@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 const heroFilms=[originalFilms[2],originalFilms[0],originalFilms[1]];
 export function CinematicHero(){
  const [index,setIndex]=useState(0);const [open,setOpen]=useState(false);const film=heroFilms[index];
- return <section className="ocean-hero cinematic-hero">
+ return <section className="ocean-hero cinematic-hero" data-hero="true">
   <AmbientVideo key={film.id} src={film.video} poster={film.poster} className="hero-film"/>
   <div className="hero-scrim"/>
   <div className="hero-content"><div className="hero-kicker"><span/> AN OPEN WORLD OF AI VIDEO</div><h1>Think it.<br/><em>Make it move.</em></h1><p>For the scenes you can’t stop imagining.<br/>Create cinematic video from words, images, and a little wonder.</p><div className="hero-buttons"><a className="ocean-button button-white" href="/studio">Create your first world <ArrowUpRight size={17}/></a><button className="hero-secondary" onClick={()=>setOpen(true)}><Play size={13} fill="currentColor"/> Watch the film <span>00:08</span></button></div></div>

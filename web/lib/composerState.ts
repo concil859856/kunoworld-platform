@@ -197,8 +197,16 @@ function withProfile(state: ComposerState, profile: ModelProfile, reason: string
 
 function ensureProfile(state: ComposerState, profiles: ModelProfile[]): ComposerState {
   const current = profiles.find((p) => p.id === state.profileId);
-  if (current && supportsTab(current, state.tab, state.editOp)) return state;
   const candidates = profiles.filter((p) => supportsTab(p, state.tab, state.editOp));
+  /*
+   * Staying put is only right if this stock can serve here. Picking a tab whose only
+   * stock is unlicensed in this region parks you on it; without this, a later op that
+   * the same stock happens to support would keep you there, even when a usable stock
+   * does that op too.
+   */
+  if (current && supportsTab(current, state.tab, state.editOp) && (usable(current) || !candidates.some(usable))) {
+    return state;
+  }
   const pick =
     candidates.find((p) => p.family === current?.family && usable(p)) ?? candidates.find(usable) ?? candidates[0];
   if (!pick) return state;

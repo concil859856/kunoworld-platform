@@ -1,7 +1,7 @@
 "use client";
 
 import type { GenerateInput, Mode, ModelProfile, ModelsResponse } from "@kunoworld/sdk";
-import { AudioLines, ChevronRight, LoaderCircle, LockKeyhole, Sparkles, ArrowRight, SlidersHorizontal } from "lucide-react";
+import { AudioLines, ChevronRight, LoaderCircle, LockKeyhole, Sparkles, ArrowRight, SlidersHorizontal, Wand2 } from "lucide-react";
 import { useId, useRef, useState } from "react";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -209,23 +209,37 @@ export function Composer({
         {state.tab === "edit" && <EditTray composer={composer} problems={trayProblems} />}
       </div>
 
-      <label htmlFor={`${ids}-prompt`} className="prompt-label">
-        Your prompt
+      <div className="prompt-label">
+        <label htmlFor={`${ids}-prompt`}>Your prompt</label>
         <span className="text-[12px] text-[#8b9581]">{MODE_LABEL[mode]}</span>
-      </label>
+        {limits.prompt_enhancer && (
+          <button
+            type="button"
+            aria-pressed={state.settings.enhance}
+            onClick={() => actions.patchSettings({ enhance: !state.settings.enhance })}
+          >
+            <Wand2 size={13} /> Enhance prompt
+          </button>
+        )}
+      </div>
       <div className="prompt-box">
         <textarea
           id={`${ids}-prompt`}
           ref={promptRef}
           value={state.prompt}
-          maxLength={limits.max_prompt_chars}
           onChange={(e) => actions.setPrompt(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              submit();
+            }
+          }}
           placeholder="Describe a scene, a feeling, a world that doesn't exist yet…"
         />
         <div className="prompt-foot">
           <span>Let your imagination do the talking.</span>
           <span>
-            {state.prompt.length.toLocaleString()} / {(limits.max_prompt_chars / 1000).toFixed(0)}k
+            {state.prompt.length.toLocaleString()}/{limits.max_prompt_chars.toLocaleString()}
           </span>
         </div>
       </div>
@@ -246,16 +260,25 @@ export function Composer({
           onChange={(v) => actions.patchSettings({ durationS: Number(v) })}
           options={durationOptions(profile).map((d) => ({ value: String(d), label: `${d} seconds` }))}
         />
-        <Picker
-          label="Resolution"
-          value={state.settings.resolution}
-          onChange={(v) => actions.patchSettings({ resolution: v })}
-          options={Object.keys(limits.sizes).map((r) => ({ value: r, label: r === "2160p" ? "4K" : r }))}
-        />
+        {Object.keys(limits.sizes).length > 1 && (
+          <Picker
+            label="Resolution"
+            value={state.settings.resolution}
+            onChange={(v) => actions.patchSettings({ resolution: v })}
+            options={Object.keys(limits.sizes).map((r) => ({ value: r, label: r === "2160p" ? "4K" : r }))}
+          />
+        )}
       </div>
 
       <div className="flex items-center justify-between gap-2">
-        <button type="button" className="text-button !text-[12px]" onClick={() => setAdvanced((a) => !a)} aria-expanded={advanced}>
+        {/* Its text is the current values, which makes a poor name: label it for what it opens. */}
+        <button
+          type="button"
+          className="text-button !text-[12px]"
+          onClick={() => setAdvanced((a) => !a)}
+          aria-expanded={advanced}
+          aria-label="Advanced settings"
+        >
           <SlidersHorizontal size={14} />
           {state.settings.aspectRatio} · {state.settings.fps} fps
           <ChevronRight size={12} />
@@ -273,12 +296,14 @@ export function Composer({
             onChange={(v) => actions.patchSettings({ aspectRatio: v })}
             options={aspects.map((a) => ({ value: a, label: a }))}
           />
-          <Picker
-            label="Frame rate"
-            value={String(state.settings.fps)}
-            onChange={(v) => actions.patchSettings({ fps: Number(v) })}
-            options={limits.fps.map((f) => ({ value: String(f), label: `${f} fps` }))}
-          />
+          {limits.fps.length > 1 && (
+            <Picker
+              label="Frame rate"
+              value={String(state.settings.fps)}
+              onChange={(v) => actions.patchSettings({ fps: Number(v) })}
+              options={limits.fps.map((f) => ({ value: String(f), label: `${f} fps` }))}
+            />
+          )}
           {limits.seed && (
             <label>
               <span className="field-label">Seed</span>
@@ -318,9 +343,9 @@ export function Composer({
           />
           <AudioLines size={14} /> Native audio
         </label>
-        <button className="generate-button" onClick={submit} disabled={busy} aria-disabled={blocked}>
+        <button className="generate-button" onClick={submit} disabled={busy} aria-disabled={blocked} title={blocked ? problems[0]?.message : undefined}>
           {busy ? <LoaderCircle size={16} className="spin" /> : <Sparkles size={16} />}
-          {busy ? "Creating…" : "Generate video"}
+          {busy ? "Creating…" : estimate === null ? "Generate video" : `Generate video · ${usd(estimate)}`}
           <ArrowRight size={16} />
         </button>
       </div>
@@ -330,13 +355,17 @@ export function Composer({
           Cancel generation
         </button>
       )}
-      <p className="estimate">{estimate === null ? "Price unavailable" : `Estimated ${usd(estimate)} · Preview pricing`}</p>
+      <p className="estimate">{estimate === null ? "Price unavailable" : "Preview pricing"}</p>
       {routeNotice && <p className="status-message">{routeNotice}</p>}
-      {generalProblems.map((p) => (
-        <p key={p.code + p.message} role="alert" className="status-message error-message">
-          {p.message}
-        </p>
-      ))}
+      {generalProblems.length > 0 && (
+        <ul className="problem-list" aria-label="Problems to fix">
+          {generalProblems.map((p) => (
+            <li key={p.code + p.message} role="alert" className="status-message error-message">
+              {p.message}
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

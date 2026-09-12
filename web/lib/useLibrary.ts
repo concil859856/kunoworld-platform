@@ -255,6 +255,11 @@ export function useLibrary(client: KunoClient | null, apiKey: string | null) {
     controllers.current.get(entry.id)?.abort();
     const film = filmsRef.current[entry.id];
     if (film?.url) URL.revokeObjectURL(film.url);
+    setFilms((f) => {
+      const next = { ...f };
+      delete next[entry.id];
+      return next;
+    });
     setEntries((list) => list.filter((e) => e.id !== entry.id));
   }, []);
 
@@ -265,6 +270,10 @@ export function useLibrary(client: KunoClient | null, apiKey: string | null) {
     if (!ok) return;
     controllers.current.forEach((c) => c.abort());
     controllers.current.clear();
+    // The decrypted films go too: their object URLs would otherwise leak, and a later
+    // restore of the same take would show the old film instead of re-opening its key.
+    Object.values(filmsRef.current).forEach((f) => f.url && URL.revokeObjectURL(f.url));
+    setFilms({});
     setEntries([]);
   }, []);
 

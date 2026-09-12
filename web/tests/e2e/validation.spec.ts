@@ -11,6 +11,7 @@ import {
   pickStock,
   pngBytes,
   prompt,
+  settingOptions,
   slot,
 } from "./helpers";
 
@@ -94,17 +95,17 @@ test("the chips only offer sizes, lengths and frame rates the stock renders", as
   await connect(page);
 
   await pickStock(page, /LTX-2\.5 Fast/);
-  await expect(page.getByLabel("Frame rate").locator("option")).toHaveText(["24 fps", "25 fps", "48 fps", "50 fps"]);
-  await expect(page.getByLabel("Resolution").locator("option")).toHaveCount(2);
+  expect(await settingOptions(page, "Frame rate")).toEqual(["24 fps", "25 fps", "48 fps", "50 fps"]);
+  expect(await settingOptions(page, "Resolution")).toHaveLength(2);
   // 2–20 s in 1 s steps.
-  await expect(page.getByLabel("Duration").locator("option")).toHaveCount(19);
+  expect(await settingOptions(page, "Duration")).toHaveLength(19);
 
   // MiniMax H3 is 768p at 24 fps only, so those stop being choices.
   await pickStock(page, /MiniMax H3 Turbo/);
   await expect(page.getByLabel("Frame rate")).toHaveCount(0);
   await expect(page.getByLabel("Resolution")).toHaveCount(0);
   // 5–14 s.
-  await expect(page.getByLabel("Duration").locator("option")).toHaveCount(10);
+  expect(await settingOptions(page, "Duration")).toHaveLength(10);
 });
 
 test("more keyframes than the stock takes are turned away at the slot", async ({ page }) => {
