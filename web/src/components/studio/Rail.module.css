@@ -48,6 +48,7 @@
 .search input:focus-visible {
   outline: none;
   border-color: var(--c-amber);
+  box-shadow: 0 0 0 3px var(--c-amber-soft);
 }
 
 .searchNote {
@@ -198,6 +199,16 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* Restore wraps a real file input so it works with the keyboard and a screen reader. */
+.restore {
+  cursor: pointer;
+}
+
+.restore:focus-within {
+  outline: 2px solid var(--c-amber);
+  outline-offset: 2px;
 }
 
 .license a {

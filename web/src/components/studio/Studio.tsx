@@ -7,7 +7,7 @@ import { openConnect } from "@/components/site/ConnectDialog";
 import { profilesOrCatalog, isH3 } from "@/lib/catalog";
 import { friendlyError, type FriendlyError } from "@/lib/errors";
 import { keyFingerprint, makeClient, useApiKey } from "@/lib/kuno";
-import { isActive, loadLibrary, saveLibrary, type LibraryEntry } from "@/lib/library";
+import { isActive, loadLibrary, parseBackup, saveLibrary, type LibraryEntry } from "@/lib/library";
 import { extractLastFrame } from "@/lib/media";
 import { supportsTab } from "@/lib/shot";
 import { useModels, type LiveModels } from "@/lib/useModels";
@@ -61,13 +61,19 @@ function StudioSession({ apiKey, live }: { apiKey: string | null; live: LiveMode
   const controllers = useRef(new Map<string, AbortController>());
   const inputCache = useRef(new Map<string, ComposerSnapshot>());
   const filmsRef = useRef(films);
+  const entriesRef = useRef(entries);
   const toastTimer = useRef<number | undefined>(undefined);
   const promptRef = useRef<HTMLTextAreaElement>(null);
+  const inspectorTitle = useRef<HTMLHeadingElement>(null);
   const slots = useRef({ free: 2, queue: [] as Array<() => void> });
 
   useEffect(() => {
     filmsRef.current = films;
   }, [films]);
+
+  useEffect(() => {
+    entriesRef.current = entries;
+  }, [entries]);
 
   useEffect(() => {
     if (fingerprint) saveLibrary(fingerprint, entries);
@@ -143,7 +149,10 @@ function StudioSession({ apiKey, live }: { apiKey: string | null; live: LiveMode
           update(id, { step: "ready", progress: 1, receipt: lastStatus.receipt ?? undefined });
         } else {
           const error = friendlyError(err, "render");
-          update(id, { step: error.code === "job_canceled" ? "canceled" : "failed", error });
+          // The gateway reports a cancel as error_code "canceled"; older builds sent no
+          // code at all and the SDK synthesised "job_canceled". Accept both.
+          const canceled = error.code === "canceled" || error.code === "job_canceled";
+          update(id, { step: canceled ? "canceled" : "failed", error });
         }
       } finally {
         if (controllers.current.get(id) === ctrl) controllers.current.delete(id);
@@ -249,6 +258,8 @@ function StudioSession({ apiKey, live }: { apiKey: string | null; live: LiveMode
     setSelectedId(id);
     setInspectorOpen(true);
     setRailOpen(false);
+    // Follow the selection with the keyboard, and pull focus out of the drawer that just closed.
+    window.setTimeout(() => inspectorTitle.current?.focus(), 0);
   }, []);
 
   const cancel = useCallback(
@@ -334,6 +345,28 @@ function StudioSession({ apiKey, live }: { apiKey: string | null; live: LiveMode
     [notify],
   );
 
+  /** Reads a film-key backup and adds back anything this browser has forgotten. */
+  const restore = useCallback(
+    async (file: File) => {
+      let restored: LibraryEntry[];
+      try {
+        restored = parseBackup(await file.text());
+      } catch (err) {
+        notify(`Couldn't read that backup — ${(err as Error).message}.`);
+        return;
+      }
+      const known = new Set(entriesRef.current.map((e) => e.id));
+      const fresh = restored.filter((e) => !known.has(e.id));
+      if (!fresh.length) {
+        notify("Those film keys are already in this library.");
+        return;
+      }
+      setEntries((list) => [...list, ...fresh].sort((a, b) => a.createdAt - b.createdAt));
+      notify(`Restored ${fresh.length} film key${fresh.length === 1 ? "" : "s"}. Open a take to decrypt it again.`);
+    },
+    [notify],
+  );
+
   const forgetAll = useCallback(() => {
     const ok = window.confirm(
       "Forget the whole library? This deletes every film key stored in this browser. Films you haven't downloaded can't be opened afterwards.",
@@ -359,6 +392,7 @@ function StudioSession({ apiKey, live }: { apiKey: string | null; live: LiveMode
           selectedId={selectedId}
           onSelect={select}
           onForget={forgetAll}
+          onRestore={restore}
           connected={Boolean(apiKey)}
           onClose={() => setRailOpen(false)}
         />
@@ -412,6 +446,7 @@ function StudioSession({ apiKey, live }: { apiKey: string | null; live: LiveMode
           onUseLastFrame={useLastFrame}
           onCopyLink={copyLink}
           onOpenFilm={ensureFilm}
+          titleRef={inspectorTitle}
         />
       </aside>
 

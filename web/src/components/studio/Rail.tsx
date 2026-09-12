@@ -6,7 +6,7 @@ import { openConnect } from "@/components/site/ConnectDialog";
 import { CATALOG, isH3, variantLabel } from "@/lib/catalog";
 import { LINKS } from "@/lib/config";
 import { clockTime, relativeDay } from "@/lib/format";
-import { isActive, type LibraryEntry } from "@/lib/library";
+import { exportEntries, isActive, type LibraryEntry } from "@/lib/library";
 
 import styles from "./Rail.module.css";
 
@@ -26,15 +26,15 @@ function stockName(profileId: string): string {
 }
 
 function backup(entries: LibraryEntry[]) {
-  const data = entries
-    .filter((e) => e.handle)
-    .map((e) => ({ jobId: e.id, createdAt: new Date(e.createdAt).toISOString(), prompt: e.prompt, handle: e.handle }));
-  const blob = new Blob([JSON.stringify({ kind: "kunoworld-film-keys", version: 1, films: data }, null, 2)], { type: "application/json" });
+  const blob = new Blob([exportEntries(entries)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = `kunoworld-film-keys-${new Date().toISOString().slice(0, 10)}.json`;
+  // Some browsers only honour a click on an anchor that is in the document.
+  document.body.append(a);
   a.click();
+  a.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
@@ -43,6 +43,7 @@ export function Rail({
   selectedId,
   onSelect,
   onForget,
+  onRestore,
   connected,
   onClose,
 }: {
@@ -50,6 +51,7 @@ export function Rail({
   selectedId: string | null;
   onSelect: (id: string) => void;
   onForget: () => void;
+  onRestore: (file: File) => void;
   connected: boolean;
   onClose: () => void;
 }) {
@@ -147,16 +149,33 @@ export function Rail({
           Each film&apos;s key is stored only in this browser. Clear this site&apos;s data and those films can&apos;t be
           opened — download what you want to keep.
         </p>
-        {entries.some((e) => e.handle) && (
-          <div className={styles.footButtons}>
+        <div className={styles.footButtons}>
+          {entries.some((e) => e.handle) && (
             <button type="button" className="btn btn-small" onClick={() => backup(entries)} title="Anyone with this file can open these films">
               Back up keys
             </button>
+          )}
+          {/* A label around a real file input: clickable, keyboard-reachable, and named for screen readers. */}
+          <label className={`btn btn-small ${styles.restore}`} title="Load a backup file to bring film keys back to this browser">
+            <span aria-hidden="true">Restore keys</span>
+            <input
+              type="file"
+              className="sr-only"
+              accept="application/json,.json"
+              aria-label="Restore keys"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) onRestore(file);
+              }}
+            />
+          </label>
+          {entries.some((e) => e.handle) && (
             <button type="button" className="btn btn-small btn-quiet" onClick={onForget}>
               Forget all
             </button>
-          </div>
-        )}
+          )}
+        </div>
         <p className={styles.license}>
           MiniMax H3 is used under the{" "}
           <a href={LINKS.h3License} target="_blank" rel="noreferrer">
