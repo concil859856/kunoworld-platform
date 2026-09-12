@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+node_modules/
+.next/
+out/
+data/
+*.tsbuildinfo
+.env
+.env*.local
+test-results/
+playwright-report/
+blob-report/

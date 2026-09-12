@@ -1,0 +1,69 @@
+.board {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #07060a;
+}
+
+.canvas {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: clamp(300px, 38vw, 460px);
+}
+
+.readout {
+  grid-area: 1 / 1;
+  align-self: start;
+  display: grid;
+  gap: 12px;
+  padding: clamp(20px, 4vw, 44px);
+  pointer-events: none;
+}
+
+.big {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.number {
+  font-family: var(--font-display);
+  font-size: clamp(64px, 10vw, 128px);
+  line-height: 0.9;
+  font-weight: 500;
+  color: var(--c-paper);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.label {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: clamp(22px, 2.6vw, 32px);
+  color: var(--c-paper-2);
+}
+
+.ticker {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--c-amber);
+}
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px 32px;
+  padding: 18px clamp(20px, 4vw, 44px) 22px;
+  border-top: 1px solid var(--line);
+  background: var(--c-black);
+  font-size: 13px;
+  color: var(--c-muted);
+}
+
+.foot p {
+  max-width: 76ch;
+}

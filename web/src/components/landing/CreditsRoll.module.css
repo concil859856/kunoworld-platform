@@ -1,0 +1,58 @@
+.figure {
+  display: grid;
+  gap: 12px;
+}
+
+.roll {
+  position: relative;
+  height: 460px;
+  overflow: hidden;
+  background: #050403;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 16%, #000 84%, transparent 100%);
+}
+
+.crawl {
+  animation: crawl 34s linear infinite;
+  animation-play-state: paused;
+}
+
+.roll[data-running="true"] .crawl {
+  animation-play-state: running;
+}
+
+.roll:hover .crawl {
+  animation-play-state: paused;
+}
+
+.crawl > section {
+  border: 0;
+  background: transparent;
+  padding-block: 40px;
+}
+
+@keyframes crawl {
+  from {
+    transform: translateY(460px);
+  }
+  to {
+    transform: translateY(-100%);
+  }
+}
+
+.caption {
+  font-size: 12px;
+  color: var(--c-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roll {
+    height: auto;
+    mask-image: none;
+  }
+
+  .crawl {
+    animation: none;
+  }
+}

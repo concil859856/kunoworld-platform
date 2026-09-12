@@ -1,0 +1,85 @@
+.footer {
+  margin-top: 120px;
+  background: var(--c-black);
+  border-top: 1px solid var(--line);
+  color: var(--c-paper-2);
+  font-size: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1.4fr 1fr;
+  gap: 40px;
+  padding-block: 56px 40px;
+}
+
+.brand {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.wordmark {
+  font-size: 30px;
+  color: var(--c-paper);
+}
+
+.wordmark em {
+  color: var(--c-amber);
+  font-weight: 400;
+}
+
+.tag {
+  max-width: 30ch;
+  color: var(--c-muted);
+}
+
+.col {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.col ul {
+  display: grid;
+  gap: 8px;
+}
+
+.col a {
+  color: var(--c-paper);
+  text-decoration: underline;
+  text-decoration-color: var(--line-3);
+}
+
+.col a:hover {
+  text-decoration-color: var(--c-amber);
+}
+
+.note {
+  color: var(--c-muted);
+  font-size: 13px;
+}
+
+.base {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 18px 28px;
+  border-top: 1px solid var(--line);
+  color: var(--c-fixer);
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .grid {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+}

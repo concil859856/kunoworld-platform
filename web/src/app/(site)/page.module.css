@@ -1,0 +1,266 @@
+/* ------------------------------------------------------------ hero */
+
+.hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding-block: clamp(36px, 7vw, 88px) clamp(40px, 6vw, 72px);
+}
+
+/* Ambient light only: the safelight while the print develops, tungsten once it's done. */
+.hero::before,
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0 -20%;
+  z-index: -1;
+  pointer-events: none;
+  transition: opacity 2.6s var(--ease-slow);
+}
+
+.hero::before {
+  background: radial-gradient(45% 42% at 50% 62%, var(--c-safelight-glow), transparent 72%);
+}
+
+.hero::after {
+  background: radial-gradient(42% 40% at 50% 62%, rgba(230, 163, 74, 0.1), transparent 72%);
+  opacity: 0;
+}
+
+.hero:has([data-phase="lit"])::before {
+  opacity: 0.35;
+}
+
+.hero:has([data-phase="lit"])::after {
+  opacity: 1;
+}
+
+.heroInner {
+  display: grid;
+  gap: clamp(18px, 3vw, 34px);
+}
+
+.headline {
+  font-size: clamp(50px, 10.5vw, 150px);
+  line-height: 0.9;
+  letter-spacing: -0.025em;
+}
+
+.headline em {
+  font-style: italic;
+  font-weight: 400;
+  color: var(--c-amber);
+}
+
+.heroFoot {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) auto;
+  gap: 20px 48px;
+  align-items: end;
+}
+
+.sub {
+  max-width: 60ch;
+  font-size: clamp(16px, 1.5vw, 19px);
+  color: var(--c-paper-2);
+}
+
+.ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* ------------------------------------------------------------ sections */
+
+.section {
+  padding-top: clamp(72px, 11vw, 144px);
+}
+
+.head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 18px clamp(24px, 5vw, 80px);
+  align-items: end;
+  margin-bottom: clamp(26px, 4vw, 46px);
+}
+
+.section > .head:first-child:not(.wrap) {
+  padding: 0;
+}
+
+.h2 {
+  margin-top: 12px;
+  font-size: clamp(36px, 5.2vw, 68px);
+}
+
+.h2 em {
+  font-style: italic;
+  font-weight: 400;
+}
+
+.intro {
+  max-width: 56ch;
+  font-size: 16px;
+  color: var(--c-paper-2);
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: clamp(28px, 5vw, 72px);
+  align-items: center;
+}
+
+.splitText {
+  display: grid;
+  gap: 18px;
+  align-content: center;
+}
+
+/* ------------------------------------------------------------ pricing */
+
+.pricing {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table th,
+.table td {
+  padding: 11px 16px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+
+.table thead th {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--c-muted);
+  background: var(--c-tray);
+}
+
+.table tbody th {
+  font-weight: 500;
+  color: var(--c-paper);
+}
+
+.table td {
+  color: var(--c-paper-2);
+}
+
+.table tr[data-first="false"] th,
+.table tr[data-first="false"] td {
+  border-top: 0;
+}
+
+.table tbody tr[data-first="true"]:not(:first-child) th,
+.table tbody tr[data-first="true"]:not(:first-child) td {
+  border-top: 1px solid var(--line-2);
+}
+
+.table tbody tr:last-child th,
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.stockCell {
+  white-space: nowrap;
+}
+
+.truths {
+  display: grid;
+  gap: 14px;
+}
+
+.truths li {
+  position: relative;
+  padding-left: 26px;
+  color: var(--c-paper-2);
+}
+
+.truths li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 7px;
+  width: 11px;
+  height: 6px;
+  border-left: 1.5px solid var(--c-amber);
+  border-bottom: 1.5px solid var(--c-amber);
+  transform: rotate(-45deg);
+}
+
+.truths strong {
+  color: var(--c-paper);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------ comparison */
+
+.compare {
+  min-width: 640px;
+}
+
+.compare tbody th {
+  width: 22%;
+  font-size: 13px;
+  color: var(--c-paper);
+}
+
+.compare td {
+  width: 39%;
+}
+
+.here {
+  color: var(--c-paper) !important;
+  background: linear-gradient(90deg, var(--c-amber-soft), transparent 70%);
+}
+
+.caveat {
+  max-width: 80ch;
+  margin-top: 18px;
+  font-size: 13px;
+  color: var(--c-muted);
+}
+
+/* ------------------------------------------------------------ developer teaser */
+
+.devTeaser {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: clamp(28px, 5vw, 64px);
+  align-items: center;
+}
+
+@media (max-width: 900px) {
+  .head,
+  .split,
+  .pricing,
+  .devTeaser {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .heroFoot {
+    grid-template-columns: 1fr;
+  }
+}
