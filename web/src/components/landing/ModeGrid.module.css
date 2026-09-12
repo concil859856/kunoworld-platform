@@ -32,6 +32,20 @@
   border-radius: 0;
 }
 
+/* The holding frame shown before a mode has footage. */
+.poster {
+  object-fit: cover;
+}
+
+.note {
+  margin-top: 14px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  letter-spacing: 0.05em;
+  color: var(--c-fixer);
+}
+
 /* A warm wash over the footage on hover, so the whole tile reacts, not just the border. */
 .card::after {
   content: "";

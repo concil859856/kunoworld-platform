@@ -1,12 +1,14 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import type { Mode } from "@kunoworld/sdk";
 
 import { Clip } from "@/components/fx/Clip";
 import { Reveal } from "@/components/fx/Reveal";
 import { CATALOG, isH3, variantLabel } from "@/lib/catalog";
-import { clipForMode } from "@/lib/reel";
+import { clipForMode, HAS_FOOTAGE } from "@/lib/reel";
+import { posterForMode, HAS_STILLS, STILLS_NOTE } from "@/lib/stills";
 import { MODE_LABEL } from "@/lib/validation";
 
 import styles from "./ModeGrid.module.css";
@@ -56,22 +58,44 @@ function stocksFor(mode: Mode): string {
 
 export function ModeGrid() {
   return (
-    <ul className={styles.grid} role="list">
-      {ORDER.map((mode, i) => {
-        const shot = clipForMode(mode);
-        return (
-          <Reveal as="li" key={mode} className={styles.cell} delay={(i % 3) * 0.08}>
-            <Link href="/studio" className={styles.card}>
-              <Clip clip={shot} ratio="16 / 9" className={styles.clip} sound={mode === "audio_to_video"} />
-              <div className={styles.meta}>
-                <h3 className={styles.name}>{MODE_LABEL[mode]}</h3>
-                <p className={styles.hint}>{HINTS[mode]}</p>
-                <p className={styles.stocks}>{stocksFor(mode)}</p>
-              </div>
-            </Link>
-          </Reveal>
-        );
-      })}
-    </ul>
+    <>
+      <ul className={styles.grid} role="list">
+        {ORDER.map((mode, i) => {
+          const shot = clipForMode(mode);
+          // Until a mode has footage, its tile holds a generated still rather than an
+          // empty panel. The still never claims to be video.
+          const holding = shot ? undefined : posterForMode(mode);
+          return (
+            <Reveal as="li" key={mode} className={styles.cell} delay={(i % 3) * 0.08}>
+              <Link href="/studio" className={styles.card}>
+                <Clip
+                  clip={shot}
+                  ratio="16 / 9"
+                  className={styles.clip}
+                  sound={mode === "audio_to_video"}
+                  fallback={
+                    holding ? (
+                      <Image
+                        src={holding.src}
+                        alt={holding.alt}
+                        fill
+                        sizes="(max-width: 420px) 100vw, (max-width: 620px) 50vw, 33vw"
+                        className={styles.poster}
+                      />
+                    ) : undefined
+                  }
+                />
+                <div className={styles.meta}>
+                  <h3 className={styles.name}>{MODE_LABEL[mode]}</h3>
+                  <p className={styles.hint}>{HINTS[mode]}</p>
+                  <p className={styles.stocks}>{stocksFor(mode)}</p>
+                </div>
+              </Link>
+            </Reveal>
+          );
+        })}
+      </ul>
+      {!HAS_FOOTAGE && HAS_STILLS && <p className={styles.note}>{STILLS_NOTE}</p>}
+    </>
   );
 }
