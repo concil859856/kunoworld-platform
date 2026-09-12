@@ -70,11 +70,7 @@ test("retake regenerates a window of a clip on LTX-2.5", async ({ page }) => {
   expect((await inspectFilm(page)).ftyp).toBe("ftyp");
 });
 
-// Blocked on a protocol bug, not a studio one: kuno_protocol/media.py ROLE_TYPES has
-// no entry for InputRole.SOURCE_AUDIO, so worker.py's `mime not in ROLE_TYPES[ref.role]`
-// raises KeyError and every audio-to-video job fails as internal_error. The composer
-// side of this mode is covered in validation.spec.ts and h3-director.spec.ts.
-test.fixme("a soundtrack drives the picture on LTX-2.5 Pro", async ({ page }) => {
+test("a soundtrack drives the picture on LTX-2.5 Pro", async ({ page }) => {
   await connect(page);
   await openTab(page, "Edit");
   await pickEditOp(page, "Audio → video");

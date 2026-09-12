@@ -95,11 +95,6 @@ test("Edit and Extend both run a source clip through MiniMax H3 Director", async
   expect((await inspectFilm(page)).ftyp).toBe("ftyp");
 });
 
-/**
- * Stops at the composer on purpose: rendering this mode is blocked by a protocol bug
- * (kuno_protocol/media.py ROLE_TYPES has no InputRole.SOURCE_AUDIO, so worker.py raises
- * KeyError and the job fails as internal_error). The rule under test is client-side.
- */
 test("Audio to video on Director needs a visual alongside the soundtrack", async ({ page }) => {
   await connect(page);
   await openTab(page, "Edit");
@@ -114,8 +109,14 @@ test("Audio to video on Director needs a visual alongside the soundtrack", async
   await expect(page.getByText("MiniMax H3 Director needs an image or video alongside audio.")).toHaveCount(0);
   await expect(blockers(page)).toHaveCount(0);
 
-  // With a prompt it is ready to send, priced for the Director stock.
   await prompt(page).fill("She speaks the line to camera, lit from one side");
   await expect(generateButton(page)).not.toHaveAttribute("aria-disabled", "true");
   await expect(generateButton(page)).toContainText(/\$\d/);
+
+  await prompt(page).press("Control+Enter");
+  expectStepOrder(await watchToReady(cards(page).first()));
+  await expect(inspector(page)).toContainText("Audio to video");
+  await expect(inspector(page)).toContainText("Soundtrack");
+  await expect(inspector(page)).toContainText("First frame");
+  expect((await inspectFilm(page)).ftyp).toBe("ftyp");
 });
