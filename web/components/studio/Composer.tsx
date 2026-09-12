@@ -1,0 +1,342 @@
+"use client";
+
+import type { GenerateInput, Mode, ModelProfile, ModelsResponse } from "@kunoworld/sdk";
+import { AudioLines, ChevronRight, LoaderCircle, LockKeyhole, Sparkles, ArrowRight, SlidersHorizontal } from "lucide-react";
+import { useId, useRef, useState } from "react";
+
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { collectInputs, type ComposerApi } from "@/lib/composerState";
+import { usd } from "@/lib/format";
+import type { InputSummary } from "@/lib/library";
+import {
+  durationOptions,
+  estimatePrice,
+  fallbackNotice,
+  frameSize,
+  modeFor,
+  predictRoute,
+  TABS,
+} from "@/lib/shot";
+import { MODE_LABEL, validateParams, validatePrompt, type Problem } from "@/lib/validation";
+
+import { EditTray, FramesTray, KeyframesTray, ReferencesTray } from "./Trays";
+
+/*
+ * The composer, covering all ten creation modes.
+ *
+ * Five tabs map onto the modes: text, frames (first/last), keyframes, references, and
+ * edit — which itself carries four operations (edit, extend, retake, audio-to-video).
+ * The state machine, role collection and profile switching live in lib/composerState;
+ * this file is the surface. Problems are computed every render rather than memoised,
+ * because they derive from objects created during render.
+ */
+
+const QUIET_UNTIL_ATTEMPT = new Set(["prompt_empty", "missing", "empty"]);
+const MAX_SEED = 2 ** 31 - 1;
+
+export interface Submission {
+  prompt: string;
+  mode: Mode;
+  inputs: GenerateInput[];
+  summaries: InputSummary[];
+  requested: ModelProfile;
+  predicted: ModelProfile;
+  fallbackReason: string | null;
+  estimate: number | null;
+}
+
+function Picker({
+  label,
+  value,
+  options,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label>
+      <span className="field-label">{label}</span>
+      <Select value={value} onValueChange={onChange} disabled={disabled}>
+        <SelectTrigger aria-label={label} className="select-control">
+          <SelectValue>{options.find((o) => o.value === value)?.label}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o.value} value={o.value}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </label>
+  );
+}
+
+export function Composer({
+  composer,
+  models,
+  busy,
+  onGenerate,
+  onCancel,
+}: {
+  composer: ComposerApi;
+  /** From the connected gateway, so routing predictions match where jobs actually go. */
+  models: ModelsResponse | null;
+  busy: boolean;
+  onGenerate: (submission: Submission) => void;
+  /** Shown while a job is in flight, so a long render can be abandoned. */
+  onCancel?: () => void;
+}) {
+  const { state, profile, actions } = composer;
+  const profiles = models?.models ?? [profile];
+  const limits = profile.limits;
+  const ids = useId();
+  const promptRef = useRef<HTMLTextAreaElement>(null);
+  const [attempted, setAttempted] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
+
+  const collected = collectInputs(state);
+  const mode = modeFor(state.tab, state.editOp, collected.roles);
+  const prediction = predictRoute(models, profile, mode);
+  const target = prediction.ok ? prediction.profile : profile;
+  const reason = prediction.ok ? prediction.reason : null;
+  const estimate = prediction.ok ? estimatePrice(target, mode, collected.roles, state.settings, reason) : null;
+
+  const problems: Problem[] = (() => {
+    const s = state.settings;
+    const out: Problem[] = [
+      ...validatePrompt(profile, state.prompt, limits.negative_prompt ? s.negativePrompt : ""),
+      ...validateParams(
+        profile,
+        { mode, durationS: s.durationS, resolution: s.resolution, aspectRatio: s.aspectRatio, fps: s.fps, audio: s.audio },
+        collected.roles,
+      ),
+    ];
+    if (state.tab === "frames" && !state.inputs.first && !state.inputs.last) {
+      const i = out.findIndex((p) => p.code === "missing");
+      if (i >= 0) out[i] = { code: "missing", message: "Add a first frame, a last frame, or both.", roles: ["first_frame", "last_frame"] };
+    }
+    if (state.tab === "edit" && state.editOp === "retake" && state.inputs.source) {
+      const { retakeStart: a, retakeEnd: b } = state.inputs;
+      const d = state.inputs.source.info.duration;
+      if (!(a >= 0 && b > a)) out.push({ code: "window", message: "The retake window must start before it ends.", roles: ["source_video"] });
+      else if (d && b > d + 0.01) out.push({ code: "window_end", message: `The retake window ends after the clip does (${d.toFixed(1)} s).`, roles: ["source_video"] });
+    }
+    const seed = state.settings.seed.trim();
+    if (limits.seed && seed && (!/^\d{1,10}$/.test(seed) || Number(seed) > MAX_SEED)) {
+      out.push({ code: "seed", message: `Seeds are whole numbers from 0 to ${MAX_SEED.toLocaleString("en-US")}.` });
+    }
+    if (!prediction.ok) out.push({ code: prediction.code, message: prediction.message });
+    const seen = new Set<string>();
+    return out.filter((p) => (seen.has(p.message) ? false : (seen.add(p.message), true)));
+  })();
+
+  const shown = attempted ? problems : problems.filter((p) => !QUIET_UNTIL_ATTEMPT.has(p.code));
+  const trayProblems = shown.filter((p) => p.roles?.length);
+  const generalProblems = shown.filter((p) => !p.roles?.length);
+  const blocked = problems.length > 0;
+  const routeNotice = prediction.ok ? fallbackNotice(reason, profile, target, true) : null;
+
+  const tabCount = (tab: (typeof TABS)[number]["id"]) => {
+    const i = state.inputs;
+    if (tab === "frames") return Number(Boolean(i.first)) + Number(Boolean(i.last));
+    if (tab === "keyframes") return i.keyframes.length;
+    if (tab === "references") return i.refImages.length + i.refVideos.length + i.refAudio.length;
+    if (tab === "edit") return Number(Boolean(i.source)) + Number(Boolean(i.soundtrack)) + Number(Boolean(i.a2vFirst)) + i.editImages.length;
+    return 0;
+  };
+
+  const insertToken = (token: string) => {
+    const p = state.prompt;
+    actions.setPrompt(`${p}${p && !/\s$/.test(p) ? " " : ""}${token} `);
+    promptRef.current?.focus();
+  };
+
+  function submit() {
+    setAttempted(true);
+    if (blocked || busy) return;
+    onGenerate({
+      prompt: state.prompt.trim(),
+      mode,
+      inputs: collected.inputs,
+      summaries: collected.summaries,
+      requested: profile,
+      predicted: target,
+      fallbackReason: reason,
+      estimate,
+    });
+  }
+
+  const size = frameSize(profile, state.settings.resolution, state.settings.aspectRatio);
+  const aspects = Object.keys(limits.sizes[state.settings.resolution] ?? {});
+
+  return (
+    <section className="composer" aria-label="Video creation">
+      <Tabs value={state.tab} onValueChange={(v) => actions.setTab(v as (typeof TABS)[number]["id"])}>
+        <TabsList aria-label="Creation mode">
+          {TABS.map((t) => {
+            const n = tabCount(t.id);
+            return (
+              <TabsTrigger key={t.id} value={t.id} id={`${ids}-tab-${t.id}`}>
+                {t.label}
+                {n > 0 && <span className="tab-count">{n}</span>}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+      </Tabs>
+
+      {state.notice && (
+        <p className="status-message" role="status">
+          {state.notice}
+          <button type="button" onClick={() => actions.setNotice(null)} aria-label="Dismiss">
+            ×
+          </button>
+        </p>
+      )}
+
+      <div role="tabpanel" aria-labelledby={`${ids}-tab-${state.tab}`} data-tab={state.tab}>
+        {state.tab === "frames" && <FramesTray composer={composer} problems={trayProblems} />}
+        {state.tab === "keyframes" && <KeyframesTray composer={composer} problems={trayProblems} />}
+        {state.tab === "references" && <ReferencesTray composer={composer} problems={trayProblems} onInsert={insertToken} />}
+        {state.tab === "edit" && <EditTray composer={composer} problems={trayProblems} />}
+      </div>
+
+      <label htmlFor={`${ids}-prompt`} className="prompt-label">
+        Your prompt
+        <span className="text-[12px] text-[#8b9581]">{MODE_LABEL[mode]}</span>
+      </label>
+      <div className="prompt-box">
+        <textarea
+          id={`${ids}-prompt`}
+          ref={promptRef}
+          value={state.prompt}
+          maxLength={limits.max_prompt_chars}
+          onChange={(e) => actions.setPrompt(e.target.value)}
+          placeholder="Describe a scene, a feeling, a world that doesn't exist yet…"
+        />
+        <div className="prompt-foot">
+          <span>Let your imagination do the talking.</span>
+          <span>
+            {state.prompt.length.toLocaleString()} / {(limits.max_prompt_chars / 1000).toFixed(0)}k
+          </span>
+        </div>
+      </div>
+
+      <div className="settings-row">
+        <Picker
+          label="Model"
+          value={profile.id}
+          onChange={(id) => {
+            const p = profiles.find((x) => x.id === id);
+            if (p) actions.setProfile(p);
+          }}
+          options={profiles.map((p) => ({ value: p.id, label: p.name }))}
+        />
+        <Picker
+          label="Duration"
+          value={String(state.settings.durationS)}
+          onChange={(v) => actions.patchSettings({ durationS: Number(v) })}
+          options={durationOptions(profile).map((d) => ({ value: String(d), label: `${d} seconds` }))}
+        />
+        <Picker
+          label="Resolution"
+          value={state.settings.resolution}
+          onChange={(v) => actions.patchSettings({ resolution: v })}
+          options={Object.keys(limits.sizes).map((r) => ({ value: r, label: r === "2160p" ? "4K" : r }))}
+        />
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <button type="button" className="text-button !text-[12px]" onClick={() => setAdvanced((a) => !a)} aria-expanded={advanced}>
+          <SlidersHorizontal size={14} />
+          {state.settings.aspectRatio} · {state.settings.fps} fps
+          <ChevronRight size={12} />
+        </button>
+        <span className="text-[12px] text-[#a4af95] flex items-center gap-1.5">
+          <LockKeyhole size={12} /> Encrypted by the SDK
+        </span>
+      </div>
+
+      {advanced && (
+        <div className="settings-row">
+          <Picker
+            label="Aspect ratio"
+            value={state.settings.aspectRatio}
+            onChange={(v) => actions.patchSettings({ aspectRatio: v })}
+            options={aspects.map((a) => ({ value: a, label: a }))}
+          />
+          <Picker
+            label="Frame rate"
+            value={String(state.settings.fps)}
+            onChange={(v) => actions.patchSettings({ fps: Number(v) })}
+            options={limits.fps.map((f) => ({ value: String(f), label: `${f} fps` }))}
+          />
+          {limits.seed && (
+            <label>
+              <span className="field-label">Seed</span>
+              <input
+                className="select-control"
+                aria-label="Seed"
+                inputMode="numeric"
+                value={state.settings.seed}
+                placeholder="random"
+                onChange={(e) => actions.patchSettings({ seed: e.target.value })}
+              />
+            </label>
+          )}
+          {limits.negative_prompt && (
+            <label style={{ gridColumn: "1 / -1" }}>
+              <span className="field-label">Negative prompt</span>
+              <input
+                className="select-control"
+                aria-label="Negative prompt"
+                value={state.settings.negativePrompt}
+                placeholder="What you don't want to see"
+                onChange={(e) => actions.patchSettings({ negativePrompt: e.target.value })}
+              />
+            </label>
+          )}
+          {size && <p className="modal-copy">{size.join(" × ")} pixels</p>}
+        </div>
+      )}
+
+      <div className="composer-footer">
+        <label className="audio-switch">
+          <Switch
+            checked={state.settings.audio}
+            onCheckedChange={(v) => actions.patchSettings({ audio: v })}
+            disabled={!limits.audio}
+            aria-label="Generate audio"
+          />
+          <AudioLines size={14} /> Native audio
+        </label>
+        <button className="generate-button" onClick={submit} disabled={busy} aria-disabled={blocked}>
+          {busy ? <LoaderCircle size={16} className="spin" /> : <Sparkles size={16} />}
+          {busy ? "Creating…" : "Generate video"}
+          <ArrowRight size={16} />
+        </button>
+      </div>
+
+      {busy && onCancel && (
+        <button type="button" className="text-button mt-3" onClick={onCancel}>
+          Cancel generation
+        </button>
+      )}
+      <p className="estimate">{estimate === null ? "Price unavailable" : `Estimated ${usd(estimate)} · Preview pricing`}</p>
+      {routeNotice && <p className="status-message">{routeNotice}</p>}
+      {generalProblems.map((p) => (
+        <p key={p.code + p.message} role="alert" className="status-message error-message">
+          {p.message}
+        </p>
+      ))}
+    </section>
+  );
+}

@@ -38,3 +38,19 @@
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
+
+/* How many files a tab is holding, beside its label. The tab triggers already space
+   their children, so this only needs to read as a small count rather than a label. */
+.studio-shell .tab-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+}
