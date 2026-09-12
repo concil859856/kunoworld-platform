@@ -114,6 +114,30 @@
   color: var(--c-paper);
 }
 
+.card dl {
+  display: grid;
+  gap: 10px;
+}
+
+.card dl > div {
+  display: grid;
+  gap: 2px;
+}
+
+.card dt code {
+  color: var(--c-paper);
+}
+
+.card dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--c-paper-2);
+}
+
+.card p + p {
+  margin-top: 2px;
+}
+
 .tableWrap {
   overflow-x: auto;
   border: 1px solid var(--line-2);
