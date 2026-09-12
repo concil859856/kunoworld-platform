@@ -28,7 +28,10 @@ class Settings:
     cors_origins: list[str] = field(default_factory=lambda: ["http://localhost:3000"])
     max_blob_bytes: int = 512 * 1024 * 1024
     enclave_ttl_s: int = 1800
-    enclave_heartbeat_s: int = 120
+    # Workers long-poll every pull_wait_s, so silence well past that means they are gone.
+    enclave_heartbeat_s: int = 60
+    # A queued job whose worker has gone quiet is released early instead of waiting out queue_timeout_s.
+    queued_grace_s: int = 45
     pull_wait_s: float = 20.0
     queue_timeout_s: int = 600
     blob_retention_s: int = 7 * 86400

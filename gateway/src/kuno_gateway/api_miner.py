@@ -9,6 +9,7 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy import select
 
 from kuno_protocol.attestation import AttestationEvidence, verify_evidence
 from kuno_protocol.canonical import b64d, canonical_json, sha256_hex
@@ -102,6 +103,25 @@ async def register_enclave(request: Request):
         enclave.status = "active"
         enclave.verified_at = enclave.last_seen = now
     return {"enclave_id": verdict.enclave_id, "status": "active", "verified_at": now}
+
+
+@router.post("/retire")
+async def retire(request: Request, auth=Depends(require_enclave)):
+    """A worker shutting down says so, instead of leaving jobs queued until it times out.
+
+    Enclave keys are ephemeral, so a restarted worker registers as a new enclave anyway.
+    """
+    state = gw(request)
+    enclave, _ = auth
+    released = 0
+    with state.session() as s, s.begin():
+        row = s.get(Enclave, enclave.id)
+        if row is not None:
+            row.status = "stale"
+        for job in s.scalars(select(Job).where(Job.enclave_id == enclave.id, Job.status == JobState.QUEUED.value)).all():
+            state.finish_job(s, job, JobState.FAILED, "enclave_unavailable", "The assigned worker left the network. Submit again.")
+            released += 1
+    return {"ok": True, "released": released}
 
 
 @router.post("/pull")

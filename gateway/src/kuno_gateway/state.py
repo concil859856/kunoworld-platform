@@ -212,8 +212,10 @@ class GatewayState:
                 if not self.is_fresh(enclave, now):
                     enclave.status = "stale"
             stale = {e.id for e in s.scalars(select(Enclave).where(Enclave.status != "active")).all()}
+            last_seen = {e.id: e.last_seen for e in s.scalars(select(Enclave)).all()}
             for job in s.scalars(select(Job).where(Job.status == JobState.QUEUED.value)).all():
-                if job.enclave_id in stale:
+                quiet_for = now - last_seen.get(job.enclave_id, 0)
+                if job.enclave_id in stale or quiet_for > self.settings.queued_grace_s:
                     self.finish_job(s, job, JobState.FAILED, "enclave_unavailable", "The assigned worker went offline before starting. Submit again.")
                 elif now - job.created_at > self.settings.queue_timeout_s:
                     self.finish_job(s, job, JobState.FAILED, "queue_timeout", "No worker picked up the job in time. Submit again.")
