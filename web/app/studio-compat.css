@@ -1,0 +1,40 @@
+/*
+ * The composer trays came across from the previous studio with their own CSS modules,
+ * written against the old darkroom palette. Rather than rewrite 524 lines of CSS, map
+ * those token names onto this theme once. Scoped to .studio-shell so nothing leaks into
+ * the marketing pages, which have their own language in ocean.css.
+ *
+ * The one deliberate change of meaning: the old accent was tungsten amber, and here it
+ * becomes the mint primary, so restored controls pick up the studio's accent colour.
+ */
+
+.studio-shell {
+  /* Surfaces, darkest to lightest. */
+  --c-black: var(--background);
+  --c-tray: var(--card);
+  --c-tray-2: var(--secondary);
+  --c-tray-3: var(--popover);
+
+  /* Text, brightest to quietest. */
+  --c-paper: var(--foreground);
+  --c-paper-2: color-mix(in srgb, var(--foreground) 82%, var(--background));
+  --c-muted: var(--muted-foreground);
+
+  /* The accent, and its wash for selected states. */
+  --c-amber: var(--primary);
+  --c-amber-soft: color-mix(in srgb, var(--primary) 14%, transparent);
+
+  --c-error: var(--destructive);
+
+  /* Hairlines at three weights, from the theme's border colour. */
+  --line: color-mix(in srgb, var(--foreground) 9%, transparent);
+  --line-2: color-mix(in srgb, var(--foreground) 16%, transparent);
+  --line-3: color-mix(in srgb, var(--foreground) 30%, transparent);
+
+  --radius-s: calc(var(--radius) - 5px);
+  --radius-m: calc(var(--radius) - 2px);
+  --radius-pill: 999px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
