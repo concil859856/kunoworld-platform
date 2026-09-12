@@ -1,21 +1,6 @@
 {
-  "app": {
-    "[project]/platform/web/src/app/(site)/page": [
-      "static/media/10a4c8eca0b9ce81.p.0rrr4v4rsoo3q.woff2",
-      "static/media/28f82cd8566a528f.p.14og3_uq6yls0.woff2",
-      "static/media/c47649aa31f9e140.p.3lxpqujs87tck.woff2",
-      "static/media/99e609270109b47d.p.40sczeszzbjw1.woff2",
-      "static/media/effe91970fc4db64.p.0oace-s_gkfks.woff2"
-    ],
-    "[project]/platform/web/src/app/studio/page": [
-      "static/media/10a4c8eca0b9ce81.p.0rrr4v4rsoo3q.woff2",
-      "static/media/28f82cd8566a528f.p.14og3_uq6yls0.woff2",
-      "static/media/c47649aa31f9e140.p.3lxpqujs87tck.woff2",
-      "static/media/99e609270109b47d.p.40sczeszzbjw1.woff2",
-      "static/media/effe91970fc4db64.p.0oace-s_gkfks.woff2"
-    ]
-  },
-  "appUsingSizeAdjust": true,
+  "app": {},
+  "appUsingSizeAdjust": false,
   "pages": {},
   "pagesUsingSizeAdjust": false
 }

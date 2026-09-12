@@ -1,15 +1,11 @@
 "use client";
-
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { showcaseFilms } from "@/lib/showcase";
 import { LogoMark } from "@/components/site/LogoMark";
 import { ArrowDownToLine, ArrowUpRight, BadgeCheck, Check, ChevronRight, CircleHelp, Code2, Film, FolderOpen, Layers3, LoaderCircle, LockKeyhole, Plus, ShieldCheck, Sparkles, WandSparkles, X, Zap } from "lucide-react";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
-import { TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Switch } from "@/components/ui/switch";
 import { SpatialScene, DepthCard } from "@/components/spatial-scene";
 import profilesData from "@/lib/profiles.json";
 import { useComposer } from "@/lib/composerState";
@@ -19,7 +15,6 @@ import { isActive } from "@/lib/library";
 import { Composer, type Submission } from "@/components/studio/Composer";
 import type { GoldenManifest, ModelProfile, ModelsResponse } from "@kunoworld/sdk";
 import { KunoClient } from "@kunoworld/sdk";
-
 const profiles = profilesData.profiles as unknown as ModelProfile[];
 const scenes = showcaseFilms.map(s=>({id:s.id,name:s.title,category:s.label,poster:s.poster,subtitle:"A starting point for your imagination",prompt:s.prompt,aspect:s.aspect}));
 type View = "create" | "library" | "models" | "privacy" | "developers";
@@ -32,13 +27,6 @@ export default function Home() {
   const [models,setModels]=useState<ModelsResponse|null>(null);
   const [sessionKey,setSessionKey]=useState<string|null>(null);
   const [view,setView]=useState<View>("create");
-  const [mode,setMode]=useState("text_to_video");
-  const [model,setModel]=useState("ltx-2.5-fast");
-  const [prompt,setPrompt]=useState("");
-  const [duration,setDuration]=useState("5");
-  const [resolution,setResolution]=useState("1080p");
-  const [aspect,setAspect]=useState("16:9");
-  const [audio,setAudio]=useState(true);
   const [connectOpen,setConnectOpen]=useState(false);
   const [endpoint,setEndpoint]=useState("");
   const [apiKey,setApiKey]=useState("");
@@ -76,9 +64,6 @@ export default function Home() {
     })();
     return()=>{alive=false;};
   },[client,storedKey]);
-  const textarea=useRef<HTMLTextAreaElement>(null);
-  const profile=profiles.find(p=>p.id===model)!;
-  const limits=profile.limits;
   useEffect(()=>{
     const query=new URLSearchParams(window.location.search);
     const scene=showcaseFilms.find(s=>s.id===query.get("scene"));
@@ -94,10 +79,9 @@ export default function Home() {
     const context=(document as Document & {modelContext?:{registerTool:(tool:unknown,options:unknown)=>void}}).modelContext;
     if(!context?.registerTool)return;
     const controller=new AbortController();
-    try{context.registerTool({name:"stage_video_prompt",title:"Stage a video prompt",description:"Fill the KunoWorld video prompt for review. Does not submit a job or spend funds.",inputSchema:{type:"object",properties:{prompt:{type:"string",minLength:1,maxLength:4000}},required:["prompt"],additionalProperties:false},annotations:{readOnlyHint:false},execute(input:unknown){const value=input as {prompt?:unknown};if(!value||typeof value.prompt!=="string"||!value.prompt.trim()||value.prompt.length>4000)throw new Error("A prompt of 1–4000 characters is required.");setPrompt(value.prompt);setView("create");return{staged:true,submitted:false,prompt:value.prompt};}},{signal:controller.signal});}catch{/* Browser registration is optional. */}
+    try{context.registerTool({name:"stage_video_prompt",title:"Stage a video prompt",description:"Fill the KunoWorld video prompt for review. Does not submit a job or spend funds.",inputSchema:{type:"object",properties:{prompt:{type:"string",minLength:1,maxLength:4000}},required:["prompt"],additionalProperties:false},annotations:{readOnlyHint:false},execute(input:unknown){const value=input as {prompt?:unknown};if(!value||typeof value.prompt!=="string"||!value.prompt.trim()||value.prompt.length>4000)throw new Error("A prompt of 1–4000 characters is required.");composer.actions.setPrompt(value.prompt);setView("create");return{staged:true,submitted:false,prompt:value.prompt};}},{signal:controller.signal});}catch{/* Browser registration is optional. */}
     return()=>controller.abort();
   },[]);
-  function chooseModel(id:string){const p=profilesList.find(x=>x.id===id);if(p)composer.actions.setProfile(p);}
   function applyScene(index:number){const scene=scenes[index];if(!scene)return;composer.actions.setPrompt(scene.prompt);setView("create");setError("");}
   async function connect(){
     setConnectError("");
