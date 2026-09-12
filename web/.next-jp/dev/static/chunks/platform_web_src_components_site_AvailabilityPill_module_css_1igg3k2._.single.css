@@ -1,0 +1,65 @@
+/* [project]/platform/web/src/components/site/AvailabilityPill.module.css [app-client] (css) */
+.AvailabilityPill-module__61gcJa__pill {
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-pill);
+  height: 22px;
+  font-family: var(--font-mono);
+  letter-spacing: .02em;
+  color: var(--c-paper-2);
+  white-space: nowrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  font-size: 11px;
+  display: inline-flex;
+}
+
+.AvailabilityPill-module__61gcJa__pill[data-compact="true"] {
+  height: 20px;
+  padding: 0 7px;
+  font-size: 10.5px;
+}
+
+.AvailabilityPill-module__61gcJa__mark {
+  border: 1.5px solid;
+  border-radius: 50%;
+  width: 7px;
+  height: 7px;
+}
+
+.AvailabilityPill-module__61gcJa__pill[data-state="ok"] {
+  border-color: var(--c-amber-line);
+  color: var(--c-paper);
+}
+
+.AvailabilityPill-module__61gcJa__pill[data-state="ok"] .AvailabilityPill-module__61gcJa__mark {
+  border-color: var(--c-amber);
+  background: var(--c-amber);
+  box-shadow: 0 0 8px #e6a34ab3;
+}
+
+.AvailabilityPill-module__61gcJa__pill[data-state="region"] {
+  background: repeating-linear-gradient(135deg, #0000 0 5px, #ede5d80d 5px 10px);
+}
+
+.AvailabilityPill-module__61gcJa__pill[data-state="region"] .AvailabilityPill-module__61gcJa__mark {
+  border-radius: 1px;
+  width: 6px;
+  height: 6px;
+  transform: rotate(45deg);
+}
+
+.AvailabilityPill-module__61gcJa__pill[data-state="off"], .AvailabilityPill-module__61gcJa__pill[data-state="empty"] {
+  color: var(--c-muted);
+}
+
+.AvailabilityPill-module__61gcJa__pill[data-state="unknown"] {
+  color: var(--c-muted);
+  border-style: dashed;
+}
+
+.AvailabilityPill-module__61gcJa__pill[data-state="unknown"] .AvailabilityPill-module__61gcJa__mark {
+  border-style: dotted;
+}
+
+/*# sourceMappingURL=platform_web_src_components_site_AvailabilityPill_module_css_1igg3k2._.single.css.map*/

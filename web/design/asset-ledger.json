@@ -1,0 +1,443 @@
+{
+  "hard_cap_usd": 35,
+  "reserved_max_usd": 14.8,
+  "initial_estimate_usd": 5.5,
+  "sources": [
+    "https://openrouter.ai/api/v1/videos/models",
+    "https://openrouter.ai/api/v1/images/models/openai/gpt-image-2/endpoints"
+  ],
+  "pricing_note": "Video 8s x $0.20/s without audio = $1.60 each. GPT Image 2 token billing high 16:9 estimated $0.14 each from official example; conservatively reserve $2 per image.",
+  "assets": {
+    "hero-cove-image": {
+      "status": "completed",
+      "reserved_max_usd": 2,
+      "estimated_usd": 0.14,
+      "request": {
+        "model": "openai/gpt-image-2",
+        "prompt": "Photorealistic cinematic ocean landscape for a premium creative website. Refined natural color grade, luminous turquoise and cerulean water, pale stone, peaceful spacious composition, realistic water optics, subtle fine texture, luxury travel editorial photography. No people, text, logos, watermark, buildings, graphic elements, excessive saturation or artificial CGI appearance. A wide aerial view gliding above deep turquoise sea toward a secluded low white limestone island with a sweeping crescent of pale sand and shallow luminous cyan lagoon. Island in the middle distance, expansive water foreground, infinite pale blue horizon across upper third, soft midday sunlight. Wide 24mm cinema lens, elegant natural asymmetry and usable open water space.",
+        "aspect_ratio": "16:9",
+        "quality": "high",
+        "n": 1,
+        "provider": {
+          "only": [
+            "openai"
+          ],
+          "allow_fallbacks": false
+        }
+      },
+      "submitted_at": 1789223134.4158223,
+      "path": "/tmp/kunoworld-ocean-assets/hero-cove.png",
+      "usage": {
+        "prompt_tokens": 144,
+        "completion_tokens": 4312,
+        "total_tokens": 4456,
+        "cost": 0.13008,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.13008,
+          "upstream_inference_prompt_cost": 0.00072,
+          "upstream_inference_completions_cost": 0.12936
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 4312
+        }
+      },
+      "response_metadata": {
+        "created": 1789223199,
+        "usage": {
+          "prompt_tokens": 144,
+          "completion_tokens": 4312,
+          "total_tokens": 4456,
+          "cost": 0.13008,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.13008,
+            "upstream_inference_prompt_cost": 0.00072,
+            "upstream_inference_completions_cost": 0.12936
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 4312
+          }
+        }
+      },
+      "website_path": "public/media/hero-cove.webp"
+    },
+    "horizon-image": {
+      "status": "completed",
+      "reserved_max_usd": 2,
+      "estimated_usd": 0.14,
+      "request": {
+        "model": "openai/gpt-image-2",
+        "prompt": "Photorealistic cinematic ocean landscape for a premium creative website. Refined natural color grade, luminous turquoise and cerulean water, pale stone, peaceful spacious composition, realistic water optics, subtle fine texture, luxury travel editorial photography. No people, text, logos, watermark, buildings, graphic elements, excessive saturation or artificial CGI appearance. A wide sea-level view across glassy cyan water to a perfectly distant pastel golden horizon at dawn. Soft peach glow in the sky blending into very pale powder blue, almost imperceptible fine low ripples, luminous reflected sky, serene open water, absolutely no visible land. Sky fills upper half, minimalist real photographic seascape.",
+        "aspect_ratio": "16:9",
+        "quality": "high",
+        "n": 1,
+        "provider": {
+          "only": [
+            "openai"
+          ],
+          "allow_fallbacks": false
+        }
+      },
+      "submitted_at": 1789223134.4160588,
+      "path": "/tmp/kunoworld-ocean-assets/horizon.png",
+      "usage": {
+        "prompt_tokens": 141,
+        "completion_tokens": 4312,
+        "total_tokens": 4453,
+        "cost": 0.130065,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.130065,
+          "upstream_inference_prompt_cost": 0.000705,
+          "upstream_inference_completions_cost": 0.12936
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 4312
+        }
+      },
+      "response_metadata": {
+        "created": 1789223203,
+        "usage": {
+          "prompt_tokens": 141,
+          "completion_tokens": 4312,
+          "total_tokens": 4453,
+          "cost": 0.130065,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.130065,
+            "upstream_inference_prompt_cost": 0.000705,
+            "upstream_inference_completions_cost": 0.12936
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 4312
+          }
+        }
+      },
+      "website_path": "public/media/horizon.webp"
+    },
+    "shoreline-image": {
+      "status": "completed",
+      "reserved_max_usd": 2,
+      "estimated_usd": 0.14,
+      "request": {
+        "model": "openai/gpt-image-2",
+        "prompt": "Photorealistic cinematic ocean landscape for a premium creative website. Refined natural color grade, luminous turquoise and cerulean water, pale stone, peaceful spacious composition, realistic water optics, subtle fine texture, luxury travel editorial photography. No people, text, logos, watermark, buildings, graphic elements, excessive saturation or artificial CGI appearance. A straight-down drone photograph of a graceful diagonal cerulean wave washing a pristine fine white sand shoreline. Intricate delicate lace of white foam, transparent aquamarine shallows with subtle visible sand ripples, deeper rich blue water on one side and clean ivory beach on the other. Frame entirely filled with water and sand, no horizon.",
+        "aspect_ratio": "16:9",
+        "quality": "high",
+        "n": 1,
+        "provider": {
+          "only": [
+            "openai"
+          ],
+          "allow_fallbacks": false
+        }
+      },
+      "submitted_at": 1789223134.4161575,
+      "path": "/tmp/kunoworld-ocean-assets/shoreline.png",
+      "usage": {
+        "prompt_tokens": 142,
+        "completion_tokens": 4312,
+        "total_tokens": 4454,
+        "cost": 0.13007,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.13007,
+          "upstream_inference_prompt_cost": 0.00071,
+          "upstream_inference_completions_cost": 0.12936
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 4312
+        }
+      },
+      "response_metadata": {
+        "created": 1789223218,
+        "usage": {
+          "prompt_tokens": 142,
+          "completion_tokens": 4312,
+          "total_tokens": 4454,
+          "cost": 0.13007,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.13007,
+            "upstream_inference_prompt_cost": 0.00071,
+            "upstream_inference_completions_cost": 0.12936
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 4312
+          }
+        }
+      },
+      "website_path": "public/media/shoreline.webp"
+    },
+    "sailboat-image": {
+      "status": "completed",
+      "reserved_max_usd": 2,
+      "estimated_usd": 0.14,
+      "request": {
+        "model": "openai/gpt-image-2",
+        "prompt": "Photorealistic cinematic ocean landscape for a premium creative website. Refined natural color grade, luminous turquoise and cerulean water, pale stone, peaceful spacious composition, realistic water optics, subtle fine texture, luxury travel editorial photography. No people, text, logos, watermark, buildings, graphic elements, excessive saturation or artificial CGI appearance. A wide aerial photograph of a single very distant tiny elegant white sailboat on an immense field of luminous turquoise Mediterranean sea. White triangular sail and a delicate slender wake, water filling almost the entire frame, distant faint pale blue horizon near top, calm noon light, strong peaceful negative space and real water texture.",
+        "aspect_ratio": "16:9",
+        "quality": "high",
+        "n": 1,
+        "provider": {
+          "only": [
+            "openai"
+          ],
+          "allow_fallbacks": false
+        }
+      },
+      "submitted_at": 1789223134.4165502,
+      "path": "/tmp/kunoworld-ocean-assets/sailboat.png",
+      "usage": {
+        "prompt_tokens": 135,
+        "completion_tokens": 4312,
+        "total_tokens": 4447,
+        "cost": 0.130035,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.130035,
+          "upstream_inference_prompt_cost": 0.000675,
+          "upstream_inference_completions_cost": 0.12936
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 4312
+        }
+      },
+      "response_metadata": {
+        "created": 1789223196,
+        "usage": {
+          "prompt_tokens": 135,
+          "completion_tokens": 4312,
+          "total_tokens": 4447,
+          "cost": 0.130035,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.130035,
+            "upstream_inference_prompt_cost": 0.000675,
+            "upstream_inference_completions_cost": 0.12936
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 4312
+          }
+        }
+      },
+      "website_path": "public/media/sailboat.webp"
+    },
+    "limestone-image": {
+      "status": "completed",
+      "reserved_max_usd": 2,
+      "estimated_usd": 0.14,
+      "request": {
+        "model": "openai/gpt-image-2",
+        "prompt": "Photorealistic cinematic ocean landscape for a premium creative website. Refined natural color grade, luminous turquoise and cerulean water, pale stone, peaceful spacious composition, realistic water optics, subtle fine texture, luxury travel editorial photography. No people, text, logos, watermark, buildings, graphic elements, excessive saturation or artificial CGI appearance. A wide cinematic photograph of a sculptural sunlit white limestone cliff wrapping around a secret secluded cove with transparent turquoise water and a tiny pale sand beach. Weathered layered stone catches soft warm morning sunlight, a few low natural shrubs at the top, deep cerulean sea in foreground, realistic intricate cliff texture, serene coastal beauty.",
+        "aspect_ratio": "16:9",
+        "quality": "high",
+        "n": 1,
+        "provider": {
+          "only": [
+            "openai"
+          ],
+          "allow_fallbacks": false
+        }
+      },
+      "submitted_at": 1789223134.4168253,
+      "path": "/tmp/kunoworld-ocean-assets/limestone.png",
+      "usage": {
+        "prompt_tokens": 141,
+        "completion_tokens": 4312,
+        "total_tokens": 4453,
+        "cost": 0.130065,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.130065,
+          "upstream_inference_prompt_cost": 0.000705,
+          "upstream_inference_completions_cost": 0.12936
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 4312
+        }
+      },
+      "response_metadata": {
+        "created": 1789223214,
+        "usage": {
+          "prompt_tokens": 141,
+          "completion_tokens": 4312,
+          "total_tokens": 4453,
+          "cost": 0.130065,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.130065,
+            "upstream_inference_prompt_cost": 0.000705,
+            "upstream_inference_completions_cost": 0.12936
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 4312
+          }
+        }
+      },
+      "website_path": "public/media/limestone.webp"
+    },
+    "hero-cove-video": {
+      "status": "completed",
+      "reserved_max_usd": 1.6,
+      "estimated_usd": 1.6,
+      "request": {
+        "model": "google/veo-3.1",
+        "prompt": "Photorealistic cinematic ocean landscape for a premium creative website. Refined natural color grade, luminous turquoise and cerulean water, pale stone, peaceful spacious composition, realistic water optics, subtle fine texture, luxury travel editorial photography. No people, text, logos, watermark, buildings, graphic elements, excessive saturation or artificial CGI appearance. A wide aerial view gliding above deep turquoise sea toward a secluded low white limestone island with a sweeping crescent of pale sand and shallow luminous cyan lagoon. Island in the middle distance, expansive water foreground, infinite pale blue horizon across upper third, soft midday sunlight. Wide 24mm cinema lens, elegant natural asymmetry and usable open water space. One uninterrupted eight-second shot. Camera performs a very slow stabilized forward aerial glide toward the island, water gently undulating underneath, distant island staying spatially stable. No cuts, no sudden movement, no timelapse. Silent video.",
+        "duration": 8,
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "generate_audio": false
+      },
+      "submitted_at": 1789223134.416956,
+      "job_id": "vjiaHHlnYDUM0KYABbeE",
+      "submit_response": {
+        "id": "vjiaHHlnYDUM0KYABbeE",
+        "polling_url": "https://openrouter.ai/api/v1/videos/vjiaHHlnYDUM0KYABbeE",
+        "status": "pending"
+      },
+      "poll_response": {
+        "id": "vjiaHHlnYDUM0KYABbeE",
+        "generation_id": "gen-vid-1789223134-PTju3UAAE98SaNfHWtCk",
+        "polling_url": "https://openrouter.ai/api/v1/videos/vjiaHHlnYDUM0KYABbeE",
+        "status": "completed",
+        "unsigned_urls": [
+          "https://openrouter.ai/api/v1/videos/vjiaHHlnYDUM0KYABbeE/content?index=0"
+        ],
+        "usage": {
+          "cost": 1.6,
+          "is_byok": false
+        }
+      },
+      "usage": {
+        "cost": 1.6,
+        "is_byok": false
+      },
+      "path": "/tmp/kunoworld-ocean-assets/hero-cove.mp4",
+      "website_path": "public/media/hero-cove.mp4"
+    },
+    "horizon-video": {
+      "status": "completed",
+      "reserved_max_usd": 1.6,
+      "estimated_usd": 1.6,
+      "request": {
+        "model": "google/veo-3.1",
+        "prompt": "Photorealistic cinematic ocean landscape for a premium creative website. Refined natural color grade, luminous turquoise and cerulean water, pale stone, peaceful spacious composition, realistic water optics, subtle fine texture, luxury travel editorial photography. No people, text, logos, watermark, buildings, graphic elements, excessive saturation or artificial CGI appearance. A wide sea-level view across glassy cyan water to a perfectly distant pastel golden horizon at dawn. Soft peach glow in the sky blending into very pale powder blue, almost imperceptible fine low ripples, luminous reflected sky, serene open water, absolutely no visible land. Sky fills upper half, minimalist real photographic seascape. One uninterrupted eight-second shot. Locked camera hovering just above the water as delicate low waves move slowly toward the foreground. Horizon remains perfectly level and motionless, light stays constant. No cuts, no timelapse. Silent video.",
+        "duration": 8,
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "generate_audio": false
+      },
+      "submitted_at": 1789223134.4172277,
+      "job_id": "Yk6kwaYOLijAPBS0gs9G",
+      "submit_response": {
+        "id": "Yk6kwaYOLijAPBS0gs9G",
+        "polling_url": "https://openrouter.ai/api/v1/videos/Yk6kwaYOLijAPBS0gs9G",
+        "status": "pending"
+      },
+      "poll_response": {
+        "id": "Yk6kwaYOLijAPBS0gs9G",
+        "generation_id": "gen-vid-1789223134-zgkNMyNJLRNL52GejJKk",
+        "polling_url": "https://openrouter.ai/api/v1/videos/Yk6kwaYOLijAPBS0gs9G",
+        "status": "completed",
+        "unsigned_urls": [
+          "https://openrouter.ai/api/v1/videos/Yk6kwaYOLijAPBS0gs9G/content?index=0"
+        ],
+        "usage": {
+          "cost": 1.6,
+          "is_byok": false
+        }
+      },
+      "usage": {
+        "cost": 1.6,
+        "is_byok": false
+      },
+      "path": "/tmp/kunoworld-ocean-assets/horizon.mp4",
+      "website_path": "public/media/horizon.mp4"
+    },
+    "shoreline-video": {
+      "status": "completed",
+      "reserved_max_usd": 1.6,
+      "estimated_usd": 1.6,
+      "request": {
+        "model": "google/veo-3.1",
+        "prompt": "Photorealistic cinematic ocean landscape for a premium creative website. Refined natural color grade, luminous turquoise and cerulean water, pale stone, peaceful spacious composition, realistic water optics, subtle fine texture, luxury travel editorial photography. No people, text, logos, watermark, buildings, graphic elements, excessive saturation or artificial CGI appearance. A straight-down drone photograph of a graceful diagonal cerulean wave washing a pristine fine white sand shoreline. Intricate delicate lace of white foam, transparent aquamarine shallows with subtle visible sand ripples, deeper rich blue water on one side and clean ivory beach on the other. Frame entirely filled with water and sand, no horizon. One uninterrupted eight-second shot. Locked straight-down camera with an extremely slow lateral drift parallel to the shore. One gentle shallow wave slowly advances over white sand, delicate foam dispersing naturally. No cuts, no accelerated motion. Silent video.",
+        "duration": 8,
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "generate_audio": false
+      },
+      "submitted_at": 1789223134.4172902,
+      "job_id": "IV2nmIFFuYNsXWFKMa7h",
+      "submit_response": {
+        "id": "IV2nmIFFuYNsXWFKMa7h",
+        "polling_url": "https://openrouter.ai/api/v1/videos/IV2nmIFFuYNsXWFKMa7h",
+        "status": "pending"
+      },
+      "poll_response": {
+        "id": "IV2nmIFFuYNsXWFKMa7h",
+        "generation_id": "gen-vid-1789223134-s0NSu6sCxTQnSNfnDITM",
+        "polling_url": "https://openrouter.ai/api/v1/videos/IV2nmIFFuYNsXWFKMa7h",
+        "status": "completed",
+        "unsigned_urls": [
+          "https://openrouter.ai/api/v1/videos/IV2nmIFFuYNsXWFKMa7h/content?index=0"
+        ],
+        "usage": {
+          "cost": 1.6,
+          "is_byok": false
+        }
+      },
+      "usage": {
+        "cost": 1.6,
+        "is_byok": false
+      },
+      "path": "/tmp/kunoworld-ocean-assets/shoreline.mp4",
+      "website_path": "public/media/shoreline.mp4"
+    }
+  },
+  "actual_total_usd": 5.450315,
+  "outstanding_jobs": [],
+  "quality_failures": [],
+  "user_authorized_budget_usd": 50
+}

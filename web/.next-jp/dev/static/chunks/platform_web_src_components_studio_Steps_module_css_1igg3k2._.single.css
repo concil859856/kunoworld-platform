@@ -1,0 +1,130 @@
+/* [project]/platform/web/src/components/studio/Steps.module.css [app-client] (css) */
+.Steps-module__hBK_8W__bar {
+  gap: 8px;
+  display: grid;
+}
+
+.Steps-module__hBK_8W__segments {
+  grid-template-columns: repeat(6, 1fr);
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+}
+
+.Steps-module__hBK_8W__segments li {
+  background: #ede5d824;
+  border-radius: 2px;
+  height: 3px;
+  position: relative;
+  overflow: hidden;
+}
+
+.Steps-module__hBK_8W__segments li[data-state="done"] {
+  background: var(--c-amber);
+}
+
+.Steps-module__hBK_8W__segments li[data-state="current"] {
+  background: linear-gradient(90deg, #e6a34a40 0 50%, #e6a34a99 50% 100%) 0 0 / 200% 100%;
+  animation: 1.2s linear infinite Steps-module__hBK_8W__step-pulse;
+}
+
+.Steps-module__hBK_8W__fill {
+  background: var(--c-amber);
+  transition: width .4s var(--ease);
+  position: absolute;
+  inset: 0 auto 0 0;
+}
+
+@keyframes Steps-module__hBK_8W__step-pulse {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
+}
+
+.Steps-module__hBK_8W__label {
+  font-family: var(--font-mono);
+  letter-spacing: .06em;
+  color: var(--c-paper);
+  font-size: 11px;
+}
+
+.Steps-module__hBK_8W__list {
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+}
+
+.Steps-module__hBK_8W__list li {
+  gap: 12px;
+  padding-bottom: 12px;
+  display: flex;
+  position: relative;
+}
+
+.Steps-module__hBK_8W__list li:not(:last-child):before {
+  content: "";
+  background: var(--line-2);
+  width: 1px;
+  position: absolute;
+  top: 14px;
+  bottom: 0;
+  left: 5px;
+}
+
+.Steps-module__hBK_8W__list li[data-state="done"]:not(:last-child):before {
+  background: var(--c-amber-line);
+}
+
+.Steps-module__hBK_8W__dot {
+  border: 1.5px solid var(--line-3);
+  background: var(--c-black);
+  border-radius: 50%;
+  flex: none;
+  width: 11px;
+  height: 11px;
+  margin-top: 4px;
+}
+
+.Steps-module__hBK_8W__list li[data-state="done"] .Steps-module__hBK_8W__dot {
+  border-color: var(--c-amber);
+  background: var(--c-amber);
+}
+
+.Steps-module__hBK_8W__list li[data-state="current"] .Steps-module__hBK_8W__dot {
+  border-color: var(--c-amber);
+  box-shadow: 0 0 0 4px var(--c-amber-soft);
+}
+
+.Steps-module__hBK_8W__text {
+  gap: 2px;
+  display: grid;
+}
+
+.Steps-module__hBK_8W__name {
+  color: var(--c-muted);
+  font-size: 13px;
+}
+
+.Steps-module__hBK_8W__list li[data-state="done"] .Steps-module__hBK_8W__name {
+  color: var(--c-paper-2);
+}
+
+.Steps-module__hBK_8W__list li[data-state="current"] .Steps-module__hBK_8W__name {
+  color: var(--c-paper);
+  font-weight: 600;
+}
+
+.Steps-module__hBK_8W__detail {
+  color: var(--c-muted);
+  font-size: 12px;
+}
+
+/*# sourceMappingURL=platform_web_src_components_studio_Steps_module_css_1igg3k2._.single.css.map*/

@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///video/platform/web/src/app/(site)/layout.tsx"],"sourcesContent":["import { Footer } from \"@/components/site/Footer\";\nimport { Header } from \"@/components/site/Header\";\n\nexport default function SiteLayout({ children }: Readonly<{ children: React.ReactNode }>) {\n  return (\n    <>\n      <Header />\n      <main id=\"main\">{children}</main>\n      <Footer />\n    </>\n  );\n}\n"],"names":["SiteLayout","children","id"],"mappings":";;;;;AAAA;AACA;;;;AAEe,SAASA,WAAW,EAAEC,QAAQ,EAA2C;IACtF,qBACE;;0BACE,iQAAC,iKAAM;;;;;0BACP,iQAAC;gBAAKC,IAAG;0BAAQD;;;;;;0BACjB,iQAAC,iKAAM;;;;;;;;;;;AAGb"}}]
+}

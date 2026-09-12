@@ -1,0 +1,31 @@
+/* [project]/platform/web/src/components/fx/Reveal.module.css [app-client] (css) */
+.Reveal-module__-ImA_a__reveal {
+  opacity: 0;
+  transition: opacity .9s var(--ease-slow) var(--reveal-delay, 0s),
+    transform .9s var(--ease-slow) var(--reveal-delay, 0s);
+  will-change: opacity, transform;
+  transform: translate3d(0, 22px, 0);
+}
+
+.Reveal-module__-ImA_a__reveal[data-shown="true"] {
+  opacity: 1;
+  will-change: auto;
+  transform: none;
+}
+
+@media (scripting: none) {
+  .Reveal-module__-ImA_a__reveal {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .Reveal-module__-ImA_a__reveal {
+    opacity: 1;
+    transition: none;
+    transform: none;
+  }
+}
+
+/*# sourceMappingURL=platform_web_src_components_fx_Reveal_module_css_1igg3k2._.single.css.map*/

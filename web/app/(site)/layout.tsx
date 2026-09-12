@@ -1,0 +1,3 @@
+import { SiteShell } from "@/components/site/site-shell";
+import "@/app/ocean.css";
+export default function MarketingLayout({children}:{children:React.ReactNode}) {return <SiteShell>{children}</SiteShell>}

@@ -1,0 +1,129 @@
+/* [project]/platform/web/src/components/site/ConnectDialog.module.css [app-client] (css) */
+.ConnectDialog-module__hz-rka__trigger[data-connected="true"] {
+  border-color: var(--c-amber-line);
+}
+
+.ConnectDialog-module__hz-rka__dot {
+  background: var(--c-amber);
+  width: 7px;
+  height: 7px;
+  box-shadow: 0 0 10px var(--c-amber);
+  border-radius: 50%;
+}
+
+.ConnectDialog-module__hz-rka__dialog {
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--c-tray);
+  width: min(520px, 100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  color: var(--c-paper);
+  box-shadow: 0 30px 80px #0009,
+    0 0 120px var(--c-safelight-glow);
+  padding: 0;
+}
+
+.ConnectDialog-module__hz-rka__dialog::backdrop {
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  background: #060504b8;
+}
+
+.ConnectDialog-module__hz-rka__form {
+  flex-direction: column;
+  gap: 12px;
+  padding: 28px;
+  display: flex;
+}
+
+.ConnectDialog-module__hz-rka__title {
+  font-size: 32px;
+}
+
+.ConnectDialog-module__hz-rka__lede {
+  color: var(--c-paper-2);
+}
+
+.ConnectDialog-module__hz-rka__current {
+  color: var(--c-muted);
+  font-size: 13px;
+}
+
+.ConnectDialog-module__hz-rka__label {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ConnectDialog-module__hz-rka__inputRow {
+  align-items: center;
+  gap: 8px;
+  display: flex;
+}
+
+.ConnectDialog-module__hz-rka__input {
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-s);
+  background: var(--c-black);
+  min-width: 0;
+  height: 44px;
+  font-family: var(--font-mono);
+  flex: 1;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+.ConnectDialog-module__hz-rka__input:focus-visible {
+  border-color: var(--c-amber);
+  box-shadow: 0 0 0 3px var(--c-amber-soft);
+  outline: none;
+}
+
+.ConnectDialog-module__hz-rka__facts {
+  border-left: 2px solid var(--c-amber-line);
+  background: var(--c-black);
+  color: var(--c-paper-2);
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 12px 14px;
+  font-size: 13px;
+  display: grid;
+}
+
+.ConnectDialog-module__hz-rka__facts code, .ConnectDialog-module__hz-rka__hint code, .ConnectDialog-module__hz-rka__current code {
+  color: var(--c-paper);
+  word-break: break-all;
+}
+
+.ConnectDialog-module__hz-rka__hint {
+  color: var(--c-muted);
+  font-size: 13px;
+}
+
+.ConnectDialog-module__hz-rka__error {
+  border-radius: var(--radius-s);
+  background: var(--c-error-soft);
+  color: var(--c-paper);
+  border: 1px solid #e4775c59;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.ConnectDialog-module__hz-rka__buttons {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  display: flex;
+}
+
+.ConnectDialog-module__hz-rka__spacer {
+  flex: 1;
+}
+
+@media (max-width: 480px) {
+  .ConnectDialog-module__hz-rka__form {
+    padding: 20px;
+  }
+}
+
+/*# sourceMappingURL=platform_web_src_components_site_ConnectDialog_module_css_1igg3k2._.single.css.map*/

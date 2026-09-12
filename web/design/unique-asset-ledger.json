@@ -1,0 +1,309 @@
+{
+  "budget_usd": 50,
+  "prior_spend_usd": 12.37015,
+  "reserved_batch_usd": 18.0,
+  "assets": {
+    "lantern-library-image": {
+      "status": "completed",
+      "reserved_usd": 2,
+      "request": {
+        "model": "openai/gpt-image-2",
+        "prompt": "Original extraordinary cinematic production design. A monumental impossible library inside a vast dark cylindrical hall, sculptural spiraling walnut bookshelves and graceful suspended staircases disappearing into the height, hundreds of delicate glowing ivory paper lanterns floating at different heights. Rich amber light pools on dark burgundy stone, intricate wood joinery and aged paper, a single tiny adult reader in a red coat gives scale. Quiet magical realism, photoreal physical materials, luxurious 35mm cinema texture, elegant widescreen architectural composition with darker negative space at the left for a website headline. No ocean, sea, beaches, sky horizon, text, readable letters, logos, watermark or UI.",
+        "quality": "high",
+        "aspect_ratio": "16:9",
+        "n": 1,
+        "provider": {
+          "only": [
+            "openai"
+          ],
+          "allow_fallbacks": false
+        }
+      },
+      "submitted_at": 1789228955.6881392,
+      "path": "/tmp/kunoworld-unique-assets/lantern-library.png",
+      "usage": {
+        "prompt_tokens": 138,
+        "completion_tokens": 4312,
+        "total_tokens": 4450,
+        "cost": 0.13005,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.13005,
+          "upstream_inference_prompt_cost": 0.00069,
+          "upstream_inference_completions_cost": 0.12936
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 4312
+        }
+      },
+      "website_path": "public/media/lantern-library.webp"
+    },
+    "lantern-library-video": {
+      "status": "completed",
+      "reserved_usd": 1.6,
+      "request": {
+        "model": "google/veo-3.1",
+        "prompt": "Original extraordinary cinematic production design. A monumental impossible library inside a vast dark cylindrical hall, sculptural spiraling walnut bookshelves and graceful suspended staircases disappearing into the height, hundreds of delicate glowing ivory paper lanterns floating at different heights. Rich amber light pools on dark burgundy stone, intricate wood joinery and aged paper, a single tiny adult reader in a red coat gives scale. Quiet magical realism, photoreal physical materials, luxurious 35mm cinema texture, elegant widescreen architectural composition with darker negative space at the left for a website headline. No ocean, sea, beaches, sky horizon, text, readable letters, logos, watermark or UI. One uninterrupted eight-second film. The camera slowly glides forward between the nearest bookshelves, revealing the immense spiral library. Paper lanterns rise subtly and warm dust drifts in the light. Consistent solid architecture and books, stable exposure, no cuts, no spinning, no rapid movements. Silent video.",
+        "duration": 8,
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "generate_audio": false
+      },
+      "submitted_at": 1789228955.689172,
+      "job_id": "sxjHBWiiZp9MqVxcz2jp",
+      "usage": {
+        "cost": 1.6,
+        "is_byok": false
+      },
+      "path": "/tmp/kunoworld-unique-assets/lantern-library.mp4",
+      "website_path": "public/media/lantern-library.mp4",
+      "poster_path": "public/media/lantern-library-poster.webp"
+    },
+    "paper-metropolis-image": {
+      "status": "completed",
+      "reserved_usd": 2,
+      "request": {
+        "model": "openai/gpt-image-2",
+        "prompt": "A beautiful practical stop-motion set of an intricate miniature city made entirely from folded coral, butter yellow, mint green and ivory paper. Sculptural origami buildings, tiny arched windows, curved paper bridges, delicate trees and a small red tram, arranged on a warm terracotta tabletop. Every paper fold, fiber, and cut edge is tactile and believable. Premium art-directed animation, charming sophisticated scale model, soft afternoon studio light, shallow macro depth of field, three-quarter elevated view, restrained pastel palette. No water, sea, beach, text, letters, logos or watermark.",
+        "quality": "high",
+        "aspect_ratio": "16:9",
+        "n": 1,
+        "provider": {
+          "only": [
+            "openai"
+          ],
+          "allow_fallbacks": false
+        }
+      },
+      "submitted_at": 1789228955.6883774,
+      "path": "/tmp/kunoworld-unique-assets/paper-metropolis.png",
+      "usage": {
+        "prompt_tokens": 122,
+        "completion_tokens": 4312,
+        "total_tokens": 4434,
+        "cost": 0.12997,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.12997,
+          "upstream_inference_prompt_cost": 0.00061,
+          "upstream_inference_completions_cost": 0.12936
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 4312
+        }
+      },
+      "website_path": "public/media/paper-metropolis.webp"
+    },
+    "paper-metropolis-video": {
+      "status": "completed",
+      "reserved_usd": 1.6,
+      "request": {
+        "model": "google/veo-3.1",
+        "prompt": "A beautiful practical stop-motion set of an intricate miniature city made entirely from folded coral, butter yellow, mint green and ivory paper. Sculptural origami buildings, tiny arched windows, curved paper bridges, delicate trees and a small red tram, arranged on a warm terracotta tabletop. Every paper fold, fiber, and cut edge is tactile and believable. Premium art-directed animation, charming sophisticated scale model, soft afternoon studio light, shallow macro depth of field, three-quarter elevated view, restrained pastel palette. No water, sea, beach, text, letters, logos or watermark. One eight-second stop-motion inspired film of the miniature paper city. A single folded tower slowly opens its accordion facade while the tiny red paper tram travels a short distance along its track. The camera makes a subtle smooth lateral slide. Preserve all surrounding miniature buildings and paper material, only one folding action, no cuts or destructive transformations. Silent video.",
+        "duration": 8,
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "generate_audio": false
+      },
+      "submitted_at": 1789228955.689475,
+      "job_id": "b9uOGF1JfDXX7OYst1jj",
+      "usage": {
+        "cost": 1.6,
+        "is_byok": false
+      },
+      "path": "/tmp/kunoworld-unique-assets/paper-metropolis.mp4",
+      "website_path": "public/media/paper-metropolis.mp4",
+      "poster_path": "public/media/paper-metropolis-poster.webp"
+    },
+    "ember-stag-image": {
+      "status": "completed",
+      "reserved_usd": 2,
+      "request": {
+        "model": "openai/gpt-image-2",
+        "prompt": "An exquisite cinematic wildlife fantasy. A majestic realistic red deer stag with graceful antlers stands in a dark old-growth woodland clearing, surrounded by towering black tree trunks and a few floating warm amber firefly-like embers. A shaft of copper light illuminates its natural fur, gentle ground fog and deep charcoal atmosphere. The animal is peaceful, dignified, anatomical and physically believable, not on fire. Wide medium shot with the stag to the right and dark atmospheric forest at left. Nuanced film grain, premium high-end fantasy cinema, elegant contrast, no ocean, water, coast, humans, text, logo or watermark.",
+        "quality": "high",
+        "aspect_ratio": "16:9",
+        "n": 1,
+        "provider": {
+          "only": [
+            "openai"
+          ],
+          "allow_fallbacks": false
+        }
+      },
+      "submitted_at": 1789228955.6885586,
+      "path": "/tmp/kunoworld-unique-assets/ember-stag.png",
+      "usage": {
+        "prompt_tokens": 130,
+        "completion_tokens": 4312,
+        "total_tokens": 4442,
+        "cost": 0.13001,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.13001,
+          "upstream_inference_prompt_cost": 0.00065,
+          "upstream_inference_completions_cost": 0.12936
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 4312
+        }
+      },
+      "website_path": "public/media/ember-stag.webp"
+    },
+    "ember-stag-video": {
+      "status": "completed",
+      "reserved_usd": 1.6,
+      "request": {
+        "model": "google/veo-3.1",
+        "prompt": "An exquisite cinematic wildlife fantasy. A majestic realistic red deer stag with graceful antlers stands in a dark old-growth woodland clearing, surrounded by towering black tree trunks and a few floating warm amber firefly-like embers. A shaft of copper light illuminates its natural fur, gentle ground fog and deep charcoal atmosphere. The animal is peaceful, dignified, anatomical and physically believable, not on fire. Wide medium shot with the stag to the right and dark atmospheric forest at left. Nuanced film grain, premium high-end fantasy cinema, elegant contrast, no ocean, water, coast, humans, text, logo or watermark. One continuous eight-second cinematic wildlife shot. The stag gently turns its head toward the camera and exhales a faint breath into cool air. A few soft amber particles drift slowly across the frame. The camera performs a very slow steady push-in, consistent deer anatomy, stable antlers and forest, no walking or running, no cuts. Silent video.",
+        "duration": 8,
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "generate_audio": false
+      },
+      "submitted_at": 1789228955.689594,
+      "job_id": "YGAFB9EBDIxAiYE1CbIz",
+      "usage": {
+        "cost": 1.6,
+        "is_byok": false
+      },
+      "path": "/tmp/kunoworld-unique-assets/ember-stag.mp4",
+      "website_path": "public/media/ember-stag.mp4",
+      "poster_path": "public/media/ember-stag-poster.webp"
+    },
+    "prism-bloom-image": {
+      "status": "completed",
+      "reserved_usd": 2,
+      "request": {
+        "model": "openai/gpt-image-2",
+        "prompt": "A stunning macro art film of one sculptural flower handmade from clear iridescent blown glass, delicate translucent petals with subtle pink, violet, cyan and warm gold refraction, on a slender glass stem. The complete flower floats upright against a deep plum-black studio background, tiny caustic light ribbons illuminate the graceful folded petals. Museum-quality glass craftsmanship, photographic physical optics, extremely detailed subtle imperfections and thin petal edges, premium beauty campaign composition, vertical framing with negative space around the flower. No ocean, liquid horizon, jewelry brands, typography, logos or watermark.",
+        "quality": "high",
+        "aspect_ratio": "9:16",
+        "n": 1,
+        "provider": {
+          "only": [
+            "openai"
+          ],
+          "allow_fallbacks": false
+        }
+      },
+      "submitted_at": 1789228955.6887195,
+      "path": "/tmp/kunoworld-unique-assets/prism-bloom.png",
+      "usage": {
+        "prompt_tokens": 120,
+        "completion_tokens": 4312,
+        "total_tokens": 4432,
+        "cost": 0.12996,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.12996,
+          "upstream_inference_prompt_cost": 0.0006,
+          "upstream_inference_completions_cost": 0.12936
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 4312
+        }
+      },
+      "website_path": "public/media/prism-bloom.webp"
+    },
+    "prism-bloom-video": {
+      "status": "completed",
+      "reserved_usd": 1.6,
+      "request": {
+        "model": "google/veo-3.1",
+        "prompt": "A stunning macro art film of one sculptural flower handmade from clear iridescent blown glass, delicate translucent petals with subtle pink, violet, cyan and warm gold refraction, on a slender glass stem. The complete flower floats upright against a deep plum-black studio background, tiny caustic light ribbons illuminate the graceful folded petals. Museum-quality glass craftsmanship, photographic physical optics, extremely detailed subtle imperfections and thin petal edges, premium beauty campaign composition, vertical framing with negative space around the flower. No ocean, liquid horizon, jewelry brands, typography, logos or watermark. One continuous eight-second vertical macro film. The glass flower turns very slowly by fifteen degrees while a narrow studio light travels across the petals, casting natural prismatic reflections. Keep every petal and the stem completely coherent with no morphing or blooming deformation. Smooth locked framing, delicate controlled motion, no cuts. Silent video.",
+        "duration": 8,
+        "resolution": "1080p",
+        "aspect_ratio": "9:16",
+        "generate_audio": false
+      },
+      "submitted_at": 1789229020.0431972,
+      "job_id": "xOFMqlN4KYG2QfW1H68c",
+      "usage": {
+        "cost": 1.6,
+        "is_byok": false
+      },
+      "path": "/tmp/kunoworld-unique-assets/prism-bloom.mp4",
+      "website_path": "public/media/prism-bloom.mp4",
+      "poster_path": "public/media/prism-bloom-poster.webp"
+    },
+    "kinetic-orbit-image": {
+      "status": "completed",
+      "reserved_usd": 2,
+      "request": {
+        "model": "openai/gpt-image-2",
+        "prompt": "An original abstract kinetic art installation in a dark gallery. Three large polished copper elliptical bands interlock and float around a single matte ivory sphere above a low black stone plinth. Restrained sculptural geometry, warm brushed metal edges, rich burgundy shadows and a narrow white overhead light reflected along the metal. Sophisticated contemporary museum photography, tactile physically realistic materials, cinematic broad composition with generous dark negative space, exceptionally clean silhouettes. No text, logos, branding, oceans, beaches, planets or watermark.",
+        "quality": "high",
+        "aspect_ratio": "16:9",
+        "n": 1,
+        "provider": {
+          "only": [
+            "openai"
+          ],
+          "allow_fallbacks": false
+        }
+      },
+      "submitted_at": 1789228955.6889389,
+      "path": "/tmp/kunoworld-unique-assets/kinetic-orbit.png",
+      "usage": {
+        "prompt_tokens": 106,
+        "completion_tokens": 4312,
+        "total_tokens": 4418,
+        "cost": 0.12989,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.12989,
+          "upstream_inference_prompt_cost": 0.00053,
+          "upstream_inference_completions_cost": 0.12936
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 4312
+        }
+      },
+      "website_path": "public/media/kinetic-orbit.webp"
+    },
+    "kinetic-orbit-video": {
+      "status": "completed",
+      "reserved_usd": 1.6,
+      "request": {
+        "model": "google/veo-3.1",
+        "prompt": "An original abstract kinetic art installation in a dark gallery. Three large polished copper elliptical bands interlock and float around a single matte ivory sphere above a low black stone plinth. Restrained sculptural geometry, warm brushed metal edges, rich burgundy shadows and a narrow white overhead light reflected along the metal. Sophisticated contemporary museum photography, tactile physically realistic materials, cinematic broad composition with generous dark negative space, exceptionally clean silhouettes. No text, logos, branding, oceans, beaches, planets or watermark. One uninterrupted eight-second art film. The three copper bands rotate independently at a very slow precise mechanical pace around the completely stationary ivory sphere. Stable materials and geometry, controlled reflections glide across the curved metal. Camera locked with a barely perceptible push-in, no extra objects, no cuts, silent video.",
+        "duration": 8,
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "generate_audio": false
+      },
+      "submitted_at": 1789229027.9897914,
+      "job_id": "PujJOZRKctOmFDhoxi4a",
+      "usage": {
+        "cost": 1.6,
+        "is_byok": false
+      },
+      "path": "/tmp/kunoworld-unique-assets/kinetic-orbit.mp4",
+      "website_path": "public/media/kinetic-orbit.mp4",
+      "poster_path": "public/media/kinetic-orbit-poster.webp"
+    }
+  },
+  "actual_batch_cost_usd": 8.64988,
+  "actual_total_cost_usd": 21.02003
+}

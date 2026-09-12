@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 1, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/platform/web/src/components/landing/CheckFilm.module.css"],"sourcesContent":[".check {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);\n  gap: 22px;\n  align-items: start;\n}\n\n.result {\n  display: grid;\n  min-height: 150px;\n}\n\n.placeholder {\n  align-self: center;\n  max-width: 44ch;\n  color: var(--c-paper-2);\n}\n\n.missing {\n  display: grid;\n  gap: 12px;\n  justify-items: start;\n  align-content: center;\n  padding: 24px;\n  border: 1px solid var(--line-2);\n  border-radius: var(--radius-m);\n  background: var(--c-tray);\n}\n\n.missingTitle {\n  font-size: 26px;\n  font-style: italic;\n}\n\n.error {\n  align-self: center;\n  padding: 14px 16px;\n  border: 1px solid rgba(228, 119, 92, 0.35);\n  border-radius: var(--radius-s);\n  background: var(--c-error-soft);\n  font-size: 14px;\n}\n\n@media (max-width: 820px) {\n  .check {\n    grid-template-columns: 1fr;\n  }\n}\n"],"names":[],"mappings":"AAAA;;;;;;;AAOA;;;;;AAKA;;;;;;AAMA;;;;;;;;;;;AAWA;;;;;AAKA;;;;;;;;;AASA;EACE"}}]
+}

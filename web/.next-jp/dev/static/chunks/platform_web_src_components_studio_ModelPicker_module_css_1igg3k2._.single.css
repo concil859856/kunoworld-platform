@@ -1,0 +1,166 @@
+/* [project]/platform/web/src/components/studio/ModelPicker.module.css [app-client] (css) */
+.ModelPicker-module__oQ2psq__picker {
+  position: relative;
+}
+
+.ModelPicker-module__oQ2psq__trigger {
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-pill);
+  background: var(--c-tray);
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  height: 34px;
+  padding: 0 12px 0 4px;
+  font-size: 13px;
+  display: inline-flex;
+}
+
+.ModelPicker-module__oQ2psq__trigger:hover {
+  border-color: var(--line-3);
+}
+
+.ModelPicker-module__oQ2psq__triggerFamily {
+  border-radius: var(--radius-pill);
+  height: 26px;
+  font-family: var(--font-mono);
+  letter-spacing: .06em;
+  white-space: nowrap;
+  background: var(--c-amber);
+  color: #1b1206;
+  align-items: center;
+  padding: 0 9px;
+  font-size: 10.5px;
+  font-weight: 500;
+  display: inline-flex;
+}
+
+.ModelPicker-module__oQ2psq__triggerFamily[data-family="ltx"] {
+  background: var(--c-paper);
+}
+
+.ModelPicker-module__oQ2psq__triggerName {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.ModelPicker-module__oQ2psq__chevron {
+  border-right: 1.5px solid var(--c-paper-2);
+  border-bottom: 1.5px solid var(--c-paper-2);
+  width: 7px;
+  height: 7px;
+  margin-left: 2px;
+  transform: rotate(-135deg)translate(-2px, -2px);
+}
+
+.ModelPicker-module__oQ2psq__trigger[aria-expanded="false"] .ModelPicker-module__oQ2psq__chevron {
+  transform: rotate(45deg)translate(-2px, -2px);
+}
+
+.ModelPicker-module__oQ2psq__panel {
+  z-index: 55;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--c-tray);
+  gap: 4px;
+  width: min(560px, 100vw - 32px);
+  max-height: min(64vh, 620px);
+  padding: 8px;
+  display: grid;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  overflow-y: auto;
+  box-shadow: 0 24px 70px #0009;
+}
+
+.ModelPicker-module__oQ2psq__group {
+  gap: 2px;
+  display: grid;
+}
+
+.ModelPicker-module__oQ2psq__groupHead {
+  border-top: 3px solid var(--c-amber);
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 10px 6px;
+  display: flex;
+}
+
+.ModelPicker-module__oQ2psq__groupHead[data-family="ltx"] {
+  border-top-color: var(--c-paper);
+}
+
+.ModelPicker-module__oQ2psq__group + .ModelPicker-module__oQ2psq__group .ModelPicker-module__oQ2psq__groupHead {
+  margin-top: 6px;
+}
+
+.ModelPicker-module__oQ2psq__groupHead strong {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.ModelPicker-module__oQ2psq__groupHead em {
+  font-family: var(--font-display);
+  color: var(--c-muted);
+  font-size: 14px;
+}
+
+.ModelPicker-module__oQ2psq__option {
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  border: 1px solid #0000;
+  gap: 3px;
+  padding: 10px;
+  display: grid;
+}
+
+.ModelPicker-module__oQ2psq__option:hover, .ModelPicker-module__oQ2psq__option:focus-visible {
+  background: var(--c-tray-2);
+}
+
+.ModelPicker-module__oQ2psq__option:focus-visible {
+  outline: 2px solid var(--c-amber);
+  outline-offset: -2px;
+}
+
+.ModelPicker-module__oQ2psq__option[aria-selected="true"] {
+  border-color: var(--c-amber-line);
+  background: var(--c-amber-soft);
+}
+
+.ModelPicker-module__oQ2psq__option[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.ModelPicker-module__oQ2psq__optHead {
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  display: flex;
+}
+
+.ModelPicker-module__oQ2psq__optName {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ModelPicker-module__oQ2psq__optTag {
+  color: var(--c-paper-2);
+  font-size: 12.5px;
+}
+
+.ModelPicker-module__oQ2psq__optSpecs {
+  font-family: var(--font-mono);
+  color: var(--c-muted);
+  font-size: 11px;
+}
+
+.ModelPicker-module__oQ2psq__why {
+  color: var(--c-muted);
+  font-size: 11.5px;
+}
+
+/*# sourceMappingURL=platform_web_src_components_studio_ModelPicker_module_css_1igg3k2._.single.css.map*/

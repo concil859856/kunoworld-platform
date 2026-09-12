@@ -1,0 +1,189 @@
+/* [project]/platform/web/src/components/studio/Studio.module.css [app-client] (css) */
+.Studio-module__c_M2aa__studio {
+  height: calc(100dvh - var(--header-h));
+  background: var(--c-black);
+  grid-template: "rail center inspector" minmax(0, 1fr)
+                 "rail composer inspector"
+                 / 256px minmax(0, 1fr) 392px;
+  display: grid;
+  position: relative;
+}
+
+.Studio-module__c_M2aa__rail {
+  border-right: 1px solid var(--line);
+  background: #0d0b09;
+  grid-area: rail;
+  min-height: 0;
+}
+
+.Studio-module__c_M2aa__center {
+  flex-direction: column;
+  grid-area: center;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.Studio-module__c_M2aa__composer {
+  grid-area: composer;
+  min-width: 0;
+}
+
+.Studio-module__c_M2aa__inspector {
+  border-left: 1px solid var(--line);
+  background: #0d0b09;
+  grid-area: inspector;
+  min-height: 0;
+}
+
+.Studio-module__c_M2aa__toolbar {
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  min-height: 48px;
+  padding: 8px 18px;
+  display: flex;
+}
+
+.Studio-module__c_M2aa__heading {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-style: italic;
+  font-weight: 400;
+}
+
+.Studio-module__c_M2aa__seal {
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-pill);
+  height: 26px;
+  font-family: var(--font-mono);
+  color: var(--c-paper-2);
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  font-size: 11px;
+  display: inline-flex;
+}
+
+.Studio-module__c_M2aa__sealDot {
+  border: 1.5px solid var(--c-muted);
+  border-radius: 50%;
+  width: 7px;
+  height: 7px;
+}
+
+.Studio-module__c_M2aa__sealDot[data-live="true"] {
+  border-color: var(--c-amber);
+  background: var(--c-amber);
+  box-shadow: 0 0 8px #e6a34ab3;
+}
+
+.Studio-module__c_M2aa__keysNote {
+  color: var(--c-muted);
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.Studio-module__c_M2aa__railToggle, .Studio-module__c_M2aa__inspectorToggle, .Studio-module__c_M2aa__scrim {
+  display: none;
+}
+
+.Studio-module__c_M2aa__toast {
+  z-index: 80;
+  pointer-events: none;
+  max-width: min(560px, 100vw - 32px);
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.Studio-module__c_M2aa__toast:not(:empty) {
+  border: 1px solid var(--c-amber-line);
+  border-radius: var(--radius-pill);
+  background: var(--c-tray-2);
+  color: var(--c-paper);
+  padding: 10px 16px;
+  font-size: 13px;
+  box-shadow: 0 12px 40px #00000080;
+}
+
+@media (max-width: 1180px) {
+  .Studio-module__c_M2aa__studio {
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-areas: "rail center"
+                         "rail composer";
+  }
+
+  .Studio-module__c_M2aa__inspector {
+    z-index: 70;
+    width: min(440px, 100vw);
+    transition: transform .22s var(--ease);
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    transform: translateX(102%);
+    box-shadow: -30px 0 80px #0000008c;
+  }
+
+  .Studio-module__c_M2aa__studio[data-inspector="open"] .Studio-module__c_M2aa__inspector {
+    transform: none;
+  }
+
+  .Studio-module__c_M2aa__inspectorToggle {
+    display: inline-flex;
+  }
+
+  .Studio-module__c_M2aa__studio[data-inspector="open"] .Studio-module__c_M2aa__scrim, .Studio-module__c_M2aa__studio[data-rail="open"] .Studio-module__c_M2aa__scrim {
+    z-index: 60;
+    background: #05040399;
+    display: block;
+    position: fixed;
+    inset: 0;
+  }
+}
+
+@media (max-width: 820px) {
+  .Studio-module__c_M2aa__studio {
+    height: auto;
+    min-height: calc(100dvh - var(--header-h));
+    flex-direction: column;
+    display: flex;
+  }
+
+  .Studio-module__c_M2aa__rail {
+    z-index: 70;
+    width: min(320px, 88vw);
+    transition: transform .22s var(--ease);
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    transform: translateX(-102%);
+    box-shadow: 30px 0 80px #0000008c;
+  }
+
+  .Studio-module__c_M2aa__studio[data-rail="open"] .Studio-module__c_M2aa__rail {
+    transform: none;
+  }
+
+  .Studio-module__c_M2aa__railToggle {
+    display: inline-flex;
+  }
+
+  .Studio-module__c_M2aa__heading, .Studio-module__c_M2aa__keysNote {
+    display: none;
+  }
+
+  .Studio-module__c_M2aa__center {
+    min-height: 46vh;
+  }
+
+  .Studio-module__c_M2aa__toolbar {
+    padding-inline: 16px;
+  }
+}
+
+/*# sourceMappingURL=platform_web_src_components_studio_Studio_module_css_1igg3k2._.single.css.map*/

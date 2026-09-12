@@ -1,0 +1,63 @@
+/* [project]/platform/web/src/components/landing/CreditsRoll.module.css [app-client] (css) */
+.CreditsRoll-module__aVXonG__figure {
+  gap: 12px;
+  display: grid;
+}
+
+.CreditsRoll-module__aVXonG__roll {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: #050403;
+  height: 460px;
+  position: relative;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(#0000 0, #000 16% 84%, #0000 100%);
+  mask-image: linear-gradient(#0000 0, #000 16% 84%, #0000 100%);
+}
+
+.CreditsRoll-module__aVXonG__crawl {
+  animation: 34s linear infinite paused CreditsRoll-module__aVXonG__crawl;
+}
+
+.CreditsRoll-module__aVXonG__roll[data-running="true"] .CreditsRoll-module__aVXonG__crawl {
+  animation-play-state: running;
+}
+
+.CreditsRoll-module__aVXonG__roll:hover .CreditsRoll-module__aVXonG__crawl {
+  animation-play-state: paused;
+}
+
+.CreditsRoll-module__aVXonG__crawl > section {
+  background: none;
+  border: 0;
+  padding-block: 40px;
+}
+
+@keyframes CreditsRoll-module__aVXonG__crawl {
+  from {
+    transform: translateY(460px);
+  }
+
+  to {
+    transform: translateY(-100%);
+  }
+}
+
+.CreditsRoll-module__aVXonG__caption {
+  color: var(--c-muted);
+  font-size: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .CreditsRoll-module__aVXonG__roll {
+    height: auto;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .CreditsRoll-module__aVXonG__crawl {
+    animation: none;
+  }
+}
+
+/*# sourceMappingURL=platform_web_src_components_landing_CreditsRoll_module_css_1igg3k2._.single.css.map*/

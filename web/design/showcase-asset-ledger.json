@@ -1,0 +1,249 @@
+{
+  "budget_usd": 50,
+  "prior_spend_usd": 5.450315,
+  "reserved_batch_usd": 14.4,
+  "assets": {
+    "neon-city-image": {
+      "status": "completed",
+      "reserved_usd": 2,
+      "request": {
+        "model": "openai/gpt-image-2",
+        "prompt": "Original high-end cinematic film still. A solitary adult woman in a dark tailored coat with a translucent umbrella, seen small from behind on a rain-soaked futuristic Tokyo side street at night. Deep sapphire atmosphere, crimson and rose neon reflections in wet asphalt, atmospheric steam, fine rain, tiny distant warm windows. Dense convincing urban architecture, no readable text or signage, no logos. Shot on anamorphic 35mm, photographic film grain, nuanced shadows, visually sophisticated rather than game render. Low wide street-level composition with spacious dark negative space at the left.",
+        "quality": "high",
+        "aspect_ratio": "16:9",
+        "n": 1,
+        "provider": {
+          "only": [
+            "openai"
+          ],
+          "allow_fallbacks": false
+        }
+      },
+      "submitted_at": 1789227722.502216,
+      "path": "/tmp/kunoworld-showcase-assets/neon-city.png",
+      "usage": {
+        "prompt_tokens": 117,
+        "completion_tokens": 4312,
+        "total_tokens": 4429,
+        "cost": 0.129945,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.129945,
+          "upstream_inference_prompt_cost": 0.000585,
+          "upstream_inference_completions_cost": 0.12936
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 4312
+        }
+      },
+      "website_path": "public/media/neon-city.webp"
+    },
+    "neon-city-video": {
+      "status": "completed",
+      "reserved_usd": 1.6,
+      "request": {
+        "model": "google/veo-3.1",
+        "prompt": "Original high-end cinematic film still. A solitary adult woman in a dark tailored coat with a translucent umbrella, seen small from behind on a rain-soaked futuristic Tokyo side street at night. Deep sapphire atmosphere, crimson and rose neon reflections in wet asphalt, atmospheric steam, fine rain, tiny distant warm windows. Dense convincing urban architecture, no readable text or signage, no logos. Shot on anamorphic 35mm, photographic film grain, nuanced shadows, visually sophisticated rather than game render. Low wide street-level composition with spacious dark negative space at the left. One continuous eight-second cinematic shot. Very slow forward dolly following the woman walking away down the rain-soaked street, fine rain falls and reflections ripple naturally. Camera stays smooth and level, coherent architecture, no cuts, no morphing, no rapid action. Silent video.",
+        "duration": 8,
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "generate_audio": false
+      },
+      "submitted_at": 1789227722.5029867,
+      "job_id": "5Mp7B4ptBXRoVsHevtAj",
+      "usage": {
+        "cost": 1.6,
+        "is_byok": false
+      },
+      "path": "/tmp/kunoworld-showcase-assets/neon-city.mp4",
+      "website_path": "public/media/neon-city.mp4",
+      "poster_path": "public/media/neon-city-poster.webp"
+    },
+    "chrome-runner-image": {
+      "status": "completed",
+      "reserved_usd": 2,
+      "request": {
+        "model": "openai/gpt-image-2",
+        "prompt": "Luxury concept product advertising still. A single futuristic unbranded running shoe with satin silver chrome panels, ivory technical mesh and one vivid vermilion orange sculptural sole detail, floating above a polished obsidian plinth. Monochromatic charcoal studio background with a bold warm amber light ribbon reflecting across the curved chrome surfaces. Side three-quarter view, extremely detailed real materials, restrained sophisticated fashion technology campaign, hard-edge studio lighting, impeccable product silhouette, crisp focal plane and soft background. No logos, no typography, no watermark, no extra shoes.",
+        "quality": "high",
+        "aspect_ratio": "16:9",
+        "n": 1,
+        "provider": {
+          "only": [
+            "openai"
+          ],
+          "allow_fallbacks": false
+        }
+      },
+      "submitted_at": 1789227722.502414,
+      "path": "/tmp/kunoworld-showcase-assets/chrome-runner.png",
+      "usage": {
+        "prompt_tokens": 115,
+        "completion_tokens": 4312,
+        "total_tokens": 4427,
+        "cost": 0.129935,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.129935,
+          "upstream_inference_prompt_cost": 0.000575,
+          "upstream_inference_completions_cost": 0.12936
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 4312
+        }
+      },
+      "website_path": "public/media/chrome-runner.webp"
+    },
+    "chrome-runner-video": {
+      "status": "completed",
+      "reserved_usd": 1.6,
+      "request": {
+        "model": "google/veo-3.1",
+        "prompt": "Luxury concept product advertising still. A single futuristic unbranded running shoe with satin silver chrome panels, ivory technical mesh and one vivid vermilion orange sculptural sole detail, floating above a polished obsidian plinth. Monochromatic charcoal studio background with a bold warm amber light ribbon reflecting across the curved chrome surfaces. Side three-quarter view, extremely detailed real materials, restrained sophisticated fashion technology campaign, hard-edge studio lighting, impeccable product silhouette, crisp focal plane and soft background. No logos, no typography, no watermark, no extra shoes. One uninterrupted eight-second luxury product film. The single shoe rotates very slowly by about twenty degrees above its black plinth, a controlled amber studio highlight traveling across the chrome and mesh. Smooth camera with a subtle push-in, shoe shape and details remain constant, no morphing, no cuts, no extra objects. Silent video.",
+        "duration": 8,
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "generate_audio": false
+      },
+      "submitted_at": 1789227722.5030735,
+      "job_id": "08HMF6nLZJhxGqdGI48i",
+      "usage": {
+        "cost": 1.6,
+        "is_byok": false
+      },
+      "path": "/tmp/kunoworld-showcase-assets/chrome-runner.mp4",
+      "website_path": "public/media/chrome-runner.mp4",
+      "poster_path": "public/media/chrome-runner-poster.webp"
+    },
+    "astronaut-garden-image": {
+      "status": "completed",
+      "reserved_usd": 2,
+      "request": {
+        "model": "openai/gpt-image-2",
+        "prompt": "Extraordinary photorealistic cinematic science fiction film still. A lone adult astronaut in an ivory spacesuit stands inside a monumental abandoned circular greenhouse on another planet, surrounded by lush oversized ferns and small luminous amber flowers. Through a huge circular architectural opening, a pale ringed planet hangs low in a powder-blue sky. Delicate mist, shafts of warm golden sunlight, oxidized metal and subtle weathered stone, a sense of quiet wonder. Wide centered 24mm lens composition, astronaut small within vast space, elegant award-winning science fiction production design, realistic physical materials. No readable text, logos, watermark or UI.",
+        "quality": "high",
+        "aspect_ratio": "16:9",
+        "n": 1,
+        "provider": {
+          "only": [
+            "openai"
+          ],
+          "allow_fallbacks": false
+        }
+      },
+      "submitted_at": 1789227722.502561,
+      "path": "/tmp/kunoworld-showcase-assets/astronaut-garden.png",
+      "usage": {
+        "prompt_tokens": 131,
+        "completion_tokens": 4312,
+        "total_tokens": 4443,
+        "cost": 0.130015,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.130015,
+          "upstream_inference_prompt_cost": 0.000655,
+          "upstream_inference_completions_cost": 0.12936
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 4312
+        }
+      },
+      "website_path": "public/media/astronaut-garden.webp"
+    },
+    "astronaut-garden-video": {
+      "status": "completed",
+      "reserved_usd": 1.6,
+      "request": {
+        "model": "google/veo-3.1",
+        "prompt": "Extraordinary photorealistic cinematic science fiction film still. A lone adult astronaut in an ivory spacesuit stands inside a monumental abandoned circular greenhouse on another planet, surrounded by lush oversized ferns and small luminous amber flowers. Through a huge circular architectural opening, a pale ringed planet hangs low in a powder-blue sky. Delicate mist, shafts of warm golden sunlight, oxidized metal and subtle weathered stone, a sense of quiet wonder. Wide centered 24mm lens composition, astronaut small within vast space, elegant award-winning science fiction production design, realistic physical materials. No readable text, logos, watermark or UI. One uninterrupted eight-second cinematic film. A gentle slow lateral camera glide through the foreground ferns toward the astronaut and distant circular opening. Leaves move subtly in a light breeze, dust motes drift in warm sunbeams, the astronaut stays still looking toward the ringed planet. Consistent geometry and spacesuit, no cuts, no rapid movement. Silent video.",
+        "duration": 8,
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "generate_audio": false
+      },
+      "submitted_at": 1789227722.503194,
+      "job_id": "VEvL0gzgXyvTHqvBvmZw",
+      "usage": {
+        "cost": 1.6,
+        "is_byok": false
+      },
+      "path": "/tmp/kunoworld-showcase-assets/astronaut-garden.mp4",
+      "website_path": "public/media/astronaut-garden.mp4",
+      "poster_path": "public/media/astronaut-garden-poster.webp"
+    },
+    "sculptural-fashion-image": {
+      "status": "completed",
+      "reserved_usd": 2,
+      "request": {
+        "model": "openai/gpt-image-2",
+        "prompt": "Premium avant-garde fashion editorial film still, vertical full-length composition. An adult female model with short dark hair and a confident quiet expression wears a dramatic architectural vermilion-red pleated gown. She stands on pale limestone steps beside an immense curved modernist concrete wall. Strong cobalt blue sky above, late afternoon side light producing a perfectly defined curved shadow, fine fabric texture, natural skin, elegant restrained pose, world-class fashion campaign photography. Red cloth catches a soft breeze. No text, logos, watermark, jewelry brands, crowds, or extra people.",
+        "quality": "high",
+        "aspect_ratio": "9:16",
+        "n": 1,
+        "provider": {
+          "only": [
+            "openai"
+          ],
+          "allow_fallbacks": false
+        }
+      },
+      "submitted_at": 1789227722.5027285,
+      "path": "/tmp/kunoworld-showcase-assets/sculptural-fashion.png",
+      "usage": {
+        "prompt_tokens": 116,
+        "completion_tokens": 4312,
+        "total_tokens": 4428,
+        "cost": 0.12994,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.12994,
+          "upstream_inference_prompt_cost": 0.00058,
+          "upstream_inference_completions_cost": 0.12936
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 4312
+        }
+      },
+      "website_path": "public/media/sculptural-fashion.webp"
+    },
+    "sculptural-fashion-video": {
+      "status": "completed",
+      "reserved_usd": 1.6,
+      "request": {
+        "model": "google/veo-3.1",
+        "prompt": "Premium avant-garde fashion editorial film still, vertical full-length composition. An adult female model with short dark hair and a confident quiet expression wears a dramatic architectural vermilion-red pleated gown. She stands on pale limestone steps beside an immense curved modernist concrete wall. Strong cobalt blue sky above, late afternoon side light producing a perfectly defined curved shadow, fine fabric texture, natural skin, elegant restrained pose, world-class fashion campaign photography. Red cloth catches a soft breeze. No text, logos, watermark, jewelry brands, crowds, or extra people. One continuous eight-second vertical fashion campaign film. The adult model makes one slow graceful half-turn, red pleated fabric flowing gently in the breeze. The camera performs a subtle steady push-in while maintaining a full-length view, natural anatomy and facial identity, stable architectural background. No cuts, no quick gestures, no morphing. Silent video.",
+        "duration": 8,
+        "resolution": "1080p",
+        "aspect_ratio": "9:16",
+        "generate_audio": false
+      },
+      "submitted_at": 1789227722.503428,
+      "job_id": "DhMIns5DL47cyUoJN9qj",
+      "usage": {
+        "cost": 1.6,
+        "is_byok": false
+      },
+      "path": "/tmp/kunoworld-showcase-assets/sculptural-fashion.mp4",
+      "website_path": "public/media/sculptural-fashion.mp4",
+      "poster_path": "public/media/sculptural-fashion-poster.webp"
+    }
+  },
+  "actual_batch_cost_usd": 6.919835,
+  "actual_total_cost_usd": 12.37015
+}

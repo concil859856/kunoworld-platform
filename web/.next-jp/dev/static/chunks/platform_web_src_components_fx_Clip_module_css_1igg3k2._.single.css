@@ -1,0 +1,68 @@
+/* [project]/platform/web/src/components/fx/Clip.module.css [app-client] (css) */
+.Clip-module__8dmiPa__box {
+  background: var(--c-tray);
+  border-radius: var(--radius-m);
+  isolation: isolate;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.Clip-module__8dmiPa__video {
+  object-fit: cover;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  transition: opacity .7s var(--ease-slow);
+}
+
+.Clip-module__8dmiPa__box[data-ready="true"] .Clip-module__8dmiPa__video {
+  opacity: 1;
+}
+
+.Clip-module__8dmiPa__empty {
+  background: radial-gradient(120% 90% at 50% 110%, var(--c-safelight-glow), transparent 70%),
+    linear-gradient(180deg, var(--c-tray-2), var(--c-tray));
+  position: absolute;
+  inset: 0;
+}
+
+.Clip-module__8dmiPa__empty:after {
+  content: "";
+  opacity: .5;
+  background-image: repeating-linear-gradient(90deg, #0000 0 3px, #ede5d805 3px 4px);
+  position: absolute;
+  inset: 0;
+}
+
+.Clip-module__8dmiPa__controls {
+  z-index: 2;
+  gap: 6px;
+  display: flex;
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+}
+
+.Clip-module__8dmiPa__control {
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-pill);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: var(--c-paper);
+  font-family: var(--font-mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  transition: border-color .16s var(--ease),
+    background-color .16s var(--ease);
+  background: #0b0907b8;
+  padding: 5px 11px;
+  font-size: 11px;
+}
+
+.Clip-module__8dmiPa__control:hover {
+  border-color: var(--c-amber-line);
+  background: #0b0907e6;
+}
+
+/*# sourceMappingURL=platform_web_src_components_fx_Clip_module_css_1igg3k2._.single.css.map*/

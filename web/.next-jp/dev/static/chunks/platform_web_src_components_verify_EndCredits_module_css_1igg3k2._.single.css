@@ -1,0 +1,144 @@
+/* [project]/platform/web/src/components/verify/EndCredits.module.css [app-client] (css) */
+.EndCredits-module__u0O9iq__credits {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  text-align: center;
+  background: #050403;
+  padding: 48px clamp(16px, 5vw, 64px) 40px;
+  position: relative;
+}
+
+.EndCredits-module__u0O9iq__credits:before, .EndCredits-module__u0O9iq__credits:after {
+  content: "";
+  background: var(--c-black);
+  height: 10px;
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+.EndCredits-module__u0O9iq__credits:before {
+  top: 0;
+}
+
+.EndCredits-module__u0O9iq__credits:after {
+  bottom: 0;
+}
+
+.EndCredits-module__u0O9iq__kicker {
+  font-family: var(--font-mono);
+  letter-spacing: .3em;
+  text-transform: uppercase;
+  color: var(--c-muted);
+  font-size: 11px;
+}
+
+.EndCredits-module__u0O9iq__title {
+  color: var(--c-paper);
+  margin: 10px 0 34px;
+  font-size: clamp(30px, 4vw, 44px);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.EndCredits-module__u0O9iq__list {
+  gap: 14px;
+  max-width: 760px;
+  margin: 0 auto;
+  display: grid;
+}
+
+.EndCredits-module__u0O9iq__row {
+  text-align: left;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  align-items: baseline;
+  gap: 22px;
+  display: grid;
+}
+
+.EndCredits-module__u0O9iq__row dt {
+  text-align: right;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--c-muted);
+  justify-self: end;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.EndCredits-module__u0O9iq__row dd {
+  gap: 3px;
+  min-width: 0;
+  display: grid;
+}
+
+.EndCredits-module__u0O9iq__name {
+  font-family: var(--font-display);
+  color: var(--c-paper);
+  font-size: 19px;
+  line-height: 1.25;
+}
+
+.EndCredits-module__u0O9iq__mono {
+  font-family: var(--font-mono);
+  color: var(--c-paper-2);
+  word-break: break-all;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.EndCredits-module__u0O9iq__note {
+  color: var(--c-muted);
+  font-size: 12px;
+}
+
+.EndCredits-module__u0O9iq__row[data-tone="ok"] .EndCredits-module__u0O9iq__name, .EndCredits-module__u0O9iq__row[data-tone="ok"] .EndCredits-module__u0O9iq__mono {
+  color: var(--c-amber);
+}
+
+.EndCredits-module__u0O9iq__row[data-tone="bad"] .EndCredits-module__u0O9iq__name, .EndCredits-module__u0O9iq__row[data-tone="bad"] .EndCredits-module__u0O9iq__mono {
+  color: var(--c-error);
+}
+
+.EndCredits-module__u0O9iq__footer {
+  color: var(--c-muted);
+  margin-top: 34px;
+  font-size: 13px;
+}
+
+.EndCredits-module__u0O9iq__credits[data-variant="compact"] {
+  padding: 30px 18px 26px;
+}
+
+.EndCredits-module__u0O9iq__credits[data-variant="compact"] .EndCredits-module__u0O9iq__title {
+  margin-bottom: 22px;
+  font-size: 28px;
+}
+
+.EndCredits-module__u0O9iq__credits[data-variant="compact"] .EndCredits-module__u0O9iq__list {
+  gap: 10px;
+}
+
+.EndCredits-module__u0O9iq__credits[data-variant="compact"] .EndCredits-module__u0O9iq__row {
+  grid-template-columns: minmax(0, .85fr) minmax(0, 1.4fr);
+  gap: 14px;
+}
+
+.EndCredits-module__u0O9iq__credits[data-variant="compact"] .EndCredits-module__u0O9iq__name {
+  font-size: 16px;
+}
+
+@media (max-width: 560px) {
+  .EndCredits-module__u0O9iq__row, .EndCredits-module__u0O9iq__credits[data-variant="compact"] .EndCredits-module__u0O9iq__row {
+    text-align: center;
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .EndCredits-module__u0O9iq__row dt {
+    text-align: center;
+    justify-self: center;
+  }
+}
+
+/*# sourceMappingURL=platform_web_src_components_verify_EndCredits_module_css_1igg3k2._.single.css.map*/

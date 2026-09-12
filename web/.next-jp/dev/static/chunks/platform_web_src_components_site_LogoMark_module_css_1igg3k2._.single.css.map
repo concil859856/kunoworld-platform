@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 1, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/platform/web/src/components/site/LogoMark.module.css"],"sourcesContent":[".mark {\n  display: block;\n  width: auto;\n  /* The glyph is pure white; let it sit a touch below full brightness so the amber\n     wordmark beside it stays the loudest thing in the lockup. */\n  opacity: 0.92;\n  transition: opacity 160ms var(--ease);\n}\n\na:hover > .mark,\na:focus-visible > .mark {\n  opacity: 1;\n}\n"],"names":[],"mappings":"AAAA;;;;;;;AASA"}}]
+}
