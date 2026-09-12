@@ -342,6 +342,15 @@ export function Composer({
         )}
       </div>
 
+      {/* The rewrite happens inside the enclave, so it can't be shown here for editing.
+          Say so plainly rather than implying a review step that doesn't exist. */}
+      {lim.prompt_enhancer && state.settings.enhance && (
+        <p className={styles.enhanceNote}>
+          The stock rewrites your prompt inside the sealed stage, just before rendering. The rewrite never leaves the
+          stage, so it can&apos;t be shown to you here — turn this off to render exactly what you wrote.
+        </p>
+      )}
+
       {advanced && (
         <div id={`${ids}-advanced`} className={styles.advanced}>
           {lim.seed && (
@@ -368,16 +377,9 @@ export function Composer({
         </div>
       )}
 
-      {(generalProblems.length > 0 || routeNotice) && (
+      {routeNotice && (
         <div className={styles.messages} aria-live="polite">
-          {routeNotice && <p className={styles.route}>{routeNotice}</p>}
-          {generalProblems.length > 0 && (
-            <ul role="list" className={styles.problems}>
-              {generalProblems.map((p) => (
-                <li key={p.code + p.message}>{p.message}</li>
-              ))}
-            </ul>
-          )}
+          <p className={styles.route}>{routeNotice}</p>
         </div>
       )}
 
@@ -390,21 +392,41 @@ export function Composer({
             <kbd>↵</kbd> generates · <kbd>↵</kbd> is a new line
           </span>
         </p>
-        <button
-          type="button"
-          className={`btn btn-primary ${styles.generate}`}
-          onClick={submit}
-          aria-disabled={connected && blocked}
-          title={blocked ? problems[0]?.message : undefined}
-        >
-          {connected ? (
-            <>
-              Generate <span className={styles.price}>{estimate === null ? "" : `· ${usd(estimate)}`}</span>
-            </>
-          ) : (
-            "Connect to generate"
+        <div className={styles.go}>
+          {/* Why Generate is off, said next to the button. Problems that belong to a
+              slot stay on that slot, so this points at them instead of repeating them. */}
+          {connected && blocked && (
+            <div id={`${ids}-blocked`} className={styles.blockers} aria-live="polite">
+              {generalProblems.length > 0 ? (
+                <ul role="list" aria-label="Problems to fix" className={styles.problems}>
+                  {generalProblems.map((p) => (
+                    <li key={p.code + p.message}>{p.message}</li>
+                  ))}
+                </ul>
+              ) : trayProblems.length > 0 ? (
+                <p className={styles.blockHint}>Fix the highlighted inputs above.</p>
+              ) : (
+                <p className="sr-only">{problems[0].message}</p>
+              )}
+            </div>
           )}
-        </button>
+          <button
+            type="button"
+            className={`btn btn-primary ${styles.generate}`}
+            onClick={submit}
+            aria-disabled={connected && blocked}
+            aria-describedby={connected && blocked ? `${ids}-blocked` : `${ids}-hint`}
+            title={blocked ? problems[0]?.message : undefined}
+          >
+            {connected ? (
+              <>
+                Generate <span className={styles.price}>{estimate === null ? "" : `· ${usd(estimate)}`}</span>
+              </>
+            ) : (
+              "Connect to generate"
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
