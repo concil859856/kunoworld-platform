@@ -85,7 +85,9 @@ test("Edit and Extend both run a source clip through MiniMax H3 Director", async
   await expect(inspector(page)).toContainText("Edit");
   await expect(inspector(page)).toContainText("Source video");
 
-  // The same clip, continued past its last frame.
+  // The same clip, continued past its last frame. Generating moved to the library,
+  // so come back for the composer first.
+  await page.getByRole("button", { name: "Create a video" }).click();
   await pickEditOp(page, "Extend");
   await expect(stockButton(page)).toContainText("Director");
   await generate(page, "Carry on past the cut: the camera keeps drifting right");

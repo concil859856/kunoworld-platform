@@ -357,13 +357,19 @@ export function Composer({
       )}
       <p className="estimate">{estimate === null ? "Price unavailable" : "Preview pricing"}</p>
       {routeNotice && <p className="status-message">{routeNotice}</p>}
-      {generalProblems.length > 0 && (
+      {(generalProblems.length > 0 || trayProblems.length > 0) && (
         <ul className="problem-list" aria-label="Problems to fix">
           {generalProblems.map((p) => (
             <li key={p.code + p.message} role="alert" className="status-message error-message">
               {p.message}
             </li>
           ))}
+          {/* The reason sits on an input up in the tray, so say where to look. */}
+          {generalProblems.length === 0 && (
+            <li role="alert" className="status-message error-message">
+              Fix the highlighted inputs above.
+            </li>
+          )}
         </ul>
       )}
     </section>
