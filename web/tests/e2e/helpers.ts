@@ -88,6 +88,37 @@ export async function connect(page: Page): Promise<void> {
   await expect(page.getByRole("button", { name: /Connected/ })).toBeVisible();
 }
 
+/**
+ * A composer tab ("Text", "Frames", "Keyframes", "References", "Edit"). Matched on
+ * the start of the name, because a tab holding inputs shows a count after its label.
+ */
+export async function openTab(page: Page, name: string): Promise<void> {
+  const tab = page.getByRole("tab", { name: new RegExp(`^${name}`) });
+  await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+}
+
+/** One of the Edit tray's operations ("Edit", "Extend", "Retake", "Audio → video"). */
+export async function pickEditOp(page: Page, name: string): Promise<void> {
+  const op = page.getByRole("radio", { name, exact: true });
+  await op.click();
+  await expect(op).toHaveAttribute("aria-checked", "true");
+}
+
+export function generateButton(page: Page): Locator {
+  return page.getByRole("button", { name: /^Generate/ });
+}
+
+/** The film-stock button, which names the stock currently loaded. */
+export function stockButton(page: Page): Locator {
+  return page.getByRole("button", { name: /Change film stock/ });
+}
+
+/** The visible list of reasons the Generate button is off (absent when there are none). */
+export function blockers(page: Page): Locator {
+  return page.getByRole("list", { name: "Problems to fix" });
+}
+
 export async function pickStock(page: Page, name: RegExp): Promise<void> {
   await page.getByRole("button", { name: /Change film stock/ }).click();
   await page.getByRole("option", { name }).click();

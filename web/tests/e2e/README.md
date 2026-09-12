@@ -7,15 +7,12 @@ encrypts to an attested (simulated) enclave, renders, and decrypts in the page.
 
 ```bash
 cd /video
-uv run kuno-devkit init --data /tmp/kuno-web-data          # idempotent; writes dev.env
-KUNO_DATA_DIR=/tmp/kuno-web-data KUNO_ALLOW_COUNTRY_OVERRIDE=1 \
-  KUNO_CORS_ORIGINS=http://localhost:3000,http://localhost:3001 \
-  uv run kuno-gateway --port 8080 &
-KUNO_DATA_DIR=/tmp/kuno-web-data uv run kuno-worker &
+KUNO_DATA_DIR=/tmp/kuno-web-data KUNO_ALLOW_COUNTRY_OVERRIDE=1 ./scripts/dev.sh
 ```
 
-`KUNO_ALLOW_COUNTRY_OVERRIDE=1` lets the JP run exercise MiniMax H3; the CORS list
-covers both dev servers Playwright starts.
+`dev.sh` runs `kuno-devkit init`, the gateway and one mock-TEE worker, and already
+allows both dev-server origins through CORS. `KUNO_ALLOW_COUNTRY_OVERRIDE=1` is what
+lets the Japan run exercise MiniMax H3.
 
 ## 2. Run the tests
 
@@ -25,22 +22,42 @@ npx playwright install chromium   # once
 npm run test:e2e                  # or: npx playwright test --project=unknown-region
 ```
 
-Playwright starts two dev servers itself, because `NEXT_PUBLIC_*` values are baked in
-at compile time:
+`ffmpeg` must be on `PATH`: `tests/e2e/fixtures.ts` builds the input clips and audio
+with it and caches them under `$TMPDIR/kuno-e2e-media`.
 
-| Project | Port | Region | Covers |
+Playwright starts two dev servers itself, because `NEXT_PUBLIC_*` values are baked in
+at compile time. Specs named `h3-*.spec.ts` run against the Japan one; everything else
+runs against the plain one.
+
+| Project | Port | Region | Specs |
 |---|---|---|---|
-| `unknown-region` | 3000 | none (H3 unlicensed) | text-to-video, first+last frame, library reload, H3 → LTX fallback, /verify, 400px, reduced motion |
-| `japan` | 3001 | `NEXT_PUBLIC_KUNO_DEV_COUNTRY=JP` | H3 serving directly, "MiniMax H3" attribution on results and certificate |
+| `unknown-region` | 3000 | none (H3 unlicensed) | `studio`, `modes`, `actions`, `validation`, `verify`, `responsive` |
+| `japan` | 3001 | `NEXT_PUBLIC_KUNO_DEV_COUNTRY=JP` | `h3-region`, `h3-director` |
 
 The API key is read from `/tmp/kuno-web-data/dev.env` (override with `KUNO_DATA_DIR`
 or `KUNO_DEV_API_KEY`).
 
+## What each spec covers
+
+- **studio** — text to video, first + last frame, library reload, H3 → LTX fallback.
+- **modes** — keyframes pinned to their own times, retake of a window, audio to video.
+- **h3-director** — references with the 9 / 3 / 3 / 12 caps and the "audio needs a
+  visual" rule, edit, extend, and audio to video on the Ref2VA checkpoint.
+- **actions** — cancel a running take, remove one, "Use last frame", reuse settings,
+  and the film-key backup / forget / restore round trip.
+- **validation** — the client-side rules from `kuno_protocol/profiles.py`: why the
+  Generate button is off, prompt length, seed range, per-role caps, duration/fps/size
+  sets, negative-prompt and enhancer availability, and the retake window.
+- **verify**, **responsive** — the certificate page, 400 px layouts, reduced motion.
+
 ## Notes
 
-- Playwright's bundled Chromium has no H.264 decoder, so tests assert the decrypted
-  bytes fetched back from the film's `blob:` URL (an MP4 `ftyp` box) instead of
-  playback. In Chrome, Edge or Safari the same films play in the page.
+- Input clips are VP8/WebM and audio is WAV so Chromium can decode them: the studio
+  probes every file it is given, and the tests rely on the probed duration (the retake
+  window, the reference-clip length warnings).
+- Films come back as H.264 MP4. This Chromium build decodes them, so "Use last frame"
+  really grabs a frame; the other tests still assert the decrypted bytes fetched back
+  from the film's `blob:` URL, because that also proves the decryption worked.
 - The mock worker renders test patterns and Ken Burns moves over your frames — the
   pipeline is real, the pictures are placeholders.
 - Screenshots from the responsive run land in `test-results/`.

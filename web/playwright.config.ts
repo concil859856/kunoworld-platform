@@ -21,14 +21,16 @@ export default defineConfig({
     video: "off",
   },
   projects: [
+    // Specs named h3-*.spec.ts run only against the Japan server, where the
+    // MiniMax H3 Community License allows serving.
     {
       name: "unknown-region",
-      testIgnore: ["**/h3-region.spec.ts"],
+      testIgnore: ["**/h3-*.spec.ts"],
       use: { ...devices["Desktop Chrome"], baseURL: "http://localhost:3000" },
     },
     {
       name: "japan",
-      testMatch: ["**/h3-region.spec.ts"],
+      testMatch: ["**/h3-*.spec.ts"],
       use: { ...devices["Desktop Chrome"], baseURL: "http://localhost:3001" },
     },
   ],
