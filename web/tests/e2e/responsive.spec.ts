@@ -70,10 +70,15 @@ test.describe("every width", () => {
         // tables, code blocks) are the exception: their content is meant to be wider than
         // the screen, so we check that the scroller itself fits and skip what's inside it.
         const spills = await page.evaluate((w) => {
-          const insideScroller = (el: Element | null): boolean => {
+          // Two ancestors make a wide child legitimate: a horizontal scroller, whose content
+          // is meant to exceed the screen, and a clipping box, where the overflow cannot be
+          // seen or scrolled to at all — the hero video is deliberately scaled past the frame
+          // and clipped by overflow:hidden.
+          const clippedOrScrollable = (el: Element | null): boolean => {
             for (let node = el; node && node !== document.body; node = node.parentElement) {
-              const s = getComputedStyle(node);
-              if ((s.overflowX === "auto" || s.overflowX === "scroll") && node.scrollWidth > node.clientWidth) return true;
+              const overflowX = getComputedStyle(node).overflowX;
+              if (overflowX === "hidden" || overflowX === "clip") return true;
+              if ((overflowX === "auto" || overflowX === "scroll") && node.scrollWidth > node.clientWidth) return true;
             }
             return false;
           };
@@ -83,7 +88,7 @@ test.describe("every width", () => {
             if (style.position === "fixed" || style.visibility === "hidden" || style.display === "none") continue;
             const box = el.getBoundingClientRect();
             if (box.width === 0 || box.height === 0) continue;
-            if (insideScroller(el.parentElement)) continue;
+            if (clippedOrScrollable(el.parentElement)) continue;
             // Parked off-canvas drawers (the studio's library and inspector at narrow
             // widths) sit wholly outside the viewport until opened, which is correct.
             // A genuine cut-off straddles an edge: partly on screen, partly lost.

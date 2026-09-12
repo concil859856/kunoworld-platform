@@ -13,8 +13,10 @@
     "clips that exist to demonstrate sound ask for it — the rest are muted background loops.",
     "",
     "`frames` names stills from scripts/stills.manifest.json; assets.mjs inlines them as data",
-    "URLs. Only the three modes Veo can genuinely do are given frames — keyframes and the",
-    "edit modes are text-driven renders that stand in for the idea."
+    "URLs. Only image_to_video and first_last_frame get frames — they are the two modes Veo",
+    "can genuinely perform. A last frame on its own is rejected, and keyframes, retake and the",
+    "edit modes have no equivalent here, so those tiles are text-driven renders standing in for",
+    "the idea. On LTX they would be real jobs."
   ],
   "defaults": {
     "model": "google/veo-3.1",
@@ -69,8 +71,8 @@
       "id": "mode-last",
       "role": "mode",
       "mode": "last_frame",
-      "frames": [{ "still": "in-last-frame", "type": "last_frame" }],
-      "prompt": "A gull glides in over the water and settles onto the weathered harbour post, wings folding, arriving exactly on this final composition",
+      "_note": "No frames: Veo rejects a last frame supplied on its own ('frame interpolation requires both an input image and a last frame'), and supplying both would just repeat the first_last_frame tile instead of showing what this mode is. Text-driven stand-in until LTX, which does support a last frame alone.",
+      "prompt": "A gull glides in low over the water and settles onto a weathered harbour post, wings folding, the shot coming to rest on that final composition",
       "alt": "A gull gliding in and settling on a harbour post, arriving at a held final composition."
     },
     {

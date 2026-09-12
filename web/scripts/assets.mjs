@@ -123,13 +123,22 @@ async function encode(source, clip) {
   const mp4 = join(OUT, `${clip.id}.mp4`);
   const poster = join(OUT, `${clip.id}.jpg`);
   const keepAudio = Boolean(clip.generate_audio) && (await hasAudioStream(source));
-  const width = clip.role === "hero" ? 1600 : 1280;
+  const hero = clip.role === "hero";
+  const width = hero ? 1600 : 1280;
   const scale = `scale=${width}:-2:flags=lanczos`;
+
+  // CRF alone let a detailed shot (breaking surf, rain) reach 10 Mb/s, which the hero then
+  // autoplays on first paint. Cap the rate: heroes get more headroom because they are the
+  // largest and play immediately, tiles less because ten of them share a page. At these caps
+  // the output is visually indistinguishable from uncapped and roughly a third the size.
+  const maxrate = hero ? "3M" : "2M";
+  const bufsize = hero ? "6M" : "4M";
 
   await run("ffmpeg", [
     "-y", "-i", source,
     "-vf", scale,
     "-c:v", "libx264", "-profile:v", "high", "-crf", "23", "-preset", "slow",
+    "-maxrate", maxrate, "-bufsize", bufsize,
     "-pix_fmt", "yuv420p", "-movflags", "+faststart",
     ...(keepAudio ? ["-c:a", "aac", "-b:a", "128k"] : ["-an"]),
     mp4,

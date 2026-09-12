@@ -35,7 +35,14 @@ export function HeroReel() {
   }, []);
 
   useEffect(() => {
-    if (!clips.length || reduced) return;
+    if (!clips.length) return;
+    // Read the preference here rather than trusting `reduced`: it starts false and is set
+    // by a separate effect, so gating on state alone lets the first shot begin playing
+    // before we ever learn the viewer asked for stillness.
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      videos.current.forEach((video) => video?.pause());
+      return;
+    }
     const current = videos.current[active];
     if (!current) return;
 
@@ -81,7 +88,6 @@ export function HeroReel() {
           muted
           playsInline
           preload={i === 0 ? "auto" : "none"}
-          autoPlay={i === 0 && !reduced}
           aria-hidden="true"
           tabIndex={-1}
         >
