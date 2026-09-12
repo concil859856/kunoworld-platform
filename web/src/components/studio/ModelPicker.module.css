@@ -60,7 +60,10 @@
   position: absolute;
   right: 0;
   bottom: calc(100% + 8px);
-  z-index: 40;
+  /* Above the sticky header (50): the shelf opens upwards, and once the composer is
+     tall (Advanced open) its top reaches the header, which would swallow the clicks.
+     Below the drawer scrim (60). */
+  z-index: 55;
   display: grid;
   gap: 4px;
   width: min(560px, calc(100vw - 32px));

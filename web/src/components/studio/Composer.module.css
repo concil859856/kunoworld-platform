@@ -457,11 +457,10 @@
   }
 }
 
-/* Phones: the shot-type tabs scroll rather than squeeze, and stay reachable. */
+/* Phones: the shot-type tabs scroll rather than squeeze, and stay reachable.
+   No bleed into the composer's gutter: it widens the row past the viewport. */
 @media (max-width: 520px) {
   .tabs {
-    margin-inline: -16px;
-    padding-inline: 16px;
     scroll-snap-type: x proximity;
     -webkit-overflow-scrolling: touch;
   }
