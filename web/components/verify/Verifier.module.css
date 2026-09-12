@@ -1,0 +1,96 @@
+.verifier {
+  display: grid;
+  gap: 22px;
+}
+
+.hashForm {
+  display: grid;
+  gap: 8px;
+}
+
+.hashLabel {
+  font-size: 13px;
+  color: var(--c-muted);
+}
+
+.hashRow {
+  display: flex;
+  gap: 8px;
+}
+
+.hashInput {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-s);
+  background: var(--c-black);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.hashInput:focus-visible {
+  outline: none;
+  border-color: var(--c-amber);
+  box-shadow: 0 0 0 3px var(--c-amber-soft);
+}
+
+.result {
+  display: grid;
+  gap: 18px;
+}
+
+.result:empty {
+  display: none;
+}
+
+.fileLine {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--c-paper-2);
+  word-break: break-all;
+}
+
+.shaLabel {
+  color: var(--c-muted);
+  margin-right: 6px;
+}
+
+.status {
+  color: var(--c-muted);
+}
+
+.missing {
+  display: grid;
+  gap: 14px;
+  justify-items: start;
+  padding: 28px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--c-tray);
+  color: var(--c-paper-2);
+}
+
+.missingTitle {
+  font-size: clamp(24px, 3vw, 32px);
+  font-style: italic;
+  color: var(--c-paper);
+}
+
+.error {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid rgba(228, 119, 92, 0.35);
+  border-radius: var(--radius-s);
+  background: var(--c-error-soft);
+  font-size: 14px;
+}
+
+.after {
+  font-size: 13px;
+  color: var(--c-muted);
+  word-break: break-all;
+}

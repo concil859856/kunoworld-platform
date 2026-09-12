@@ -1,42 +1,60 @@
 /*
  * The composer trays came across from the previous studio with their own CSS modules,
- * written against the old darkroom palette. Rather than rewrite 524 lines of CSS, map
- * those token names onto this theme once. Scoped to .studio-shell so nothing leaks into
- * the marketing pages, which have their own language in ocean.css.
+ * written against the old darkroom palette. Rather than rewrite them, map those token
+ * names onto this theme once.
+ *
+ * Applied to .studio-shell and to .legacy-tokens, which any page can put around carried-
+ * over components — /verify does. Everything outside those scopes keeps this site's own
+ * language from ocean.css.
  *
  * The one deliberate change of meaning: the old accent was tungsten amber, and here it
  * becomes the mint primary, so restored controls pick up the studio's accent colour.
  */
 
-.studio-shell {
-  /* Surfaces, darkest to lightest. */
-  --c-black: var(--background);
-  --c-tray: var(--card);
-  --c-tray-2: var(--secondary);
-  --c-tray-3: var(--popover);
+.studio-shell,
+.legacy-tokens {
+  /*
+   * Pinned, not derived. These values used to come from the theme, which works in the
+   * studio but breaks on a marketing page: .ocean-site swaps in a light palette
+   * (--foreground becomes ink) while leaving --card dark, so the carried-over components
+   * rendered dark text on a dark panel. They were designed for a dark surface, so this
+   * scope simply is one.
+   */
+  --c-black: #0d191d;
+  --c-tray: #13272b;
+  --c-tray-2: #21383e;
+  --c-tray-3: #1b343c;
 
-  /* Text, brightest to quietest. */
-  --c-paper: var(--foreground);
-  --c-paper-2: color-mix(in srgb, var(--foreground) 82%, var(--background));
-  --c-muted: var(--muted-foreground);
+  --c-paper: #ebf2f1;
+  --c-paper-2: #c3cfce;
+  --c-muted: #93a3a2;
 
-  /* The accent, and its wash for selected states. */
-  --c-amber: var(--primary);
-  --c-amber-soft: color-mix(in srgb, var(--primary) 14%, transparent);
+  --c-amber: #a6edda;
+  --c-amber-soft: color-mix(in srgb, #a6edda 14%, transparent);
 
-  --c-error: var(--destructive);
+  --c-error: #ff9595;
+  --c-error-soft: color-mix(in srgb, #ff9595 12%, transparent);
 
-  /* Hairlines at three weights, from the theme's border colour. */
-  --line: color-mix(in srgb, var(--foreground) 9%, transparent);
-  --line-2: color-mix(in srgb, var(--foreground) 16%, transparent);
-  --line-3: color-mix(in srgb, var(--foreground) 30%, transparent);
+  --line: color-mix(in srgb, #ebf2f1 9%, transparent);
+  --line-2: color-mix(in srgb, #ebf2f1 16%, transparent);
+  --line-3: color-mix(in srgb, #ebf2f1 30%, transparent);
 
   --radius-s: calc(var(--radius) - 5px);
   --radius-m: calc(var(--radius) - 2px);
   --radius-pill: 999px;
 
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --font-display: "Kuno Serif", Georgia, serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+/* On a light page the scope carries its own surface, so the panel reads as an inset
+   dark card rather than light text on cream. */
+.legacy-tokens {
+  background: var(--c-black);
+  color: var(--c-paper);
+  padding: clamp(18px, 3vw, 30px);
+  border-radius: 14px;
 }
 
 /* How many files a tab is holding, beside its label. The tab triggers already space
@@ -53,4 +71,17 @@
   font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1;
+}
+
+/* Utilities the carried-over components expect, which this site never defined. */
+.studio-shell .mono,
+.legacy-tokens .mono {
+  font-family: var(--font-mono);
+}
+
+.studio-shell .link,
+.legacy-tokens .link {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
