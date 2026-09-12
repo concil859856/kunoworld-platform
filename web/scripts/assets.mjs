@@ -26,7 +26,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { estimateFor, pickProvider, PROVIDERS } from "./providers.mjs";
+import { estimateFor, OR_DURATIONS, pickProvider, PROVIDERS } from "./providers.mjs";
 
 const run = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -71,11 +71,26 @@ async function loadEnv() {
 
 /** The request that produced a clip, so a changed prompt regenerates but a reorder doesn't. */
 function fingerprint(clip) {
-  const { id, tier, prompt, resolution, fps, duration, generate_audio } = clip;
+  const { id, model, tier, prompt, resolution, duration, generate_audio, frames } = clip;
   return createHash("sha256")
-    .update(JSON.stringify({ id, tier, prompt, resolution, fps, duration, generate_audio }))
+    .update(JSON.stringify({ id, model, tier, prompt, resolution, duration, generate_audio, frames }))
     .digest("hex")
     .slice(0, 12);
+}
+
+/**
+ * A clip's `frames` name stills from scripts/stills.manifest.json. They are inlined as data
+ * URLs because the API needs a URL it can read and ours are local files, not hosted.
+ */
+async function frameImages(frames) {
+  const out = [];
+  for (const frame of frames) {
+    const file = join(WEB, "public", "stills", `${frame.still}.jpg`);
+    if (!existsSync(file)) throw new Error(`missing still "${frame.still}" — run: node scripts/stills.mjs`);
+    const b64 = (await readFile(file)).toString("base64");
+    out.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${b64}` }, frame_type: frame.type });
+  }
+  return out;
 }
 
 async function ffprobe(file) {
@@ -141,6 +156,16 @@ async function main() {
     process.exit(1);
   }
 
+  // Models accept only certain durations, and the API rejects anything else. Catch it here
+  // rather than paying for a run that dies partway through.
+  const badDurations = clips
+    .filter((c) => OR_DURATIONS[c.model] && !OR_DURATIONS[c.model].includes(Number(c.duration)))
+    .map((c) => `${c.id}: ${c.duration}s — ${c.model} accepts ${OR_DURATIONS[c.model].join(", ")}`);
+  if (badDurations.length) {
+    console.error("Unsupported durations in the manifest:\n  " + badDurations.join("\n  "));
+    process.exit(1);
+  }
+
   const previous = existsSync(INDEX) ? JSON.parse(await readFile(INDEX, "utf8")) : { clips: {} };
   const index = { ...previous.clips };
 
@@ -156,7 +181,7 @@ async function main() {
   // Costing is provider-specific and deliberately key-free: fal publishes a per-second
   // rate, ElevenLabs does not. With no key at all we still price the fal path, so the
   // reel can be costed before anyone signs up for anything.
-  const pricingName = WANTED ?? provider?.name ?? "fal";
+  const pricingName = WANTED ?? provider?.name ?? "openrouter";
   const priceOf = (c) => estimateFor(pricingName, c);
   const priced = priceOf(clips[0]) != null;
   const estimate = priced ? pending.reduce((sum, c) => sum + priceOf(c), 0) : null;
@@ -167,7 +192,8 @@ async function main() {
 
   if (DRY) {
     for (const c of pending) {
-      log(`  ${c.id.padEnd(20)} ${String(c.tier).padEnd(5)} ${c.duration}s ${c.resolution}  ${priced ? money(priceOf(c)) : "—"}`);
+      const marks = [`${c.duration}s`, c.resolution, c.generate_audio ? "audio" : "silent", c.frames?.length ? `${c.frames.length} frame` : ""].filter(Boolean);
+      log(`  ${c.id.padEnd(20)} ${marks.join(" · ").padEnd(30)} ${priced ? money(priceOf(c)) : "—"}`);
     }
     log(`\nDry run — nothing generated.${priced ? ` Budget cap is ${money(BUDGET)}.` : ""}`);
     return;
@@ -195,14 +221,14 @@ async function main() {
 
   for (const [i, clip] of pending.entries()) {
     const cost = priceOf(clip);
-    log(`  [${i + 1}/${pending.length}] ${clip.id}  ${clip.tier} ${clip.duration}s ${clip.resolution}${cost == null ? "" : `  ~${money(cost)}`}`);
+    log(`  [${i + 1}/${pending.length}] ${clip.id}  ${clip.duration}s ${clip.resolution}${clip.generate_audio ? " with audio" : ""}${cost == null ? "" : `  ~${money(cost)}`}`);
     const temp = join(OUT, `${clip.id}.src.mp4`);
     try {
-      const url = await provider.generate(clip, log);
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`download failed: ${res.status}`);
-      await writeFile(temp, Buffer.from(await res.arrayBuffer()));
-      if (cost != null) spent += cost;
+      if (clip.frames?.length) clip.frame_images = await frameImages(clip.frames);
+      const result = await provider.generate(clip, log);
+      await writeFile(temp, result.bytes);
+      // Providers that report what they actually charged win over our estimate.
+      spent += result.cost ?? cost ?? 0;
 
       const out = await encode(temp, clip);
       index[clip.id] = {
@@ -220,6 +246,7 @@ async function main() {
         prompt: clip.prompt,
         source: clip.source,
         provider: provider.name,
+        model: result.model ?? clip.model,
         fingerprint: fingerprint(clip),
       };
       log(`      ✓ ${out.width}×${out.height} ${out.duration.toFixed(1)}s${out.keepAudio ? " with audio" : ""}`);

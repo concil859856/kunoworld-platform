@@ -10,8 +10,13 @@ import generated from "./reel.generated.json";
 
 export type ClipRole = "hero" | "mode" | "stock" | "texture";
 
-/** Where a clip came from. The site labels it; we never imply the network made it. */
-export type ClipSource = "ltx-reference" | "h3-reference" | "kuno";
+/**
+ * Where a clip came from. The site labels it; we never imply the network made it.
+ *
+ * `kuno` is the only value that may claim network provenance. Everything else is a sample
+ * rendered elsewhere — possibly by a model we do not even serve — and must say so.
+ */
+export type ClipSource = "veo-reference" | "ltx-reference" | "h3-reference" | "kuno";
 
 export interface Clip {
   id: string;
@@ -27,7 +32,10 @@ export interface Clip {
   alt: string;
   prompt: string;
   source: ClipSource;
-  endpoint: string;
+  /** Which service rendered it, e.g. "openrouter". Written by scripts/assets.mjs. */
+  provider?: string;
+  /** The exact model, e.g. "google/veo-3.1". Shown in the provenance line. */
+  model?: string;
 }
 
 const INDEX = (generated.clips ?? {}) as unknown as Record<string, Clip>;
@@ -58,16 +66,32 @@ export function clipForFamily(family: string): Clip | undefined {
  * open weights the network runs, but they were not made by a sealed stage and carry no
  * certificate — so they never claim one.
  */
+const MODEL_LABEL: Record<Exclude<ClipSource, "kuno">, string> = {
+  "veo-reference": "Google Veo 3.1",
+  "ltx-reference": "LTX-2",
+  "h3-reference": "MiniMax H3",
+};
+
 export function provenanceOf(c: Clip): string {
-  switch (c.source) {
-    case "kuno":
-      return "Made on the KunoWorld network · certificate attached";
-    case "h3-reference":
-      return "Reference render · MiniMax H3 weights, not made on the network";
-    default:
-      return "Reference render · LTX-2 weights, not made on the network";
-  }
+  if (c.source === "kuno") return "Made on the KunoWorld network · certificate attached";
+  return `Sample · ${c.model ?? MODEL_LABEL[c.source]}, not made on the network`;
 }
 
-export const FOOTAGE_NOTE =
-  "Sample footage is rendered from the same open weights the network runs. It is not network output and carries no certificate — films you make in the studio do.";
+/**
+ * Derived from the clips actually present rather than hardcoded, so the wording cannot
+ * drift from the footage. The samples may come from a model the network does not serve,
+ * so this must never imply otherwise — only a film with a certificate can claim that.
+ */
+function footageNote(): string {
+  const models = Array.from(
+    new Set(ALL_CLIPS.filter((c) => c.source !== "kuno").map((c) => c.model ?? MODEL_LABEL[c.source as Exclude<ClipSource, "kuno">])),
+  );
+  const made = models.length === 0 ? "third-party models" : models.length === 1 ? models[0] : `${models.slice(0, -1).join(", ")} and ${models.at(-1)}`;
+  return (
+    `Sample footage on this page was generated with ${made}, to show what each kind of request looks like. ` +
+    "It was not made on the KunoWorld network, is not output from the models the network serves, and carries no " +
+    "certificate — films you make in the studio are."
+  );
+}
+
+export const FOOTAGE_NOTE = footageNote();
