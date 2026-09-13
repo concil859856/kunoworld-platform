@@ -22,7 +22,8 @@ from kuno_protocol.receipts import Receipt
 from kuno_protocol.switch import SignedSwitch, SwitchConfig
 
 from .blobstore import BlobStore
-from .db import Account, Base, Blob, Challenge, Enclave, Job, Setting
+from .db import Account, Blob, Challenge, Enclave, Job, Setting
+from .migrations import upgrade_database
 from .settings import Settings
 
 NONCE_TTL_S = 300
@@ -39,7 +40,7 @@ class GatewayState:
         settings.data_dir.mkdir(parents=True, exist_ok=True)
         sqlite = settings.db_url.startswith("sqlite")
         self.engine = create_engine(settings.db_url, connect_args={"check_same_thread": False} if sqlite else {})
-        Base.metadata.create_all(self.engine)
+        upgrade_database(self.engine)
         self.Session = sessionmaker(self.engine, expire_on_commit=False)
         self.blobs = BlobStore(settings.blob_dir)
         self.profiles: dict[str, ModelProfile] = load_profiles()
