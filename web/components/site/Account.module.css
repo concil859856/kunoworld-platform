@@ -1,0 +1,170 @@
+/* Sign-in and account pages. Selectors are scoped under .account so the site's global resets
+   for buttons, inputs and tables don't override them. */
+
+.account .panel {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  max-width: 560px;
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 14px;
+}
+
+.account .panelTitle,
+.account .sectionTitle {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.account .grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 860px) {
+  .account .grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .account .grid .panel {
+    max-width: none;
+  }
+}
+
+.account .section {
+  display: grid;
+  gap: 12px;
+  margin-top: clamp(32px, 6vw, 56px);
+}
+
+.account .field {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.account .field input {
+  width: 100%;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.account .inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+
+.account .inline .field {
+  flex: 1 1 240px;
+}
+
+.account .stack {
+  display: grid;
+  gap: 14px;
+}
+
+.account .label {
+  font-size: 12px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.account .balance {
+  font-size: clamp(2.2rem, 6vw, 3.2rem);
+  line-height: 1;
+}
+
+.account .fine {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  opacity: 0.75;
+}
+
+.account .error {
+  margin: 0;
+  font-size: 14px;
+  color: #b3261e;
+}
+
+.account .facts {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.account .facts > div {
+  display: grid;
+  gap: 2px;
+}
+
+.account .facts dt {
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.account .facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.account .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.account .reveal {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, #2e7d32 45%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, #2e7d32 7%, transparent);
+}
+
+.account .reveal p {
+  margin: 0;
+}
+
+.account .tableWrap {
+  overflow-x: auto;
+}
+
+.account .table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.account .table th,
+.account .table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  white-space: nowrap;
+}
+
+.account .table th {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.account .credit {
+  color: #2e7d32;
+}
+
+.account .debit {
+  color: inherit;
+}

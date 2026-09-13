@@ -251,6 +251,22 @@
   color: var(--c-muted);
 }
 
+/* Signing in from the studio, shown only while no gateway is connected. */
+.studio-shell .studio-signin-link {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  color: var(--primary);
+}
+
+/* On the narrowest phones the topbar can't fit Sign in, the connection button, the library
+   toggle and the avatar. The avatar is only decoration, so it gives way. */
+@media (max-width: 400px) {
+  .studio-shell .avatar {
+    display: none;
+  }
+}
+
 /* The reasons Generate is off, named as a list so it can be found and read as one. */
 .studio-shell .problem-list {
   list-style: none;
