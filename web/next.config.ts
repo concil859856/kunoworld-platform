@@ -8,6 +8,8 @@ const workspaceRoot = path.resolve(__dirname, "../..");
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // The container image runs the self-contained server this produces.
+  output: "standalone",
   // Lets a second dev server (e.g. the region test run) build into its own directory.
   distDir: process.env.KUNO_DIST_DIR || ".next",
   turbopack: { root: workspaceRoot },

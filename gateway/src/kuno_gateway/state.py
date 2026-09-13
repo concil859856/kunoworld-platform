@@ -9,20 +9,35 @@ import time
 from pathlib import Path
 
 from fastapi import Request
-from sqlalchemy import create_engine, delete, select
-from sqlalchemy.orm import Session, sessionmaker
-
 from kuno_protocol.attestation import GoldenManifest
 from kuno_protocol.canonical import b64d
 from kuno_protocol.profiles import ModelProfile, load_profiles
-from kuno_protocol.regions import normalize_country
-from kuno_protocol.schemas import GenerationParams, JobState, JobStatus, MinerChallenge, MinerJob
 from kuno_protocol.receipts import Receipt
+from kuno_protocol.regions import normalize_country
+from kuno_protocol.schemas import (
+    GenerationParams,
+    JobState,
+    JobStatus,
+    MinerChallenge,
+    MinerJob,
+)
 from kuno_protocol.switch import SignedSwitch, SwitchConfig
+from sqlalchemy import create_engine, delete, select
+from sqlalchemy.orm import Session, sessionmaker
 
 from . import identity, ledger, webhooks
-from .blobstore import BlobStore
-from .db import Account, Blob, Challenge, Enclave, Job, LoginToken, Nonce, Setting, UserSession
+from .blobstore_s3 import select_blob_store
+from .db import (
+    Account,
+    Blob,
+    Challenge,
+    Enclave,
+    Job,
+    LoginToken,
+    Nonce,
+    Setting,
+    UserSession,
+)
 from .mailer import Mailer, OutboxMailer, ResendMailer
 from .migrations import upgrade_database
 from .ratelimit import DatabaseRateLimiter, RateLimiter
@@ -44,7 +59,7 @@ class GatewayState:
         self.engine = create_engine(settings.db_url, connect_args={"check_same_thread": False} if sqlite else {})
         upgrade_database(self.engine)
         self.Session = sessionmaker(self.engine, expire_on_commit=False)
-        self.blobs = BlobStore(settings.blob_dir)
+        self.blobs = select_blob_store(settings)
         self.profiles: dict[str, ModelProfile] = load_profiles()
         self.manifest = GoldenManifest.model_validate_json(Path(settings.manifest_path).read_text())
         self.owner_public_key = b64d(settings.owner_public_key) if settings.owner_public_key else None

@@ -1,0 +1,212 @@
+# A production-like KunoWorld stack on one machine:
+#   Postgres + MinIO (S3) + gateway + website + one mock-TEE worker.
+#
+#   cd platform/deploy
+#   cp .env.example .env        # then fill in the passwords
+#   docker compose up -d --build
+#
+# Builds use the directory above platform/ as the context (KUNO_BUILD_CONTEXT), which must
+# hold the subnet and sdk checkouts beside platform. See README.md in this directory.
+#
+# Host ports are bound to 127.0.0.1 and default to 18080 / 13000 / 19001 so the stack can
+# run next to the dev servers on 8080 / 3000 / 3001.
+
+name: kunoworld
+
+x-build-context: &build-context ${KUNO_BUILD_CONTEXT:-../..}
+
+x-gateway-env: &gateway-env
+  KUNO_DATA_DIR: /var/lib/kuno/data
+  KUNO_PORT: ${GATEWAY_PORT:-18080}
+  KUNO_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-kuno}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-kuno}
+  KUNO_BLOB_BACKEND: s3
+  KUNO_S3_BUCKET: ${KUNO_S3_BUCKET:-kuno-blobs}
+  KUNO_S3_ENDPOINT_URL: http://minio:9000
+  KUNO_S3_REGION: ${KUNO_S3_REGION:-us-east-1}
+  KUNO_S3_ADDRESSING_STYLE: path
+  KUNO_S3_ACCESS_KEY_ID: ${KUNO_S3_ACCESS_KEY_ID:?set KUNO_S3_ACCESS_KEY_ID in .env}
+  KUNO_S3_SECRET_ACCESS_KEY: ${KUNO_S3_SECRET_ACCESS_KEY:?set KUNO_S3_SECRET_ACCESS_KEY in .env}
+  KUNO_CORS_ORIGINS: http://localhost:${WEB_PORT:-13000}
+  KUNO_SITE_URL: http://localhost:${WEB_PORT:-13000}
+  KUNO_EMAIL_FROM: ${KUNO_EMAIL_FROM:-KunoWorld <signin@localhost>}
+  KUNO_RESEND_API_KEY: ${KUNO_RESEND_API_KEY:-}
+  KUNO_SIGNUP_CREDIT_USD: ${KUNO_SIGNUP_CREDIT_USD:-5}
+  KUNO_LOG_FORMAT: ${KUNO_LOG_FORMAT:-json}
+  KUNO_LOG_LEVEL: ${KUNO_LOG_LEVEL:-INFO}
+  KUNO_METRICS_TOKEN: ${KUNO_METRICS_TOKEN:?set KUNO_METRICS_TOKEN in .env}
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-local-compose}
+
+services:
+  postgres:
+    image: postgres:16.15-bookworm@sha256:bb3e1a57e5407e0a5280b4211980a5e537f4abd234a87014ac979849a78dd825
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kuno}
+      POSTGRES_USER: ${POSTGRES_USER:-kuno}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z.hotfix.7aa24e772@sha256:cf3dadcfa1fb0324f43958bad1abba986d53c4ecc04d4d50b46c7dcda28bd3cd
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-19001}:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # One-shot: bucket, a least-privilege user for the gateway, and a lifecycle rule that
+  # backs up the gateway janitor's blob expiry.
+  minio-setup:
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      BUCKET: ${KUNO_S3_BUCKET:-kuno-blobs}
+      GATEWAY_KEY: ${KUNO_S3_ACCESS_KEY_ID}
+      GATEWAY_SECRET: ${KUNO_S3_SECRET_ACCESS_KEY}
+      EXPIRE_DAYS: ${KUNO_S3_EXPIRE_DAYS:-8}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null
+        mc mb --ignore-existing "local/$$BUCKET"
+        mc anonymous set none "local/$$BUCKET"
+        cat > /tmp/kuno-gateway-policy.json <<EOF
+        {"Version": "2012-10-17", "Statement": [
+          {"Effect": "Allow", "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketMultipartUploads"], "Resource": ["arn:aws:s3:::$$BUCKET"]},
+          {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"], "Resource": ["arn:aws:s3:::$$BUCKET/*"]}
+        ]}
+        EOF
+        mc admin policy create local kuno-gateway /tmp/kuno-gateway-policy.json
+        mc admin user add local "$$GATEWAY_KEY" "$$GATEWAY_SECRET"
+        mc admin policy attach local kuno-gateway --user "$$GATEWAY_KEY" 2>/dev/null || true
+        # import replaces the whole lifecycle configuration, so re-running doesn't stack rules.
+        # (MinIO cleans up abandoned multipart uploads itself; on AWS/R2 add an
+        # AbortIncompleteMultipartUpload rule too, see README.md.)
+        cat > /tmp/kuno-lifecycle.json <<EOF
+        {"Rules": [{"ID": "kuno-expire-blobs", "Status": "Enabled", "Filter": {"Prefix": "blobs/"}, "Expiration": {"Days": $$EXPIRE_DAYS}}]}
+        EOF
+        mc ilm import "local/$$BUCKET" < /tmp/kuno-lifecycle.json
+        echo "minio ready: bucket $$BUCKET, blobs expire after $$EXPIRE_DAYS days"
+    restart: "no"
+
+  # One-shot: development keys, golden manifest and signed switch for the mock TEE, written
+  # to the shared volume. Re-running keeps existing keys. Production supplies a real
+  # manifest, owner key and admin token instead.
+  devkit:
+    image: kunoworld/mock-worker:${KUNO_IMAGE_TAG:-local}
+    build:
+      context: *build-context
+      dockerfile: platform/deploy/worker.Dockerfile
+    command: ["kuno-devkit", "init", "--data", "/var/lib/kuno/data"]
+    volumes:
+      - kuno-keys:/var/lib/kuno/data
+    restart: "no"
+
+  # One-shot: brings the database schema to head before any gateway starts. The gateway also
+  # upgrades on start-up; doing it here first means replicas never race on a migration.
+  migrate:
+    image: kunoworld/gateway:${KUNO_IMAGE_TAG:-local}
+    build:
+      context: *build-context
+      dockerfile: platform/gateway/Dockerfile
+    environment: *gateway-env
+    command:
+      - python
+      - -c
+      - |
+        from sqlalchemy import create_engine
+        from kuno_gateway.migrations import upgrade_database
+        from kuno_gateway.settings import Settings
+        upgrade_database(create_engine(Settings.from_env().db_url))
+        print("database schema is at head")
+    volumes:
+      - kuno-keys:/var/lib/kuno/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      devkit:
+        condition: service_completed_successfully
+    restart: "no"
+
+  gateway:
+    image: kunoworld/gateway:${KUNO_IMAGE_TAG:-local}
+    build:
+      context: *build-context
+      dockerfile: platform/gateway/Dockerfile
+    restart: unless-stopped
+    environment: *gateway-env
+    volumes:
+      # Dev keys, manifest and dev.env from the devkit service; also the sign-in outbox
+      # when no mail provider key is set.
+      - kuno-keys:/var/lib/kuno/data
+    ports:
+      # Same port inside and out, so http://gateway.localhost:<port> works from the host's
+      # browser (*.localhost is loopback) and from the web container (network alias).
+      - "127.0.0.1:${GATEWAY_PORT:-18080}:${GATEWAY_PORT:-18080}"
+    networks:
+      default:
+        aliases: [gateway.localhost]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-setup:
+        condition: service_completed_successfully
+
+  worker:
+    image: kunoworld/mock-worker:${KUNO_IMAGE_TAG:-local}
+    build:
+      context: *build-context
+      dockerfile: platform/deploy/worker.Dockerfile
+    restart: unless-stopped
+    environment:
+      KUNO_DATA_DIR: /var/lib/kuno/data
+      KUNO_GATEWAY_URL: http://gateway:${GATEWAY_PORT:-18080}
+      KUNO_BACKEND: mock
+      KUNO_TEE: mock
+      KUNO_PROFILES: ${KUNO_WORKER_PROFILES:-ltx-2.5-fast,ltx-2.5-pro,h3-turbo,h3,h3-reference}
+    volumes:
+      - kuno-keys:/var/lib/kuno/data:ro
+    stop_grace_period: 2m
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+  web:
+    image: kunoworld/web:${KUNO_IMAGE_TAG:-local}
+    build:
+      context: *build-context
+      dockerfile: platform/web/Dockerfile
+      args:
+        NEXT_PUBLIC_KUNO_API: ${KUNO_PUBLIC_API_URL:-http://gateway.localhost:18080}
+        PATCH_STANDALONE: ${WEB_PATCH_STANDALONE:-0}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WEB_PORT:-13000}:3000"
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  minio-data:
+  kuno-keys:

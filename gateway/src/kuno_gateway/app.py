@@ -3,15 +3,28 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import __version__, api_admin, api_auth, api_miner, api_public, api_validator, webhooks
+from . import (
+    __version__,
+    api_admin,
+    api_auth,
+    api_miner,
+    api_payments,
+    api_public,
+    api_validator,
+    observability,
+    webhooks,
+)
 from .limits import BodyLimitMiddleware
+from .nowpayments import NowPayments
 from .settings import Settings
 from .state import GatewayState
+from .stripe_payments import StripeTopups
 
 log = logging.getLogger("kuno.gateway")
 
@@ -34,6 +47,27 @@ async def _webhook_loop(state: GatewayState) -> None:
         await asyncio.sleep(state.settings.webhook_interval_s)
 
 
+async def _chain_loop(state: GatewayState) -> None:
+    """Credits TAO and alpha top-ups from finalized blocks, reconnecting after any failure."""
+    from .chainwatch import ChainWatcher, SubstrateChain
+    from .prices import TaoPriceOracle
+
+    oracle = TaoPriceOracle(state.settings.price_max_divergence)
+    watcher = None
+    while True:
+        try:
+            if watcher is None:
+                watcher = await asyncio.to_thread(lambda: ChainWatcher(state, SubstrateChain(state.settings.subtensor_url), oracle))
+            await asyncio.to_thread(watcher.run_once)
+        except ImportError:
+            log.error("TAO top-ups need the gateway's chain extra (substrate-interface); the chain watcher is off")
+            return
+        except Exception:  # a dropped connection or a bad block: reconnect and retry
+            log.exception("chain watcher pass failed")
+            watcher = None
+        await asyncio.sleep(12)
+
+
 def _body_limit(settings: Settings, path: str) -> int:
     # Ciphertext blobs are the only large bodies the gateway accepts.
     if path in ("/v1/blobs", "/miner/v1/blobs"):
@@ -48,6 +82,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         tasks = [asyncio.create_task(_janitor_loop(state)), asyncio.create_task(_webhook_loop(state))]
+        if settings.tao_treasury_address:
+            tasks.append(asyncio.create_task(_chain_loop(state)))
         try:
             yield
         finally:
@@ -56,6 +92,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="KunoWorld Gateway", version=__version__, lifespan=lifespan)
     app.state.gw = state
+    app.state.stripe_topups = StripeTopups(settings)
+    app.state.nowpayments = NowPayments(settings)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -63,13 +101,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(BodyLimitMiddleware, limit_for=lambda path: _body_limit(settings, path))
-    for module in (api_public, api_auth, api_miner, api_validator, api_admin):
+    for module in (api_public, api_auth, api_payments, api_miner, api_validator, api_admin):
         app.include_router(module.router)
 
     @app.get("/healthz")
     async def healthz():
         return {"ok": True, "version": __version__}
 
+    # Request ids, structured logs, /metrics and Sentry, each only as far as it is configured.
+    observability.install(app, settings)
     return app
 
 
@@ -77,11 +117,11 @@ def main() -> None:
     import uvicorn
 
     parser = argparse.ArgumentParser(prog="kuno-gateway")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("--host", default=os.environ.get("KUNO_HOST", "127.0.0.1"))
+    parser.add_argument("--port", type=int, default=int(os.environ.get("KUNO_PORT", "8080")))
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO)
-    uvicorn.run(create_app(), host=args.host, port=args.port)
+    observability.configure_logging(os.environ.get("KUNO_LOG_LEVEL", "INFO"), os.environ.get("KUNO_LOG_FORMAT", "json"))
+    uvicorn.run(create_app(), host=args.host, port=args.port, log_config=None)
 
 
 if __name__ == "__main__":

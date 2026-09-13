@@ -1,0 +1,46 @@
+# The uv workspace the platform builds from when the dev workspace repo isn't checked out:
+# CI and the container images copy this file (and uv.lock beside it) to the root of a
+# directory laid out as
+#
+#     <root>/pyproject.toml   <- this file
+#     <root>/uv.lock          <- deploy/workspace/uv.lock
+#     <root>/subnet/          <- kunoworld-subnet checkout
+#     <root>/platform/        <- kunoworld-platform checkout
+#
+# Keep uv.lock current after changing any member's dependencies:
+#     platform/deploy/workspace/relock.sh
+[project]
+name = "kunoworld-platform-workspace"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["subnet/protocol", "subnet/worker", "platform/gateway"]
+
+[tool.uv.sources]
+kuno-protocol = { workspace = true }
+kuno-worker = { workspace = true }
+kuno-gateway = { workspace = true }
+
+[dependency-groups]
+# Everything the gateway image runs with: Postgres driver, S3 blobs, metrics, Sentry.
+# (Mirrors the extras suggested for platform/gateway/pyproject.toml; kept here so the image
+# and CI work before that file is changed.)
+gateway = [
+    "kuno-gateway",
+    "psycopg[binary]>=3.2",
+    "boto3>=1.35",
+    "prometheus-client>=0.21",
+    "sentry-sdk>=2.0",
+]
+worker = ["kuno-worker"]
+test = [
+    { include-group = "gateway" },
+    "pytest>=8",
+    "httpx>=0.27",
+    "moto[s3]>=5.0",
+]

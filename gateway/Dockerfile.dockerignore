@@ -1,0 +1,18 @@
+# Context allowlist for platform/gateway/Dockerfile (BuildKit reads <Dockerfile>.dockerignore).
+# The context is the directory holding platform/ and subnet/.
+*
+!platform/deploy/workspace/pyproject.toml
+!platform/deploy/workspace/uv.lock
+!platform/gateway
+!subnet/protocol
+!subnet/worker/pyproject.toml
+
+platform/gateway/tests
+platform/gateway/Dockerfile*
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+**/.venv
+**/.pytest_cache
+**/data
+**/.env

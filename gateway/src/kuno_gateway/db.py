@@ -121,6 +121,74 @@ class WebhookDelivery(Base):
     delivered_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
+class Payment(Base):
+    """A top-up from any payment method, credited to the ledger exactly once.
+
+    provider_ref identifies the payment at its source — a Stripe Checkout session, a NOWPayments
+    payment, or a chain event as block_hash:extrinsic:event — and is unique per provider.
+    """
+
+    __tablename__ = "payments"
+    __table_args__ = (Index("uq_payments_provider_ref", "provider", "provider_ref", unique=True),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(32), index=True)
+    provider: Mapped[str] = mapped_column(String(16))
+    provider_ref: Mapped[str] = mapped_column(String(200))
+    # created, pending, credited, failed, expired, needs_review
+    status: Mapped[str] = mapped_column(String(24), index=True)
+    requested_usd_micros: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    amount_usd_micros: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    asset: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # A decimal string in whole units, so nothing is lost to floating point.
+    asset_amount: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    chain: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    tx_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    from_address: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    block_number: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    rate_usd: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    rate_source: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    checkout_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # JSON: what the provider said, and the inputs to any valuation, for audit.
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[float] = mapped_column(Float)
+    updated_at: Mapped[float] = mapped_column(Float)
+    credited_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class WalletLink(Base):
+    """A Bittensor coldkey proven to belong to an account. One account per coldkey."""
+
+    __tablename__ = "wallet_links"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(32), index=True)
+    address: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[float] = mapped_column(Float)
+
+
+class WalletChallenge(Base):
+    __tablename__ = "wallet_challenges"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(32), index=True)
+    address: Mapped[str] = mapped_column(String(64))
+    message: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[float] = mapped_column(Float, index=True)
+    used_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class ChainCursor(Base):
+    """The last finalized block a chain watcher fully processed."""
+
+    __tablename__ = "chain_cursors"
+
+    chain: Mapped[str] = mapped_column(String(32), primary_key=True)
+    block_number: Mapped[int] = mapped_column(BigInteger)
+    block_hash: Mapped[str] = mapped_column(String(66))
+    updated_at: Mapped[float] = mapped_column(Float)
+
+
 class LedgerEntry(Base):
     """One movement of money. The ledger is the record; Account.balance_micros is its total."""
 

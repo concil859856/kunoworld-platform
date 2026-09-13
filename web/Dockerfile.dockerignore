@@ -1,0 +1,19 @@
+# Context allowlist for platform/web/Dockerfile. The context holds platform/ and sdk/.
+*
+!sdk/js/package.json
+!sdk/js/package-lock.json
+!sdk/js/tsconfig.json
+!sdk/js/src
+!platform/web
+
+**/node_modules
+platform/web/.next
+platform/web/.next-*
+platform/web/out
+platform/web/test-results
+platform/web/playwright-report
+platform/web/blob-report
+platform/web/tsconfig.tsbuildinfo
+platform/web/.env
+platform/web/.env*.local
+platform/web/Dockerfile*

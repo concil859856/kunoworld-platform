@@ -1,0 +1,16 @@
+# Context allowlist for platform/deploy/worker.Dockerfile.
+*
+!platform/deploy/workspace/pyproject.toml
+!platform/deploy/workspace/uv.lock
+!platform/gateway/pyproject.toml
+!subnet/protocol
+!subnet/worker
+
+subnet/worker/tests
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+**/.venv
+**/.pytest_cache
+**/data
+**/.env

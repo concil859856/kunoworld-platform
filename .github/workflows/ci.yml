@@ -1,0 +1,271 @@
+# CI for kunoworld-platform.
+#
+# The gateway depends on kuno-protocol from the private kunoworld-subnet repo, and the web
+# app links @kunoworld/sdk from the private kunoworld-sdk repo, so jobs check those out
+# beside this one and rebuild the workspace layout:
+#
+#     $GITHUB_WORKSPACE/pyproject.toml, uv.lock   <- platform/deploy/workspace/
+#     $GITHUB_WORKSPACE/platform                  <- this repo
+#     $GITHUB_WORKSPACE/subnet                    <- kunoworld-subnet
+#     $GITHUB_WORKSPACE/sdk                       <- kunoworld-sdk
+#
+# Secrets:
+#   SUBNET_REPO_TOKEN  fine-grained PAT, Contents: read-only on kunoworld-subnet (and on
+#                      kunoworld-sdk unless SDK_REPO_TOKEN is set). Required.
+#   SDK_REPO_TOKEN     optional; a separate read-only token for kunoworld-sdk.
+# Variables (optional): SUBNET_REF, SDK_REF: branch/tag/SHA to test against (default main).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      e2e:
+        description: Run the Playwright end-to-end suite
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.11.19"
+  UV_PYTHON: "3.12"
+  NODE_VERSION: "22.20.0"
+  SUBNET_REPO: ${{ github.repository_owner }}/kunoworld-subnet
+  SDK_REPO: ${{ github.repository_owner }}/kunoworld-sdk
+
+jobs:
+  gateway:
+    name: gateway (${{ matrix.database }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, postgres]
+    services:
+      # Started for both legs (cheap); only the postgres leg points the tests at it.
+      postgres:
+        image: postgres:16.15-bookworm@sha256:bb3e1a57e5407e0a5280b4211980a5e537f4abd234a87014ac979849a78dd825
+        env:
+          POSTGRES_USER: kuno
+          POSTGRES_PASSWORD: kuno
+          POSTGRES_DB: kuno_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U kuno -d kuno_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - name: Check out platform
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: platform
+          persist-credentials: false
+
+      - name: Check out subnet
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.SUBNET_REPO }}
+          ref: ${{ vars.SUBNET_REF || 'main' }}
+          token: ${{ secrets.SUBNET_REPO_TOKEN }}
+          path: subnet
+          persist-credentials: false
+
+      - name: Recreate the workspace root
+        run: cp platform/deploy/workspace/pyproject.toml platform/deploy/workspace/uv.lock .
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Lockfile is current
+        run: |
+          uv lock --check || {
+            echo "::error::platform/deploy/workspace/uv.lock is out of date with the gateway/subnet pyproject files. Run platform/deploy/workspace/relock.sh and commit the result."
+            exit 1
+          }
+
+      - name: Install
+        run: uv sync --frozen --group test
+
+      - name: Tests (SQLite)
+        if: matrix.database == 'sqlite'
+        run: uv run --frozen --no-sync pytest -q platform/gateway/tests
+
+      - name: Migrations match the models (Postgres)
+        if: matrix.database == 'postgres'
+        env:
+          KUNO_DATABASE_URL: postgresql+psycopg://kuno:kuno@localhost:5432/kuno_test
+          PYTHON: uv run --frozen --no-sync python
+        run: platform/gateway/scripts/check_postgres_migrations.sh
+
+      - name: Tests (Postgres)
+        if: matrix.database == 'postgres'
+        env:
+          KUNO_TEST_DATABASE_URL: postgresql+psycopg://kuno:kuno@localhost:5432/kuno_test
+          PYTHONPATH: platform/gateway/scripts
+        run: uv run --frozen --no-sync pytest -q -p pytest_postgres platform/gateway/tests
+
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out platform
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: platform
+          persist-credentials: false
+
+      - name: Check out sdk
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.SDK_REPO }}
+          ref: ${{ vars.SDK_REF || 'main' }}
+          token: ${{ secrets.SDK_REPO_TOKEN || secrets.SUBNET_REPO_TOKEN }}
+          path: sdk
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            platform/web/package-lock.json
+            sdk/js/package-lock.json
+
+      - name: Build the SDK (its dist/ is not committed)
+        working-directory: sdk/js
+        run: npm ci && npm run build
+
+      - name: Install
+        working-directory: platform/web
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: platform/web
+        run: npm run typecheck
+
+      - name: Lint
+        working-directory: platform/web
+        run: npm run lint
+
+      - name: Build
+        working-directory: platform/web
+        env:
+          KUNO_DIST_DIR: .next-ci
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build
+
+  images:
+    name: container images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: platform
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.SUBNET_REPO }}
+          ref: ${{ vars.SUBNET_REF || 'main' }}
+          token: ${{ secrets.SUBNET_REPO_TOKEN }}
+          path: subnet
+          persist-credentials: false
+      - name: Build gateway and mock worker images
+        env:
+          DOCKER_BUILDKIT: "1"
+        run: |
+          docker build -f platform/gateway/Dockerfile -t kunoworld/gateway:ci .
+          docker build -f platform/deploy/worker.Dockerfile -t kunoworld/mock-worker:ci .
+          docker run --rm --entrypoint python kunoworld/gateway:ci -c "import kuno_gateway.app, kuno_gateway.observability, kuno_gateway.blobstore_s3"
+
+  e2e:
+    name: playwright (manual)
+    if: github.event_name == 'workflow_dispatch' && inputs.e2e
+    needs: [gateway, web]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      KUNO_DATA_DIR: /tmp/kuno-web-data
+      CI: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: platform
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.SUBNET_REPO }}
+          ref: ${{ vars.SUBNET_REF || 'main' }}
+          token: ${{ secrets.SUBNET_REPO_TOKEN }}
+          path: subnet
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.SDK_REPO }}
+          ref: ${{ vars.SDK_REF || 'main' }}
+          token: ${{ secrets.SDK_REPO_TOKEN || secrets.SUBNET_REPO_TOKEN }}
+          path: sdk
+          persist-credentials: false
+
+      - name: Recreate the workspace root
+        run: cp platform/deploy/workspace/pyproject.toml platform/deploy/workspace/uv.lock .
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            platform/web/package-lock.json
+            sdk/js/package-lock.json
+
+      - name: Install
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+          uv sync --frozen --group gateway --group worker
+          (cd sdk/js && npm ci && npm run build)
+          (cd platform/web && npm ci && npx playwright install --with-deps chromium)
+
+      - name: Start gateway and mock worker
+        run: |
+          mkdir -p "$KUNO_DATA_DIR/logs"
+          uv run --frozen --no-sync kuno-devkit init --data "$KUNO_DATA_DIR"
+          KUNO_ALLOW_COUNTRY_OVERRIDE=1 KUNO_CORS_ORIGINS=http://localhost:3000,http://localhost:3001 \
+            nohup uv run --frozen --no-sync kuno-gateway --port 8080 >"$KUNO_DATA_DIR/logs/gateway.log" 2>&1 &
+          for _ in $(seq 1 60); do curl -sf http://127.0.0.1:8080/healthz >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:8080/healthz
+          KUNO_GATEWAY_URL=http://127.0.0.1:8080 \
+            nohup uv run --frozen --no-sync kuno-worker >"$KUNO_DATA_DIR/logs/worker.log" 2>&1 &
+
+      - name: Playwright
+        working-directory: platform/web
+        run: npx playwright test --workers=1
+
+      - name: Upload results
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-results
+          path: |
+            platform/web/test-results
+            /tmp/kuno-web-data/logs
+          retention-days: 7
