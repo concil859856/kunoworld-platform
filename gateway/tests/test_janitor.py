@@ -54,7 +54,7 @@ def add_job(state: GatewayState, enclave_id: str, *, status: JobState, age_s: fl
 
 def balance(state: GatewayState) -> float:
     with state.session() as s:
-        return s.get(Account, "dev").balance_usd
+        return s.get(Account, "dev").balance_micros / 1_000_000
 
 
 def reload(state: GatewayState, job_id: str) -> Job:

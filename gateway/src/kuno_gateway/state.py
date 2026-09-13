@@ -21,6 +21,7 @@ from kuno_protocol.schemas import GenerationParams, JobState, JobStatus, MinerCh
 from kuno_protocol.receipts import Receipt
 from kuno_protocol.switch import SignedSwitch, SwitchConfig
 
+from . import ledger
 from .blobstore import BlobStore
 from .db import Account, Blob, Challenge, Enclave, Job, Setting
 from .migrations import upgrade_database
@@ -85,10 +86,15 @@ class GatewayState:
                             id=account_id,
                             name=name,
                             api_key_hash=hash_api_key(key),
-                            balance_usd=self.settings.dev_balance_usd,
+                            balance_micros=0,
                             is_validator=is_validator,
                             created_at=time.time(),
                         )
+                    )
+                    s.flush()
+                    ledger.post(
+                        s, account_id, ledger.to_micros(self.settings.dev_balance_usd), kind=ledger.ADJUSTMENT,
+                        source="dev", idempotency_key=f"seed:{account_id}", description="Development balance",
                     )
 
     # ------------------------------------------------------------ switch
@@ -197,10 +203,12 @@ class GatewayState:
         job.status = status.value
         job.updated_at = job.finished_at = now
         job.error_code, job.error = error_code, error
-        if status is not JobState.SUCCEEDED:
-            account = s.get(Account, job.account_id)
-            if account is not None:
-                account.balance_usd += job.price_usd
+        if status is not JobState.SUCCEEDED and s.get(Account, job.account_id) is not None:
+            # Keyed on the job, so a failure reported twice is still refunded once.
+            ledger.post(
+                s, job.account_id, ledger.to_micros(job.price_usd), kind=ledger.REFUND, source="job",
+                idempotency_key=f"refund:{job.id}", job_id=job.id, description=error_code,
+            )
         if was_running:
             enclave = s.get(Enclave, job.enclave_id)
             if enclave is not None and enclave.inflight > 0:

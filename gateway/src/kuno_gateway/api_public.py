@@ -14,8 +14,9 @@ from kuno_protocol.receipts import Receipt, verify_receipt
 from kuno_protocol.schemas import JobCreate, JobState, JobStatus, RouteResponse
 from kuno_protocol.switch import RouteError, resolve_route
 
+from . import ledger
 from .auth import gw, require_account
-from .db import Account, Blob, Enclave, Job
+from .db import Account, Blob, Enclave, Job, LedgerEntry
 from .state import enclave_public, job_status
 
 router = APIRouter(prefix="/v1", tags=["public"])
@@ -160,10 +161,14 @@ async def create_video(body: JobCreate, request: Request, account: Account = Dep
                 raise _error(422, "invalid_inputs", f"Blob {blob_id} is unknown, not yours, or already used.")
             blob.job_id = body.job_id
         price = profile.price_usd(params)
-        payer = s.get(Account, account.id)
-        if payer.balance_usd < price:
-            raise _error(402, "insufficient_balance", f"This video costs ${price:.2f}; your balance is ${payer.balance_usd:.2f}.")
-        payer.balance_usd -= price
+        try:
+            ledger.post(
+                s, account.id, -ledger.to_micros(price), kind=ledger.CHARGE, source="job",
+                idempotency_key=f"charge:{body.job_id}", job_id=body.job_id, description=profile.name,
+            )
+        except ledger.InsufficientBalance as exc:
+            balance = ledger.to_usd(exc.balance_micros)
+            raise _error(402, "insufficient_balance", f"This video costs ${price:.2f}; your balance is ${balance:.2f}.") from None
         job = Job(
             id=body.job_id,
             account_id=account.id,
@@ -213,6 +218,25 @@ async def cancel_video(job_id: str, request: Request, account: Account = Depends
         if not JobState(job.status).terminal:
             state.finish_job(s, job, JobState.CANCELED, "canceled", "Canceled by the customer.")
     return job_status(job)
+
+
+@router.get("/account")
+async def get_account(request: Request, account: Account = Depends(require_account)):
+    with gw(request).session() as s:
+        current = s.get(Account, account.id)
+    return {"account_id": current.id, "name": current.name, "balance_usd": ledger.to_usd(current.balance_micros)}
+
+
+@router.get("/account/ledger")
+async def get_account_ledger(request: Request, account: Account = Depends(require_account), limit: int = 50):
+    with gw(request).session() as s:
+        entries = s.scalars(
+            select(LedgerEntry)
+            .where(LedgerEntry.account_id == account.id)
+            .order_by(LedgerEntry.created_at.desc())
+            .limit(min(max(limit, 1), 200))
+        ).all()
+    return [ledger.entry_json(e) for e in entries]
 
 
 @router.get("/provenance/{content_digest}")

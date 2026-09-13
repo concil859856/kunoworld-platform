@@ -53,6 +53,12 @@ def test_a_database_from_before_migrations_is_adopted_with_its_rows(tmp_path):
     with engine.connect() as conn:
         assert conn.execute(text("select count(*) from alembic_version")).scalar_one() == 1
         assert conn.execute(text("select name from accounts where id = 'dev'")).scalar_one() == "Developer"
+        # The float balance arrives as exact micro-dollars, backed by one opening ledger entry.
+        assert conn.execute(text("select balance_micros from accounts where id = 'dev'")).scalar_one() == 42_500_000
+        opening = conn.execute(
+            text("select amount_micros, idempotency_key from ledger_entries where account_id = 'dev'")
+        ).all()
+        assert opening == [(42_500_000, "opening:dev")]
 
 
 def test_upgrading_twice_is_harmless(tmp_path):

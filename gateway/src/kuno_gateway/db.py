@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Float, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, Float, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -14,9 +14,28 @@ class Account(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
     api_key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    balance_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    # USD micro-dollars. Always the running total of this account's ledger entries.
+    balance_micros: Mapped[int] = mapped_column(BigInteger, default=0)
     is_validator: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[float] = mapped_column(Float)
+
+
+class LedgerEntry(Base):
+    """One movement of money. The ledger is the record; Account.balance_micros is its total."""
+
+    __tablename__ = "ledger_entries"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(32), index=True)
+    amount_micros: Mapped[int] = mapped_column(BigInteger)
+    kind: Mapped[str] = mapped_column(String(16))
+    source: Mapped[str] = mapped_column(String(32))
+    # What makes posting safe to retry: a second entry with the same key is refused.
+    idempotency_key: Mapped[str] = mapped_column(String(200), unique=True, index=True)
+    job_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    balance_after_micros: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[float] = mapped_column(Float, index=True)
 
 
 class Enclave(Base):
