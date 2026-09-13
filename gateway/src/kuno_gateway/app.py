@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import __version__, api_admin, api_miner, api_public, api_validator
+from . import __version__, api_admin, api_auth, api_miner, api_public, api_validator
 from .settings import Settings
 from .state import GatewayState
 
@@ -44,7 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    for module in (api_public, api_miner, api_validator, api_admin):
+    for module in (api_public, api_auth, api_miner, api_validator, api_admin):
         app.include_router(module.router)
 
     @app.get("/healthz")

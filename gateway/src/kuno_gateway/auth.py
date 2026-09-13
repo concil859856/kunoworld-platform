@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import hmac
 import time
+from dataclasses import dataclass
 
 from fastapi import HTTPException, Request
-from sqlalchemy import select
 
 from kuno_protocol.canonical import b64d
 from kuno_protocol.crypto import request_signature_message, verify_signature
 
-from .db import Account, Enclave
-from .state import GatewayState, hash_api_key
+from . import identity
+from .db import Account, Enclave, User, UserSession
+from .state import GatewayState
 
 MAX_CLOCK_SKEW_S = 120
 
@@ -27,11 +28,21 @@ def _bearer(request: Request) -> str:
 
 
 async def require_account(request: Request) -> Account:
-    key_hash = hash_api_key(_bearer(request))
-    with gw(request).session() as s:
-        account = s.scalars(select(Account).where(Account.api_key_hash == key_hash)).first()
+    """The job API accepts an API key or a studio token. A web session is deliberately not enough."""
+    token = _bearer(request)
+    account = None
+    with gw(request).session() as s, s.begin():
+        key = identity.find_api_key(s, token)
+        if key is not None:
+            now = time.time()
+            # Recorded at most once a minute, so authenticating isn't a write on every request.
+            if key.last_used_at is None or now - key.last_used_at > 60:
+                key.last_used_at = now
+            account = s.get(Account, key.account_id)
+        elif (session := identity.find_session(s, token, identity.STUDIO)) is not None:
+            account = identity.account_for_user(s, session.user_id)
     if account is None:
-        raise HTTPException(401, {"code": "unauthorized", "message": "Unknown API key."})
+        raise HTTPException(401, {"code": "unauthorized", "message": "Unknown or revoked API key."})
     return account
 
 
@@ -40,6 +51,23 @@ async def require_validator(request: Request) -> Account:
     if not account.is_validator:
         raise HTTPException(403, {"code": "forbidden", "message": "This endpoint is for registered validators."})
     return account
+
+
+@dataclass(frozen=True)
+class SignedIn:
+    user: User
+    session: UserSession
+
+
+async def require_user(request: Request) -> SignedIn:
+    """Account management needs the web session; API keys and studio tokens can't manage keys."""
+    token = _bearer(request)
+    with gw(request).session() as s:
+        session = identity.find_session(s, token, identity.WEB)
+        user = s.get(User, session.user_id) if session is not None else None
+    if session is None or user is None:
+        raise HTTPException(401, {"code": "unauthorized", "message": "Sign in again."})
+    return SignedIn(user=user, session=session)
 
 
 async def require_admin(request: Request) -> None:

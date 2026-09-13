@@ -13,11 +13,66 @@ class Account(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
-    api_key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # The signed-in user who owns this account; none for the seeded dev and validator accounts.
+    owner_user_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     # USD micro-dollars. Always the running total of this account's ledger entries.
     balance_micros: Mapped[int] = mapped_column(BigInteger, default=0)
     is_validator: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[float] = mapped_column(Float)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    # Stored lowercased: one person, one account, however they type their address.
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    created_at: Mapped[float] = mapped_column(Float)
+    last_login_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class ApiKey(Base):
+    """A key for programs. Only its hash is stored; the key itself is shown once, at creation."""
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(32), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    # The first characters, so people can tell their keys apart without seeing them.
+    prefix: Mapped[str] = mapped_column(String(16))
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[float] = mapped_column(Float)
+    last_used_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    revoked_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class LoginToken(Base):
+    """A sign-in link. Single use, short-lived, stored only as a hash."""
+
+    __tablename__ = "login_tokens"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), index=True)
+    created_at: Mapped[float] = mapped_column(Float)
+    expires_at: Mapped[float] = mapped_column(Float, index=True)
+    used_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class UserSession(Base):
+    """A web session (held by the website's server) or a studio token issued from one."""
+
+    __tablename__ = "sessions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_id: Mapped[str] = mapped_column(String(32), index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    # A studio token belongs to the web session that issued it and ends with it.
+    parent_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    created_at: Mapped[float] = mapped_column(Float)
+    expires_at: Mapped[float] = mapped_column(Float, index=True)
+    revoked_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class LedgerEntry(Base):

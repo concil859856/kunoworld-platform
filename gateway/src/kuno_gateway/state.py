@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import secrets
 import threading
@@ -10,7 +9,7 @@ import time
 from pathlib import Path
 
 from fastapi import Request
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from kuno_protocol.attestation import GoldenManifest
@@ -21,18 +20,18 @@ from kuno_protocol.schemas import GenerationParams, JobState, JobStatus, MinerCh
 from kuno_protocol.receipts import Receipt
 from kuno_protocol.switch import SignedSwitch, SwitchConfig
 
-from . import ledger
+from . import identity, ledger
 from .blobstore import BlobStore
-from .db import Account, Blob, Challenge, Enclave, Job, Setting
+from .db import Account, Blob, Challenge, Enclave, Job, LoginToken, Setting, UserSession
+from .mailer import Mailer, OutboxMailer, ResendMailer
 from .migrations import upgrade_database
+from .ratelimit import RateLimiter
 from .settings import Settings
 
 NONCE_TTL_S = 300
 CHALLENGE_TTL_S = 300
 
 
-def hash_api_key(api_key: str) -> str:
-    return hashlib.sha256(api_key.encode()).hexdigest()
 
 
 class GatewayState:
@@ -54,6 +53,12 @@ class GatewayState:
         self._nonces: dict[str, float] = {}
         self._nonce_lock = threading.Lock()
         self._switch = self._load_switch()
+        self.limiter = RateLimiter()
+        self.mailer: Mailer = (
+            ResendMailer(settings.resend_api_key, settings.email_from)
+            if settings.resend_api_key
+            else OutboxMailer(settings.outbox_dir)
+        )
         self._seed_accounts()
 
     # ------------------------------------------------------------ setup
@@ -85,13 +90,13 @@ class GatewayState:
                         Account(
                             id=account_id,
                             name=name,
-                            api_key_hash=hash_api_key(key),
                             balance_micros=0,
                             is_validator=is_validator,
                             created_at=time.time(),
                         )
                     )
                     s.flush()
+                    identity.register_api_key(s, account_id, f"{name} key", key)
                     ledger.post(
                         s, account_id, ledger.to_micros(self.settings.dev_balance_usd), kind=ledger.ADJUSTMENT,
                         source="dev", idempotency_key=f"seed:{account_id}", description="Development balance",
@@ -239,6 +244,10 @@ class GatewayState:
             for blob in s.scalars(select(Blob).where(Blob.expires_at < now)).all():
                 self.blobs.delete(blob.id)
                 s.delete(blob)
+            # A day past expiry, sign-in links and sessions have nothing left to protect.
+            s.execute(delete(LoginToken).where(LoginToken.expires_at < now - 86400))
+            s.execute(delete(UserSession).where(UserSession.expires_at < now - 86400))
+        self.limiter.prune(identity.AUTH_LIMIT_WINDOW_S)
 
 
 def job_status(job: Job) -> JobStatus:

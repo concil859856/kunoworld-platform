@@ -36,10 +36,23 @@ class Settings:
     queue_timeout_s: int = 600
     blob_retention_s: int = 7 * 86400
     janitor_interval_s: float = 5.0
+    # Where sign-in links point: the website, whose server finishes signing in.
+    site_url: str = "http://localhost:3000"
+    email_from: str = "KunoWorld <signin@kunoworld.com>"
+    # Without a provider key, sign-in email goes to data_dir/outbox instead of being sent.
+    resend_api_key: str | None = None
+    signup_credit_usd: float = 0.0
+    login_token_ttl_s: int = 15 * 60
+    web_session_ttl_s: int = 30 * 86400
+    studio_token_ttl_s: int = 3600
 
     @property
     def blob_dir(self) -> Path:
         return self.data_dir / "blobs"
+
+    @property
+    def outbox_dir(self) -> Path:
+        return self.data_dir / "outbox"
 
     @property
     def db_url(self) -> str:
@@ -62,4 +75,8 @@ class Settings:
             database_url=env.get("KUNO_DATABASE_URL"),
             allow_country_override=env.get("KUNO_ALLOW_COUNTRY_OVERRIDE", "0") == "1",
             cors_origins=[o for o in env.get("KUNO_CORS_ORIGINS", "http://localhost:3000").split(",") if o],
+            site_url=env.get("KUNO_SITE_URL", "http://localhost:3000"),
+            email_from=env.get("KUNO_EMAIL_FROM", "KunoWorld <signin@kunoworld.com>"),
+            resend_api_key=env.get("KUNO_RESEND_API_KEY") or None,
+            signup_credit_usd=float(env.get("KUNO_SIGNUP_CREDIT_USD", "0")),
         )

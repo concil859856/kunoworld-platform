@@ -59,6 +59,8 @@ def test_a_database_from_before_migrations_is_adopted_with_its_rows(tmp_path):
             text("select amount_micros, idempotency_key from ledger_entries where account_id = 'dev'")
         ).all()
         assert opening == [(42_500_000, "opening:dev")]
+        # The account's one key moved into api_keys unchanged, so it still authenticates.
+        assert conn.execute(text("select key_hash from api_keys where account_id = 'dev'")).scalar_one() == "a" * 64
 
 
 def test_upgrading_twice_is_harmless(tmp_path):
