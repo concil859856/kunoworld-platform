@@ -1,0 +1,239 @@
+/*
+ * Layout for long legal documents (Terms, Privacy Policy).
+ * ocean.css resets `.ocean-site h2/p` margins and link decoration at (0,1,1),
+ * so body rules here are scoped under `.body` to win regardless of load order.
+ */
+
+.draftWrap {
+  margin-bottom: 56px;
+}
+
+.draftWrap :global(.notice) {
+  background: #fbf5d8;
+  border: 1px solid #c9a20066;
+  color: #5a4c12;
+  font-size: 14px;
+}
+
+.draftWrap :global(.notice) strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #3d3300;
+  font-size: 15px;
+}
+
+.summaryNote {
+  font-size: 13px;
+  font-style: italic;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 230px) minmax(0, 760px);
+  gap: clamp(32px, 6vw, 88px);
+  align-items: start;
+}
+
+.toc {
+  position: sticky;
+  top: 110px;
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+}
+
+.toc ol {
+  margin: 14px 0 0;
+  padding-left: 1.5em;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted-ink);
+}
+
+.toc li {
+  margin-bottom: 7px;
+}
+
+.toc a:hover {
+  color: var(--sea);
+}
+
+.body {
+  min-width: 0;
+}
+
+.body .meta {
+  margin: 0 0 8px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--muted-ink);
+}
+
+.section {
+  padding-top: 44px;
+  scroll-margin-top: 96px;
+}
+
+.body .heading {
+  display: flex;
+  gap: 0.55em;
+  align-items: baseline;
+  margin: 0 0 18px;
+  font-size: clamp(22px, 2.4vw, 28px);
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+.number {
+  min-width: 1.5em;
+  color: var(--sea);
+  font-variant-numeric: tabular-nums;
+}
+
+.body .subheading {
+  margin: 28px 0 10px;
+  font-size: 16px;
+  font-weight: 600;
+  scroll-margin-top: 96px;
+}
+
+.body .section p,
+.body .section li {
+  font-size: 15px;
+  line-height: 1.8;
+  color: #34494d;
+}
+
+.body .section p {
+  margin: 0 0 14px;
+}
+
+.body .section ul {
+  margin: 0 0 16px;
+  padding-left: 1.3em;
+}
+
+.body .section li {
+  margin-bottom: 8px;
+}
+
+.body .section a {
+  color: var(--sea);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.body .section strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.body code {
+  padding: 0.05em 0.35em;
+  border-radius: 3px;
+  background: #e9f0ed;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+}
+
+.placeholder {
+  padding: 0.05em 0.35em;
+  border-radius: 3px;
+  background: #ffe36b;
+  box-shadow: inset 0 0 0 1px #c9a200;
+  color: #2b2300;
+  font-size: 0.92em;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.body .section .reviewTag {
+  display: inline-block;
+  margin: -6px 0 16px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: #fbf1c7;
+  color: #6f5300;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.4px;
+  line-height: 1.6;
+  text-transform: uppercase;
+}
+
+.body .section .review {
+  margin: 4px 0 18px;
+  padding: 10px 14px;
+  border-left: 3px dashed #c9a200;
+  border-radius: 0 6px 6px 0;
+  background: #fdf9e6;
+  font-size: 14px;
+  color: #4f4413;
+}
+
+.complete {
+  margin-top: 64px;
+  scroll-margin-top: 96px;
+}
+
+.complete :global(.notice) {
+  background: #fbf5d8;
+  border: 1px solid #c9a20066;
+  color: #4f4413;
+  font-size: 14px;
+}
+
+.body .completeTitle {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #3d3300;
+}
+
+.body .completeLead {
+  margin: 0 0 14px;
+}
+
+.body .completeSubtitle {
+  margin: 20px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #3d3300;
+}
+
+.completeList {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.completeList li {
+  margin-bottom: 8px;
+  line-height: 1.7;
+}
+
+.completeList a {
+  text-decoration: underline;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .toc {
+    position: static;
+    max-height: none;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .body .section p,
+  .body .section li {
+    font-size: 14px;
+  }
+}
