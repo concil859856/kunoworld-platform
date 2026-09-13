@@ -35,6 +35,9 @@
 
 .account .section {
   display: grid;
+  /* Grid cells default to their content's width; a wide table would push the page sideways
+     instead of scrolling inside its wrapper. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   margin-top: clamp(32px, 6vw, 56px);
 }
@@ -69,6 +72,7 @@
 
 .account .stack {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 
@@ -138,7 +142,20 @@
 }
 
 .account .tableWrap {
+  /* Positioned so it contains the visually hidden (absolutely positioned) column labels. A scroll
+     container clips only the absolute children it contains; without this one, the hidden
+     "Actions" label escaped to the right and made the whole page scroll sideways on phones. */
+  position: relative;
+  min-width: 0;
   overflow-x: auto;
+}
+
+/* The page title is the account's email address: it has to wrap anywhere, and it reads better
+   smaller than the site's display headings. Repeated class to outrank the global heading rule. */
+.account h1.email.email {
+  font-size: clamp(1.9rem, 5.5vw, 3.4rem);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
 }
 
 .account .table {

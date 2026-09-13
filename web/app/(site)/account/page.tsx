@@ -75,7 +75,7 @@ export default async function Account() {
     <div className={styles.account}>
       <header className="page-heading">
         <span className="section-kicker">YOUR ACCOUNT</span>
-        <h1>{user.email}</h1>
+        <h1 className={styles.email}>{user.email}</h1>
         <p>Your balance, your API keys, and every charge and refund.</p>
       </header>
 

@@ -73,6 +73,15 @@ test("sign in by email link, manage a key, make a video on your own balance, sig
 
   await page.reload();
   await expect(page.getByText(key)).toHaveCount(0);
+
+  // With a key and some activity listed, the page still fits a phone: the long address wraps
+  // and the tables scroll inside themselves. The responsive sweep can't reach a signed-in page.
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 800 });
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow, `account page scrolls sideways at ${width}px`).toBeLessThanOrEqual(1);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
   const row = page.getByRole("row", { name: /render farm/ });
   page.once("dialog", (dialog) => void dialog.accept());
   await row.getByRole("button", { name: "Revoke" }).click();
