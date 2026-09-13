@@ -56,6 +56,8 @@ async def ledger(request: Request, since: float = 0.0, limit: int = 1000, _valid
                 "profile_id": job.profile_id,
                 "status": job.status,
                 "error_code": job.error_code,
+                # The full public params, so validators bind what they pay for to the signed params digest.
+                "params": params.model_dump(mode="json"),
                 "duration_s": params.duration_s,
                 "resolution": params.resolution,
                 "created_at": job.created_at,
