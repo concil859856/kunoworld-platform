@@ -37,7 +37,7 @@ export default function Verify() {
         <div className="notice">
           <strong>What this shows, and what it doesn&apos;t.</strong> A match proves a worker holding a specific key
           signed this exact file, and names the model and software image it was approved to run. Your browser checks the
-          signature, that the worker&apos;s id derives from its own keys, and its evidence against the published manifest.
+          signature, that the worker&apos;s id derives from its own keys, and its evidence against the manifest the gateway serves (not an independently pinned copy).
           It proves nothing about an edited copy — re-encoding, trimming, or a platform&apos;s upload processing changes
           the hash. Hardware attestation is still simulated in this development preview.
         </div>
