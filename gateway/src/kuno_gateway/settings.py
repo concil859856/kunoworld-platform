@@ -85,6 +85,18 @@ class Settings:
     metrics_token: str | None = None
     sentry_dsn: str | None = None
     sentry_environment: str | None = None
+    # C2PA issuing CA (see C2PA_CA.md). Unset: the gateway issues no certificates.
+    c2pa_ca_key: Path | None = None
+    # PEM: the issuing intermediate, then the root.
+    c2pa_ca_chain: Path | None = None
+    c2pa_cert_validity_s: int = 86400
+    # RFC 3161 timestamp authority handed to workers, so manifests outlive their short certificates.
+    c2pa_tsa_url: str | None = None
+    c2pa_issuance_log_path: Path | None = None
+
+    @property
+    def c2pa_issuance_log(self) -> Path:
+        return self.c2pa_issuance_log_path or self.data_dir / "c2pa" / "issuance.jsonl"
 
     @property
     def blob_dir(self) -> Path:
@@ -147,4 +159,9 @@ class Settings:
             metrics_token=env.get("KUNO_METRICS_TOKEN") or None,
             sentry_dsn=env.get("SENTRY_DSN") or None,
             sentry_environment=env.get("SENTRY_ENVIRONMENT") or None,
+            c2pa_ca_key=Path(env["KUNO_C2PA_CA_KEY"]) if env.get("KUNO_C2PA_CA_KEY") else None,
+            c2pa_ca_chain=Path(env["KUNO_C2PA_CA_CHAIN"]) if env.get("KUNO_C2PA_CA_CHAIN") else None,
+            c2pa_cert_validity_s=int(env.get("KUNO_C2PA_CERT_VALIDITY_S", "86400")),
+            c2pa_tsa_url=env.get("KUNO_C2PA_TSA_URL") or None,
+            c2pa_issuance_log_path=Path(env["KUNO_C2PA_ISSUANCE_LOG"]) if env.get("KUNO_C2PA_ISSUANCE_LOG") else None,
         )

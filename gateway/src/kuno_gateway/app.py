@@ -12,7 +12,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import (
     __version__,
     api_admin,
+    api_audits,
     api_auth,
+    api_ca,
+    api_turbo,
     api_miner,
     api_payments,
     api_public,
@@ -20,6 +23,7 @@ from . import (
     observability,
     webhooks,
 )
+from .ca import IssuingCA
 from .limits import BodyLimitMiddleware
 from .nowpayments import NowPayments
 from .settings import Settings
@@ -72,6 +76,9 @@ def _body_limit(settings: Settings, path: str) -> int:
     # Ciphertext blobs are the only large bodies the gateway accepts.
     if path in ("/v1/blobs", "/miner/v1/blobs"):
         return settings.max_blob_bytes
+    # Step-audit openings carry encrypted latents: tens of MB for H3.
+    if path.startswith("/miner/v1/audits/") and path.endswith("/opening"):
+        return settings.max_blob_bytes
     return settings.max_json_body_bytes
 
 
@@ -94,6 +101,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.gw = state
     app.state.stripe_topups = StripeTopups(settings)
     app.state.nowpayments = NowPayments(settings)
+    # A misconfigured CA stops start-up; an unconfigured one just answers 503.
+    app.state.c2pa_ca = IssuingCA.from_settings(settings)
+    if app.state.c2pa_ca is not None and not settings.c2pa_tsa_url and state.policy.production:
+        log.warning("C2PA CA without KUNO_C2PA_TSA_URL: manifests stop validating when their short-lived certificates expire")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -101,7 +112,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(BodyLimitMiddleware, limit_for=lambda path: _body_limit(settings, path))
-    for module in (api_public, api_auth, api_payments, api_miner, api_validator, api_admin):
+    for module in (api_public, api_auth, api_payments, api_miner, api_ca, api_validator, api_admin, api_turbo, api_audits):
         app.include_router(module.router)
 
     @app.get("/healthz")

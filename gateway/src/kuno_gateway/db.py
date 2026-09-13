@@ -224,6 +224,26 @@ class Enclave(Base):
     status: Mapped[str] = mapped_column(String(16), default="active", index=True)
     verified_at: Mapped[float] = mapped_column(Float)
     last_seen: Mapped[float] = mapped_column(Float)
+    # GPUs the last verified evidence attested; None when the verifier did not count them.
+    gpu_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class HardwareBinding(Base):
+    """A verified hardware identity (kuno_protocol.hardware token) seen on an enclave.
+
+    One row per (token, enclave): the history of which enclaves and hotkeys a device served.
+    A token is *held* by an enclave only while that enclave is fresh (GatewayState.is_fresh),
+    so a stale or retired enclave releases its hardware without any row changing.
+    """
+
+    __tablename__ = "hardware_bindings"
+
+    token: Mapped[str] = mapped_column(String(64), primary_key=True)
+    enclave_id: Mapped[str] = mapped_column(String(32), primary_key=True, index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    miner_hotkey: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    first_seen: Mapped[float] = mapped_column(Float)
+    last_seen: Mapped[float] = mapped_column(Float)
 
 
 class Job(Base):

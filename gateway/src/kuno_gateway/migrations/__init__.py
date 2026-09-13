@@ -12,6 +12,9 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import Engine, inspect
 
+# Models that live outside db.py register on Base here, so the metadata always matches head.
+from .. import db_audits  # noqa: F401
+
 # The schema as it stood before migrations existed.
 BASELINE = "0001"
 

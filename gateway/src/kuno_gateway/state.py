@@ -23,7 +23,8 @@ from kuno_protocol.schemas import (
     MinerJob,
 )
 from kuno_protocol.switch import SignedSwitch, SwitchConfig
-from sqlalchemy import create_engine, delete, select
+from kuno_protocol.turbo import is_candidate_profile_list
+from sqlalchemy import create_engine, delete, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import identity, ledger, webhooks
@@ -33,6 +34,7 @@ from .db import (
     Blob,
     Challenge,
     Enclave,
+    HardwareBinding,
     Job,
     LoginToken,
     Nonce,
@@ -48,7 +50,16 @@ NONCE_TTL_S = 300
 CHALLENGE_TTL_S = 300
 
 
+class HardwareInUse(Exception):
+    """A verified hardware identity is held by a fresh enclave of a different miner hotkey."""
 
+    def __init__(self, holders: list[tuple[str, str, str | None]]):
+        self.holders = holders  # (kind, enclave_id, miner_hotkey)
+        kinds = " and ".join(sorted({kind.replace("_", " ") for kind, _, _ in holders}))
+        super().__init__(
+            f"This {kinds} hardware is attested for an active enclave of another miner hotkey. One machine serves one "
+            "hotkey: it is released when that enclave retires, stops polling, or its attestation lapses."
+        )
 
 class GatewayState:
     def __init__(self, settings: Settings):
@@ -73,6 +84,8 @@ class GatewayState:
         self.quote_verifier = self.policy.quote_verifier
         self.gpu_verifier = self.policy.gpu_verifier
         self.claim_lock = threading.Lock()
+        # Serializes hardware binding checks within this process; Postgres adds advisory locks across processes.
+        self.hardware_lock = threading.Lock()
         self._switch = self._load_switch()
         self.limiter = DatabaseRateLimiter(self.session) if settings.rate_limit_backend == "database" else RateLimiter()
         self.mailer: Mailer = (
@@ -166,7 +179,12 @@ class GatewayState:
     def fresh_enclaves(self, s: Session, profile_id: str | None = None) -> list[Enclave]:
         now = time.time()
         rows = s.scalars(select(Enclave).where(Enclave.status == "active")).all()
-        fresh = [e for e in rows if self.is_fresh(e, now) and (profile_id is None or profile_id in json.loads(e.profiles))]
+        fresh = [
+            e for e in rows
+            if self.is_fresh(e, now)
+            # Turbo candidates serve only validator benchmarks, never customer routes or capacity counts.
+            and (profile_id in json.loads(e.profiles) if profile_id is not None else not is_candidate_profile_list(json.loads(e.profiles)))
+        ]
         return sorted(fresh, key=lambda e: (e.inflight / max(e.capacity, 1), -e.last_seen))
 
     def has_capacity(self, profile: ModelProfile) -> bool:
@@ -179,6 +197,76 @@ class GatewayState:
             for profile_id in json.loads(enclave.profiles):
                 counts[profile_id] = counts.get(profile_id, 0) + 1
         return counts
+
+    # ------------------------------------------------------------ hardware registry
+
+    def enclave_hardware(self, s: Session, enclave_ids=None) -> dict[str, list[HardwareBinding]]:
+        query = select(HardwareBinding).order_by(HardwareBinding.kind, HardwareBinding.token)
+        if enclave_ids is not None:
+            query = query.where(HardwareBinding.enclave_id.in_(list(enclave_ids)))
+        grouped: dict[str, list[HardwareBinding]] = {}
+        for binding in s.scalars(query).all():
+            grouped.setdefault(binding.enclave_id, []).append(binding)
+        return grouped
+
+    def bind_hardware(self, s: Session, enclave: Enclave, identities, now: float) -> list[str]:
+        """Binds verified identities to `enclave` (its hotkey already set) and returns the enclaves it replaced.
+
+        Rules (PROTOCOL.md, "Hardware registry"):
+          * an identity held by a fresh enclave of a different hotkey refuses the binding (HardwareInUse);
+          * the same hotkey on the same GPU (or on the same platform where either side has no GPU
+            identities) replaces the older enclave, which is marked stale: one GPU is in one VM;
+          * the same hotkey on one platform with disjoint GPUs keeps both, since one host can run
+            several confidential VMs that split its GPUs;
+          * enclaves that are not fresh hold nothing, so a stale or retired enclave releases its hardware.
+        Call it after every field of `enclave` is set: the queries here flush the session.
+        """
+        kinds = {identity.token: identity.kind for identity in identities}
+        if not kinds:
+            return []
+        if self.postgres:
+            for token in sorted(kinds):  # sorted, so two registrations never wait on each other in opposite order
+                s.execute(text("select pg_advisory_xact_lock(hashtext(:token))"), {"token": token})
+        rows = s.execute(
+            select(HardwareBinding, Enclave)
+            .join(Enclave, Enclave.id == HardwareBinding.enclave_id)
+            .where(HardwareBinding.token.in_(list(kinds)), HardwareBinding.enclave_id != enclave.id)
+        ).all()
+        holders: dict[str, tuple[Enclave, set[str]]] = {}
+        for binding, other in rows:
+            if self.is_fresh(other, now):
+                holders.setdefault(other.id, (other, set()))[1].add(binding.token)
+        conflicts = [
+            (kinds[token], other.id, other.miner_hotkey)
+            for other, shared in holders.values()
+            if other.miner_hotkey != enclave.miner_hotkey
+            for token in sorted(shared)
+        ]
+        if conflicts:
+            raise HardwareInUse(conflicts)
+
+        my_gpus = {token for token, kind in kinds.items() if kind == "gpu"}
+        their_hardware = self.enclave_hardware(s, holders) if holders else {}
+        replaced = []
+        for other, shared in holders.values():
+            their_gpus = {b.token for b in their_hardware.get(other.id, []) if b.kind == "gpu"}
+            if shared & my_gpus or not my_gpus or not their_gpus:
+                other.status = "stale"
+                replaced.append(other.id)
+
+        existing = {b.token: b for b in s.scalars(select(HardwareBinding).where(HardwareBinding.enclave_id == enclave.id)).all()}
+        for token, kind in kinds.items():
+            binding = existing.get(token)
+            if binding is None:
+                s.add(
+                    HardwareBinding(
+                        token=token, enclave_id=enclave.id, kind=kind, miner_hotkey=enclave.miner_hotkey,
+                        first_seen=now, last_seen=now,
+                    )
+                )
+            else:
+                binding.miner_hotkey, binding.last_seen = enclave.miner_hotkey, now
+        return sorted(replaced)
 
     # ------------------------------------------------------------ jobs
 
@@ -199,6 +287,12 @@ class GatewayState:
             if challenge is not None:
                 challenge.status = "sent"
                 return MinerChallenge(challenge_id=challenge.id, nonce=challenge.nonce)
+            from .api_audits import claim_audits
+
+            # Step audits are small and time-limited, so they go ahead of new jobs but after challenges.
+            audits = claim_audits(s, enclave_id, now, limit=1)
+            if audits:
+                return audits[0]
             if enclave.status != "active" or enclave.inflight >= enclave.capacity:
                 return None
             claim = (
@@ -246,7 +340,10 @@ class GatewayState:
         webhooks.enqueue(s, job, job_status(job).model_dump(mode="json"), now)
 
     def janitor(self) -> None:
+        from .api_audits import expire_audits
+
         now = time.time()
+        expire_audits(self, now)
         with self.session() as s, s.begin():
             for enclave in s.scalars(select(Enclave).where(Enclave.status == "active")).all():
                 if not self.is_fresh(enclave, now):
@@ -295,7 +392,8 @@ def job_status(job: Job) -> JobStatus:
     )
 
 
-def enclave_public(enclave: Enclave) -> dict:
+def enclave_public(enclave: Enclave, hardware: list[HardwareBinding] | None = None) -> dict:
+    """`hardware` is self-reported and unverified; `hardware_ids` and `gpu_count` come from verified evidence."""
     return {
         "enclave_id": enclave.id,
         "miner_hotkey": enclave.miner_hotkey,
@@ -311,4 +409,8 @@ def enclave_public(enclave: Enclave) -> dict:
         "status": enclave.status,
         "verified_at": enclave.verified_at,
         "last_seen": enclave.last_seen,
+        "gpu_count": enclave.gpu_count,
+        "hardware_ids": [
+            {"kind": b.kind, "token": b.token, "first_seen": b.first_seen, "last_seen": b.last_seen} for b in hardware or []
+        ],
     }

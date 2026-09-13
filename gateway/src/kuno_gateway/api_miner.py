@@ -13,12 +13,14 @@ from sqlalchemy import select
 
 from kuno_protocol.attestation import AttestationEvidence
 from kuno_protocol.canonical import b64d, canonical_json, sha256_hex
+from kuno_protocol.hardware import capacity_limit
 from kuno_protocol.receipts import Receipt, verify_receipt
 from kuno_protocol.hotkey import verify_hotkey_proof
 from kuno_protocol.schemas import GenerationParams, JobState, MinerRegistration
 
 from .auth import gw, require_enclave, verify_enclave_signature
 from .db import Blob, Challenge, Enclave, Job
+from .state import HardwareInUse
 
 router = APIRouter(prefix="/miner/v1", tags=["miner"])
 
@@ -95,8 +97,21 @@ async def register_enclave(request: Request):
     if not verdict.ok:
         raise _error(403, "attestation_failed", "; ".join(verdict.reasons))
     miner_hotkey = _proven_hotkey(state, body, verdict.enclave_id)
+    if verdict.gpu_count is not None:
+        needs = {p: state.profiles[p].gpus_per_worker for p in evidence.profiles}
+        limit = capacity_limit(verdict.gpu_count, needs.values())
+        if limit < 1:
+            raise _error(
+                422, "insufficient_gpus",
+                f"The evidence attests {verdict.gpu_count} GPU(s), fewer than a claimed profile needs ({max(needs.values())}).",
+            )
+        if body.capacity > limit:
+            raise _error(
+                422, "capacity_exceeds_hardware",
+                f"Capacity {body.capacity} needs more GPUs than the {verdict.gpu_count} attested; at most {limit} for these profiles.",
+            )
     now = time.time()
-    with state.session() as s, s.begin():
+    with state.hardware_lock, state.session() as s, s.begin():
         enclave = s.get(Enclave, verdict.enclave_id)
         if enclave is None:
             enclave = Enclave(id=verdict.enclave_id, inflight=0)
@@ -114,7 +129,12 @@ async def register_enclave(request: Request):
         enclave.capacity = body.capacity
         enclave.status = "active"
         enclave.verified_at = enclave.last_seen = now
-    return {"enclave_id": verdict.enclave_id, "status": "active", "verified_at": now}
+        enclave.gpu_count = verdict.gpu_count
+        try:
+            replaced = state.bind_hardware(s, enclave, verdict.hardware, now)
+        except HardwareInUse as exc:
+            raise _error(409, "hardware_in_use", str(exc)) from None
+    return {"enclave_id": verdict.enclave_id, "status": "active", "verified_at": now, "replaced": replaced}
 
 
 @router.post("/retire")
@@ -272,17 +292,37 @@ async def answer_challenge(challenge_id: str, request: Request, auth=Depends(req
             raise _error(404, "not_found", "No outstanding challenge with this id.")
         nonce = challenge.nonce
     # Verification can take seconds of network calls; no transaction is held open meanwhile.
-    verdict = await asyncio.to_thread(state.policy.verify, answer.evidence, state.manifest, bytes.fromhex(nonce))
-    with state.session() as s, s.begin():
+    from .api_turbo import candidate_manifest  # Turbo candidates are measured against their submission
+
+    manifest = candidate_manifest(state, enclave) or state.manifest
+    verdict = await asyncio.to_thread(state.policy.verify, answer.evidence, manifest, bytes.fromhex(nonce))
+    conflict: HardwareInUse | None = None
+    reasons = list(verdict.reasons)
+    with state.hardware_lock, state.session() as s, s.begin():
         challenge = s.get(Challenge, challenge_id)
         if challenge is None or challenge.status != "sent":
             raise _error(404, "not_found", "No outstanding challenge with this id.")
         challenge.status = "answered"
         challenge.evidence = answer.evidence.model_dump_json()
-        challenge.answered_at = time.time()
+        challenge.answered_at = now = time.time()
         row = s.get(Enclave, enclave.id)
         if verdict.ok and verdict.enclave_id == enclave.id:
-            row.verified_at = challenge.answered_at
+            before = {b.token for b in state.enclave_hardware(s, [enclave.id]).get(enclave.id, [])}
+            if before and verdict.hardware and before != verdict.hardware_tokens():
+                # A running VM can't change CPU platform or GPUs; different hardware means a relay.
+                row.status = "stale"
+                reasons.append("hardware identity changed since registration")
+            else:
+                try:
+                    state.bind_hardware(s, row, verdict.hardware, now)
+                    row.verified_at = now
+                    if verdict.gpu_count is not None:
+                        row.gpu_count = verdict.gpu_count
+                except HardwareInUse as exc:
+                    row.status = "stale"
+                    conflict = exc
         elif verdict.enclave_id == enclave.id:
             row.status = "stale"
-    return {"ok": verdict.ok, "reasons": verdict.reasons}
+    if conflict is not None:
+        raise _error(409, "hardware_in_use", str(conflict))
+    return {"ok": verdict.ok and not reasons, "reasons": reasons}

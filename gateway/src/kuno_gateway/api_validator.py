@@ -30,8 +30,10 @@ class ChallengeCreate(BaseModel):
 
 @router.get("/enclaves")
 async def enclaves(request: Request, _validator: Account = Depends(require_validator)):
-    with gw(request).session() as s:
-        return [enclave_public(e) for e in s.scalars(select(Enclave)).all()]
+    state = gw(request)
+    with state.session() as s:
+        hardware = state.enclave_hardware(s)
+        return [enclave_public(e, hardware.get(e.id)) for e in s.scalars(select(Enclave)).all()]
 
 
 @router.get("/ledger")
