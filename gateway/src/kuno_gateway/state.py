@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import threading
 import time
 from pathlib import Path
 
 from fastapi import Request
-from kuno_protocol.attestation import GoldenManifest
 from kuno_protocol.canonical import b64d
+from kuno_protocol.policy import policy_from_env
 from kuno_protocol.profiles import ModelProfile, load_profiles
 from kuno_protocol.receipts import Receipt
 from kuno_protocol.regions import normalize_country
@@ -41,7 +42,7 @@ from .db import (
 from .mailer import Mailer, OutboxMailer, ResendMailer
 from .migrations import upgrade_database
 from .ratelimit import DatabaseRateLimiter, RateLimiter
-from .settings import Settings
+from .settings import Settings, read_env_file
 
 NONCE_TTL_S = 300
 CHALLENGE_TTL_S = 300
@@ -61,11 +62,16 @@ class GatewayState:
         self.Session = sessionmaker(self.engine, expire_on_commit=False)
         self.blobs = select_blob_store(settings)
         self.profiles: dict[str, ModelProfile] = load_profiles()
-        self.manifest = GoldenManifest.model_validate_json(Path(settings.manifest_path).read_text())
         self.owner_public_key = b64d(settings.owner_public_key) if settings.owner_public_key else None
-        # Production: dcap-qvl / Intel QVL and NVIDIA NVAT adapters. None means TDX evidence is rejected.
-        self.quote_verifier = None
-        self.gpu_verifier = None
+        # Dev accepts the simulated TEE the manifest trusts; KUNO_ATTESTATION=production requires Intel
+        # DCAP and NVIDIA verifiers, the owner key and an owner-signed manifest, or refuses to start.
+        env = {**read_env_file(settings.data_dir / "dev.env"), **os.environ}
+        if settings.owner_public_key:
+            env["KUNO_OWNER_PUBLIC_KEY"] = settings.owner_public_key
+        self.policy = policy_from_env(env)
+        self.manifest = self.policy.load_manifest(env.get("KUNO_SIGNED_MANIFEST") or settings.manifest_path)
+        self.quote_verifier = self.policy.quote_verifier
+        self.gpu_verifier = self.policy.gpu_verifier
         self.claim_lock = threading.Lock()
         self._switch = self._load_switch()
         self.limiter = DatabaseRateLimiter(self.session) if settings.rate_limit_backend == "database" else RateLimiter()

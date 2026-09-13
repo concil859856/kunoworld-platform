@@ -1095,6 +1095,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+attestation = [
+    { name = "kuno-protocol", extra = ["tdx"] },
+]
 chain = [
     { name = "substrate-interface" },
 ]
@@ -1116,6 +1119,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "kuno-protocol", editable = "subnet/protocol" },
+    { name = "kuno-protocol", extras = ["tdx"], marker = "extra == 'attestation'", editable = "subnet/protocol" },
     { name = "prometheus-client", marker = "extra == 'observability'", specifier = ">=0.21" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.2" },
     { name = "py-sr25519-bindings", specifier = ">=0.2" },
@@ -1126,7 +1130,7 @@ requires-dist = [
     { name = "substrate-interface", marker = "extra == 'chain'", specifier = ">=1.8" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]
-provides-extras = ["chain", "postgres", "s3", "observability"]
+provides-extras = ["chain", "attestation", "postgres", "s3", "observability"]
 
 [[package]]
 name = "kuno-protocol"
@@ -1203,21 +1207,13 @@ source = { virtual = "." }
 
 [package.dev-dependencies]
 gateway = [
-    { name = "boto3" },
-    { name = "kuno-gateway" },
-    { name = "prometheus-client" },
-    { name = "psycopg", extra = ["binary"] },
-    { name = "sentry-sdk" },
+    { name = "kuno-gateway", extra = ["attestation", "chain", "observability", "postgres", "s3"] },
 ]
 test = [
-    { name = "boto3" },
     { name = "httpx" },
-    { name = "kuno-gateway" },
+    { name = "kuno-gateway", extra = ["attestation", "chain", "observability", "postgres", "s3"] },
     { name = "moto", extra = ["s3"] },
-    { name = "prometheus-client" },
-    { name = "psycopg", extra = ["binary"] },
     { name = "pytest" },
-    { name = "sentry-sdk" },
 ]
 worker = [
     { name = "kuno-worker" },
@@ -1226,22 +1222,12 @@ worker = [
 [package.metadata]
 
 [package.metadata.requires-dev]
-gateway = [
-    { name = "boto3", specifier = ">=1.35" },
-    { name = "kuno-gateway", editable = "platform/gateway" },
-    { name = "prometheus-client", specifier = ">=0.21" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
-    { name = "sentry-sdk", specifier = ">=2.0" },
-]
+gateway = [{ name = "kuno-gateway", extras = ["attestation", "chain", "postgres", "s3", "observability"], editable = "platform/gateway" }]
 test = [
-    { name = "boto3", specifier = ">=1.35" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "kuno-gateway", editable = "platform/gateway" },
+    { name = "kuno-gateway", extras = ["attestation", "chain", "postgres", "s3", "observability"], editable = "platform/gateway" },
     { name = "moto", extras = ["s3"], specifier = ">=5.0" },
-    { name = "prometheus-client", specifier = ">=0.21" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pytest", specifier = ">=8" },
-    { name = "sentry-sdk", specifier = ">=2.0" },
 ]
 worker = [{ name = "kuno-worker", editable = "subnet/worker" }]
 

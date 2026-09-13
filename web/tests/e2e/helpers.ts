@@ -1,10 +1,52 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { crc32, deflateSync } from "node:zlib";
 
 import { expect, type Locator, type Page } from "@playwright/test";
 
 const DATA_DIR = process.env.KUNO_DATA_DIR ?? "/tmp/kuno-web-data";
+
+export const GATEWAY = process.env.NEXT_PUBLIC_KUNO_API ?? "http://localhost:8080";
+
+/** A value the devkit wrote to dev.env, such as the admin token. */
+export function devEnv(name: string): string {
+  const match = new RegExp(`^${name}=(.+)$`, "m").exec(readFileSync(join(DATA_DIR, "dev.env"), "utf8"));
+  if (!match) throw new Error(`${name} is missing from ${DATA_DIR}/dev.env`);
+  return match[1].trim();
+}
+
+/** With no email provider configured, the gateway writes sign-in email to its outbox. */
+function signInLink(email: string): string | null {
+  let files: string[];
+  try {
+    files = readdirSync(join(DATA_DIR, "outbox")).sort().reverse();
+  } catch {
+    return null;
+  }
+  for (const file of files) {
+    const message = JSON.parse(readFileSync(join(DATA_DIR, "outbox", file), "utf8")) as { to: string; text: string };
+    if (message.to === email) return /https?:\/\/\S+\/auth\/verify\?token=[\w-]+(?:&next=\S+)?/.exec(message.text)?.[0] ?? null;
+  }
+  return null;
+}
+
+/** Signs in through the real email-link flow and lands on `next`. */
+export async function signIn(page: Page, email: string, next = "/account"): Promise<void> {
+  await page.goto(`/signin?next=${encodeURIComponent(next)}`);
+  await page.getByLabel("Email address").fill(email);
+  await page.getByRole("button", { name: "Email me a sign-in link" }).click();
+  await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
+
+  let link: string | null = null;
+  await expect.poll(() => (link = signInLink(email))).not.toBeNull();
+  await page.goto(link!);
+  await page.getByRole("button", { name: "Continue signing in" }).click();
+}
+
+/** How far the page scrolls sideways; more than a pixel means something escaped the layout. */
+export function horizontalOverflow(page: Page): Promise<number> {
+  return page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+}
 
 /** The dev API key the devkit wrote, so tests use a real account. */
 export function devApiKey(): string {

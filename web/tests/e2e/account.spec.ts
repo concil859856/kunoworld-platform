@@ -1,47 +1,8 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { expect, test } from "@playwright/test";
 
-import { expect, test, type Page } from "@playwright/test";
-
-import { cards, generate, pickStock, watchToReady } from "./helpers";
+import { GATEWAY, cards, devEnv, generate, horizontalOverflow, pickStock, signIn, watchToReady } from "./helpers";
 
 /** Signing in by email link, managing keys, and making videos on your own balance. */
-
-const DATA_DIR = process.env.KUNO_DATA_DIR ?? "/tmp/kuno-web-data";
-const GATEWAY = process.env.NEXT_PUBLIC_KUNO_API ?? "http://localhost:8080";
-
-function devEnv(name: string): string {
-  const match = new RegExp(`^${name}=(.+)$`, "m").exec(readFileSync(join(DATA_DIR, "dev.env"), "utf8"));
-  if (!match) throw new Error(`${name} is missing from ${DATA_DIR}/dev.env`);
-  return match[1].trim();
-}
-
-/** With no email provider configured, the gateway writes sign-in email to its outbox. */
-function signInLink(email: string): string | null {
-  let files: string[];
-  try {
-    files = readdirSync(join(DATA_DIR, "outbox")).sort().reverse();
-  } catch {
-    return null;
-  }
-  for (const file of files) {
-    const message = JSON.parse(readFileSync(join(DATA_DIR, "outbox", file), "utf8")) as { to: string; text: string };
-    if (message.to === email) return /https?:\/\/\S+\/auth\/verify\?token=[\w-]+(?:&next=\S+)?/.exec(message.text)?.[0] ?? null;
-  }
-  return null;
-}
-
-async function signIn(page: Page, email: string, next = "/account"): Promise<void> {
-  await page.goto(`/signin?next=${encodeURIComponent(next)}`);
-  await page.getByLabel("Email address").fill(email);
-  await page.getByRole("button", { name: "Email me a sign-in link" }).click();
-  await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
-
-  let link: string | null = null;
-  await expect.poll(() => (link = signInLink(email))).not.toBeNull();
-  await page.goto(link!);
-  await page.getByRole("button", { name: "Continue signing in" }).click();
-}
 
 test("sign in by email link, manage a key, make a video on your own balance, sign out", async ({ page, request }) => {
   const email = `e2e-${Date.now()}@example.com`;
@@ -78,8 +39,7 @@ test("sign in by email link, manage a key, make a video on your own balance, sig
   // and the tables scroll inside themselves. The responsive sweep can't reach a signed-in page.
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 800 });
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-    expect(overflow, `account page scrolls sideways at ${width}px`).toBeLessThanOrEqual(1);
+    expect(await horizontalOverflow(page), `account page scrolls sideways at ${width}px`).toBeLessThanOrEqual(1);
   }
   await page.setViewportSize({ width: 1280, height: 900 });
   const row = page.getByRole("row", { name: /render farm/ });

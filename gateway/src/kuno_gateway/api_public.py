@@ -15,8 +15,8 @@ from kuno_protocol.receipts import Receipt, verify_receipt
 from kuno_protocol.schemas import JobCreate, JobState, JobStatus, RouteResponse
 from kuno_protocol.switch import RouteError, resolve_route
 
-from . import ledger, webhooks
-from .auth import gw, require_account
+from . import identity, ledger, webhooks
+from .auth import SignedIn, gw, require_account, require_user
 from .db import Account, Blob, Enclave, Job, LedgerEntry
 from .state import enclave_public, job_status
 
@@ -260,6 +260,32 @@ async def get_webhook_secret(request: Request, account: Account = Depends(requir
 async def rotate_webhook_secret(request: Request, account: Account = Depends(require_account)):
     with gw(request).session() as s, s.begin():
         current = s.get(Account, account.id)
+        current.webhook_secret = None
+        secret = webhooks.ensure_secret(current)
+    return {"secret": secret}
+
+
+# The same secret for the account page, which signs in with the web session rather than a key.
+
+
+def _user_account_id(s, who: SignedIn) -> str:
+    account = identity.account_for_user(s, who.user.id)
+    if account is None:
+        raise HTTPException(409, {"code": "no_account", "message": "This user has no account yet. Sign in again."})
+    return account.id
+
+
+@router.get("/me/webhook-secret")
+async def get_my_webhook_secret(request: Request, who: SignedIn = Depends(require_user)):
+    with gw(request).session() as s, s.begin():
+        secret = webhooks.ensure_secret(s.get(Account, _user_account_id(s, who)))
+    return {"secret": secret}
+
+
+@router.post("/me/webhook-secret/rotate")
+async def rotate_my_webhook_secret(request: Request, who: SignedIn = Depends(require_user)):
+    with gw(request).session() as s, s.begin():
+        current = s.get(Account, _user_account_id(s, who))
         current.webhook_secret = None
         secret = webhooks.ensure_secret(current)
     return {"secret": secret}

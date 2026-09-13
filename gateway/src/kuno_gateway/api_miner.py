@@ -11,21 +11,16 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 
-from kuno_protocol.attestation import AttestationEvidence, verify_evidence
+from kuno_protocol.attestation import AttestationEvidence
 from kuno_protocol.canonical import b64d, canonical_json, sha256_hex
 from kuno_protocol.receipts import Receipt, verify_receipt
-from kuno_protocol.schemas import GenerationParams, JobState
+from kuno_protocol.hotkey import verify_hotkey_proof
+from kuno_protocol.schemas import GenerationParams, JobState, MinerRegistration
 
 from .auth import gw, require_enclave, verify_enclave_signature
 from .db import Blob, Challenge, Enclave, Job
 
 router = APIRouter(prefix="/miner/v1", tags=["miner"])
-
-
-class RegisterBody(BaseModel):
-    evidence: AttestationEvidence
-    miner_hotkey: str | None = None
-    capacity: int = Field(default=1, ge=1, le=64)
 
 
 class ProgressBody(BaseModel):
@@ -58,6 +53,27 @@ def _parse(model: type[BaseModel], body: bytes):
         raise _error(422, "invalid_body", str(exc.errors()[:3])) from None
 
 
+def _proven_hotkey(state, body: MinerRegistration, enclave_id: str) -> str | None:
+    """The hotkey this enclave earns for: proven by its signature, or on a dev network, as claimed."""
+    if body.hotkey_proof is None:
+        if state.policy.production:
+            raise _error(403, "hotkey_proof_required", "Production registration needs a proof signed by the miner's hotkey.")
+        return body.miner_hotkey
+    if not body.miner_hotkey:
+        raise _error(422, "invalid_body", "A hotkey proof needs the miner_hotkey it proves.")
+    # The nonce, enclave id and key come from the verified evidence, so a proof can't be replayed elsewhere.
+    ok, detail = verify_hotkey_proof(
+        body.hotkey_proof,
+        expected_nonce=body.evidence.nonce,
+        enclave_id=enclave_id,
+        signing_public_key=body.evidence.signing_public_key,
+        hotkey=body.miner_hotkey,
+    )
+    if not ok:
+        raise _error(403, "hotkey_proof_invalid", detail)
+    return body.miner_hotkey
+
+
 @router.get("/nonce")
 async def nonce(request: Request):
     return {"nonce": gw(request).issue_nonce(), "expires_in": 300}
@@ -66,7 +82,7 @@ async def nonce(request: Request):
 @router.post("/enclaves")
 async def register_enclave(request: Request):
     state = gw(request)
-    body: RegisterBody = _parse(RegisterBody, await request.body())
+    body: MinerRegistration = _parse(MinerRegistration, await request.body())
     evidence = body.evidence
     await verify_enclave_signature(request, b64d(evidence.signing_public_key))
     if not state.consume_nonce(evidence.nonce):
@@ -74,15 +90,11 @@ async def register_enclave(request: Request):
     unknown = [p for p in evidence.profiles if p not in state.profiles]
     if unknown:
         raise _error(422, "unknown_profiles", f"Unknown profiles: {', '.join(unknown)}")
-    verdict = verify_evidence(
-        evidence,
-        state.manifest,
-        expected_nonce=bytes.fromhex(evidence.nonce),
-        quote_verifier=state.quote_verifier,
-        gpu_verifier=state.gpu_verifier,
-    )
+    # DCAP collateral and NRAS are network calls; keep them off the event loop.
+    verdict = await asyncio.to_thread(state.policy.verify, evidence, state.manifest, bytes.fromhex(evidence.nonce))
     if not verdict.ok:
         raise _error(403, "attestation_failed", "; ".join(verdict.reasons))
+    miner_hotkey = _proven_hotkey(state, body, verdict.enclave_id)
     now = time.time()
     with state.session() as s, s.begin():
         enclave = s.get(Enclave, verdict.enclave_id)
@@ -91,7 +103,7 @@ async def register_enclave(request: Request):
             s.add(enclave)
         elif enclave.status == "revoked":
             raise _error(403, "revoked", "This enclave has been revoked.")
-        enclave.miner_hotkey = body.miner_hotkey
+        enclave.miner_hotkey = miner_hotkey
         enclave.tee = evidence.tee
         enclave.image_digest = evidence.image_digest
         enclave.hpke_public_key = evidence.hpke_public_key
@@ -254,17 +266,17 @@ async def answer_challenge(challenge_id: str, request: Request, auth=Depends(req
     state = gw(request)
     enclave, raw = auth
     answer: ChallengeAnswer = _parse(ChallengeAnswer, raw)
-    with state.session() as s, s.begin():
+    with state.session() as s:
         challenge = s.get(Challenge, challenge_id)
         if challenge is None or challenge.enclave_id != enclave.id or challenge.status != "sent":
             raise _error(404, "not_found", "No outstanding challenge with this id.")
-        verdict = verify_evidence(
-            answer.evidence,
-            state.manifest,
-            expected_nonce=bytes.fromhex(challenge.nonce),
-            quote_verifier=state.quote_verifier,
-            gpu_verifier=state.gpu_verifier,
-        )
+        nonce = challenge.nonce
+    # Verification can take seconds of network calls; no transaction is held open meanwhile.
+    verdict = await asyncio.to_thread(state.policy.verify, answer.evidence, state.manifest, bytes.fromhex(nonce))
+    with state.session() as s, s.begin():
+        challenge = s.get(Challenge, challenge_id)
+        if challenge is None or challenge.status != "sent":
+            raise _error(404, "not_found", "No outstanding challenge with this id.")
         challenge.status = "answered"
         challenge.evidence = answer.evidence.model_dump_json()
         challenge.answered_at = time.time()

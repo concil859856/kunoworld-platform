@@ -18,6 +18,8 @@ dependencies = [
 [project.optional-dependencies]
 # Watching Bittensor for TAO and alpha top-ups.
 chain = ["substrate-interface>=1.8"]
+# Intel DCAP quote verification, which KUNO_ATTESTATION=production needs.
+attestation = ["kuno-protocol[tdx]"]
 postgres = ["psycopg[binary]>=3.2"]
 s3 = ["boto3>=1.35"]
 observability = ["prometheus-client>=0.21", "sentry-sdk>=2.0"]

@@ -25,6 +25,25 @@ const COPY: Record<string, Copy | ((phase: Phase) => Copy)> = {
     title: "Not enough balance for this take",
     detail: "Your balance doesn't cover this render, so nothing was sent to a stage or charged. Add credit on your account page.",
   },
+  invalid_amount: { title: "That amount can't be charged", detail: "" },
+  payments_unavailable: {
+    title: "This payment method isn't available",
+    detail: "It isn't switched on yet. Nothing was charged; try another method.",
+  },
+  provider_error: {
+    title: "The payment provider didn't answer",
+    detail: "Nothing was charged. Try again in a moment.",
+  },
+  invalid_wallet: {
+    title: "That isn't a Bittensor coldkey",
+    detail: "Paste the coldkey's address: 48 characters, starting with 5.",
+  },
+  invalid_signature: { title: "The signature didn't check out", detail: "" },
+  wallet_linked_elsewhere: {
+    title: "That coldkey belongs to another account",
+    detail: "It's already linked to a different KunoWorld account. Unlink it there first.",
+  },
+  signed_out: { title: "You've been signed out", detail: "Sign in again to continue." },
   rate_limited: {
     title: "Too many takes at once",
     detail: "You've started a lot of videos in the last minute. Wait a moment and try again; nothing was charged.",
@@ -136,4 +155,14 @@ export function friendlyError(err: unknown, phase: Phase): FriendlyError {
   const charge: FriendlyError["charge"] =
     phase === "submit" ? "none" : phase === "render" ? "refunded" : phase === "open" ? "kept" : null;
   return { code, title, detail: copy?.detail ? detail : message, charge };
+}
+
+/** One line for a failed request on the account page, from a route handler's { code, message } body. */
+export function accountError(body: { code?: string; message?: string } | null, fallback: string): string {
+  // Account requests carry the web session, so a 401 means it ended, not that an API key was wrong.
+  const code = body?.code === "unauthorized" ? "signed_out" : body?.code;
+  const entry = code ? COPY[code] : undefined;
+  const copy = typeof entry === "function" ? entry("submit") : entry;
+  if (!copy) return body?.message || fallback;
+  return `${copy.title}. ${copy.detail || body?.message || ""}`.trim();
 }

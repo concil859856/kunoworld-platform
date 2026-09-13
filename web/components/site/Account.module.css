@@ -48,7 +48,8 @@
   font-size: 14px;
 }
 
-.account .field input {
+.account .field input,
+.account .field select {
   width: 100%;
   min-width: 0;
   padding: 11px 12px;
@@ -184,4 +185,178 @@
 
 .account .debit {
   color: inherit;
+}
+
+/* Top-ups, linked wallets and the webhook secret. */
+
+.account .notice {
+  margin: 0 0 18px;
+}
+
+.account .wide {
+  max-width: none;
+}
+
+.account .success {
+  margin: 0;
+  font-size: 14px;
+  color: #2e7d32;
+  overflow-wrap: anywhere;
+}
+
+.account .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  align-items: center;
+}
+
+/* A fieldset's default min-width is its content's, which can push a narrow page sideways. */
+.account .fieldset {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.account .fieldset legend {
+  margin-bottom: 10px;
+  padding: 0;
+}
+
+.account .picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.account .chip {
+  padding: 8px 18px;
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: 40px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account .chip[aria-pressed="true"] {
+  border-color: #15383a;
+  background: #15383a;
+  color: #fff;
+}
+
+/* The "$" sits inside the input; the wrapper is positioned so it can't escape. */
+.account .money {
+  position: relative;
+  display: block;
+}
+
+.account .money > span {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.account .field .money input {
+  padding-left: 26px;
+}
+
+.account .choices {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+.account .choice {
+  display: flex;
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.account .choice:has(input:checked) {
+  border-color: #15383a;
+  background: color-mix(in srgb, #15383a 5%, transparent);
+}
+
+.account .choice input {
+  flex: none;
+  margin-top: 4px;
+  accent-color: #15383a;
+}
+
+.account .choice > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.account .choice small {
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: 0.75;
+}
+
+.account .list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.6;
+  list-style: disc;
+}
+
+.account .fine code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.account .address {
+  margin: 0;
+}
+
+/* Challenge messages and the btcli command: kept byte for byte, wrapped rather than scrolled. */
+.account .message {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: color-mix(in srgb, currentColor 5%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.account .option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.account .optionTitle {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.account .secret {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: color-mix(in srgb, currentColor 5%, transparent);
 }

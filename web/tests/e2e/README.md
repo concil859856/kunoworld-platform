@@ -49,6 +49,12 @@ or `KUNO_DEV_API_KEY`).
   Generate button is off, prompt length, seed range, per-role caps, duration/fps/size
   sets, negative-prompt and enhancer availability, and the retake window.
 - **verify**, **responsive** — the certificate page, 400 px layouts, reduced motion.
+- **account** — email-link sign-in, API keys, a video charged to your own balance.
+- **payments** — the account page's top-up methods as the gateway's payment config
+  switches them on, payment history, the return-from-checkout notices, linking coldkeys
+  through a stand-in browser wallet and a btcli-style signature (wrong key, coldkey
+  already on another account, unlink), the webhook secret's reveal / copy / rotate, and
+  no sideways scroll at 320 / 375 / 768 px.
 
 ## Notes
 

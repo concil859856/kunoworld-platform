@@ -27,16 +27,9 @@ kuno-worker = { workspace = true }
 kuno-gateway = { workspace = true }
 
 [dependency-groups]
-# Everything the gateway image runs with: Postgres driver, S3 blobs, metrics, Sentry.
-# (Mirrors the extras suggested for platform/gateway/pyproject.toml; kept here so the image
-# and CI work before that file is changed.)
-gateway = [
-    "kuno-gateway",
-    "psycopg[binary]>=3.2",
-    "boto3>=1.35",
-    "prometheus-client>=0.21",
-    "sentry-sdk>=2.0",
-]
+# Everything the gateway image runs with: Postgres, S3 blobs, metrics and Sentry, Intel DCAP
+# verification for production attestation, and the chain client for TAO and alpha top-ups.
+gateway = ["kuno-gateway[attestation,chain,postgres,s3,observability]"]
 worker = ["kuno-worker"]
 test = [
     { include-group = "gateway" },
