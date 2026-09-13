@@ -20,12 +20,12 @@ from kuno_protocol.schemas import GenerationParams, JobState, JobStatus, MinerCh
 from kuno_protocol.receipts import Receipt
 from kuno_protocol.switch import SignedSwitch, SwitchConfig
 
-from . import identity, ledger
+from . import identity, ledger, webhooks
 from .blobstore import BlobStore
-from .db import Account, Blob, Challenge, Enclave, Job, LoginToken, Setting, UserSession
+from .db import Account, Blob, Challenge, Enclave, Job, LoginToken, Nonce, Setting, UserSession
 from .mailer import Mailer, OutboxMailer, ResendMailer
 from .migrations import upgrade_database
-from .ratelimit import RateLimiter
+from .ratelimit import DatabaseRateLimiter, RateLimiter
 from .settings import Settings
 
 NONCE_TTL_S = 300
@@ -39,6 +39,8 @@ class GatewayState:
         self.settings = settings
         settings.data_dir.mkdir(parents=True, exist_ok=True)
         sqlite = settings.db_url.startswith("sqlite")
+        # Postgres can lock rows across processes; SQLite serializes writers already.
+        self.postgres = settings.db_url.startswith("postgres")
         self.engine = create_engine(settings.db_url, connect_args={"check_same_thread": False} if sqlite else {})
         upgrade_database(self.engine)
         self.Session = sessionmaker(self.engine, expire_on_commit=False)
@@ -50,10 +52,8 @@ class GatewayState:
         self.quote_verifier = None
         self.gpu_verifier = None
         self.claim_lock = threading.Lock()
-        self._nonces: dict[str, float] = {}
-        self._nonce_lock = threading.Lock()
         self._switch = self._load_switch()
-        self.limiter = RateLimiter()
+        self.limiter = DatabaseRateLimiter(self.session) if settings.rate_limit_backend == "database" else RateLimiter()
         self.mailer: Mailer = (
             ResendMailer(settings.resend_api_key, settings.email_from)
             if settings.resend_api_key
@@ -122,16 +122,15 @@ class GatewayState:
 
     def issue_nonce(self) -> str:
         nonce = secrets.token_hex(32)
-        with self._nonce_lock:
-            now = time.time()
-            self._nonces = {n: exp for n, exp in self._nonces.items() if exp > now}
-            self._nonces[nonce] = now + NONCE_TTL_S
+        with self.session() as s, s.begin():
+            s.add(Nonce(nonce=nonce, expires_at=time.time() + NONCE_TTL_S))
         return nonce
 
     def consume_nonce(self, nonce: str) -> bool:
-        with self._nonce_lock:
-            expires = self._nonces.pop(nonce, None)
-        return expires is not None and expires > time.time()
+        """Single use across every gateway process: only one delete of the row can succeed."""
+        with self.session() as s, s.begin():
+            result = s.execute(delete(Nonce).where(Nonce.nonce == nonce, Nonce.expires_at > time.time()))
+        return result.rowcount == 1
 
     # ------------------------------------------------------------ enclaves
 
@@ -166,7 +165,7 @@ class GatewayState:
         """Claims the next challenge or queued job for an enclave. Also records liveness."""
         now = time.time()
         with self.claim_lock, self.session() as s, s.begin():
-            enclave = s.get(Enclave, enclave_id)
+            enclave = s.get(Enclave, enclave_id, with_for_update=self.postgres)
             if enclave is None:
                 return None
             enclave.last_seen = now
@@ -181,12 +180,16 @@ class GatewayState:
                 return MinerChallenge(challenge_id=challenge.id, nonce=challenge.nonce)
             if enclave.status != "active" or enclave.inflight >= enclave.capacity:
                 return None
-            job = s.scalars(
+            claim = (
                 select(Job)
                 .where(Job.enclave_id == enclave_id, Job.status == JobState.QUEUED.value)
                 .order_by(Job.created_at)
                 .limit(1)
-            ).first()
+            )
+            if self.postgres:
+                # Two gateway processes never hand the same job out twice.
+                claim = claim.with_for_update(skip_locked=True)
+            job = s.scalars(claim).first()
             if job is None:
                 return None
             job.status = JobState.RUNNING.value
@@ -218,6 +221,8 @@ class GatewayState:
             enclave = s.get(Enclave, job.enclave_id)
             if enclave is not None and enclave.inflight > 0:
                 enclave.inflight -= 1
+        # Queued in the same transaction, so a terminal job and its webhook can't disagree.
+        webhooks.enqueue(s, job, job_status(job).model_dump(mode="json"), now)
 
     def janitor(self) -> None:
         now = time.time()
@@ -247,6 +252,7 @@ class GatewayState:
             # A day past expiry, sign-in links and sessions have nothing left to protect.
             s.execute(delete(LoginToken).where(LoginToken.expires_at < now - 86400))
             s.execute(delete(UserSession).where(UserSession.expires_at < now - 86400))
+            s.execute(delete(Nonce).where(Nonce.expires_at < now))
         self.limiter.prune(identity.AUTH_LIMIT_WINDOW_S)
 
 

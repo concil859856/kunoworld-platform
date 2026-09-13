@@ -23,7 +23,19 @@ interface Copy {
 const COPY: Record<string, Copy | ((phase: Phase) => Copy)> = {
   insufficient_balance: {
     title: "Not enough balance for this take",
-    detail: "Your balance doesn't cover this render, so nothing was sent to a stage. Self-serve accounts and top-ups are coming; for now keys are issued by hand.",
+    detail: "Your balance doesn't cover this render, so nothing was sent to a stage or charged. Add credit on your account page.",
+  },
+  rate_limited: {
+    title: "Too many takes at once",
+    detail: "You've started a lot of videos in the last minute. Wait a moment and try again; nothing was charged.",
+  },
+  too_many_active_jobs: {
+    title: "Several takes are still rendering",
+    detail: "Wait for one of them to finish before starting another. Nothing was charged.",
+  },
+  invalid_webhook_url: {
+    title: "That webhook address can't be used",
+    detail: "Webhooks must use https and point at a public address.",
   },
   region_restricted: {
     title: "Not licensed in your region yet",

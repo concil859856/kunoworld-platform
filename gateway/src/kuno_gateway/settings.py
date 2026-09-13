@@ -45,6 +45,18 @@ class Settings:
     login_token_ttl_s: int = 15 * 60
     web_session_ttl_s: int = 30 * 86400
     studio_token_ttl_s: int = 3600
+    # Per-account limits on the job API. Validators are exempt.
+    jobs_per_minute: int = 30
+    max_active_jobs: int = 10
+    uploads_per_minute: int = 240
+    # Everything but blob uploads is JSON and small; refuse anything larger before reading it.
+    max_json_body_bytes: int = 1024 * 1024
+    # "memory" for one gateway process; "database" when several share one database.
+    rate_limit_backend: str = "memory"
+    # Dev and tests only: lets webhooks reach localhost and private networks, and use http.
+    allow_private_webhooks: bool = False
+    webhook_max_attempts: int = 8
+    webhook_interval_s: float = 2.0
 
     @property
     def blob_dir(self) -> Path:
@@ -79,4 +91,10 @@ class Settings:
             email_from=env.get("KUNO_EMAIL_FROM", "KunoWorld <signin@kunoworld.com>"),
             resend_api_key=env.get("KUNO_RESEND_API_KEY") or None,
             signup_credit_usd=float(env.get("KUNO_SIGNUP_CREDIT_USD", "0")),
+            jobs_per_minute=int(env.get("KUNO_JOBS_PER_MINUTE", "30")),
+            max_active_jobs=int(env.get("KUNO_MAX_ACTIVE_JOBS", "10")),
+            uploads_per_minute=int(env.get("KUNO_UPLOADS_PER_MINUTE", "240")),
+            max_json_body_bytes=int(env.get("KUNO_MAX_JSON_BODY_BYTES", str(1024 * 1024))),
+            rate_limit_backend=env.get("KUNO_RATE_LIMIT_BACKEND", "memory"),
+            allow_private_webhooks=env.get("KUNO_ALLOW_PRIVATE_WEBHOOKS", "0") == "1",
         )

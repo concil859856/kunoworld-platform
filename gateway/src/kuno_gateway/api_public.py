@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from kuno_protocol.canonical import b64d
 from kuno_protocol.profiles import Mode, ParamError, validate_params
@@ -14,7 +15,7 @@ from kuno_protocol.receipts import Receipt, verify_receipt
 from kuno_protocol.schemas import JobCreate, JobState, JobStatus, RouteResponse
 from kuno_protocol.switch import RouteError, resolve_route
 
-from . import ledger
+from . import ledger, webhooks
 from .auth import gw, require_account
 from .db import Account, Blob, Enclave, Job, LedgerEntry
 from .state import enclave_public, job_status
@@ -85,6 +86,8 @@ async def route(request: Request, mode: Mode, profile_id: str | None = None, fam
 @router.post("/blobs", status_code=201)
 async def upload_blob(request: Request, account: Account = Depends(require_account)):
     state = gw(request)
+    if not account.is_validator and not state.limiter.allow(f"uploads:{account.id}", state.settings.uploads_per_minute, 60):
+        raise _error(429, "rate_limited", "Too many uploads in the last minute. Wait a moment and try again.")
     data = await request.body()
     if len(data) > state.settings.max_blob_bytes:
         raise _error(413, "too_large", "Blob exceeds the upload limit.")
@@ -128,6 +131,14 @@ async def download_blob(blob_id: str, request: Request, account: Account = Depen
 @router.post("/videos", status_code=201, response_model=JobStatus)
 async def create_video(body: JobCreate, request: Request, account: Account = Depends(require_account)):
     state = gw(request)
+    if not account.is_validator and not state.limiter.allow(f"jobs:{account.id}", state.settings.jobs_per_minute, 60):
+        raise _error(429, "rate_limited", "Too many videos started in the last minute. Wait a moment and try again.")
+    if body.webhook_url:
+        try:
+            # Resolves the host, so it runs off the event loop.
+            await asyncio.to_thread(webhooks.check_url, body.webhook_url, state.settings.allow_private_webhooks)
+        except webhooks.InvalidWebhookUrl as exc:
+            raise _error(422, "invalid_webhook_url", str(exc)) from None
     params = body.params
     profile = state.profiles.get(params.profile_id)
     if profile is None:
@@ -160,6 +171,16 @@ async def create_video(body: JobCreate, request: Request, account: Account = Dep
             if blob is None or blob.owner_kind != "account" or blob.owner_id != account.id or blob.job_id is not None:
                 raise _error(422, "invalid_inputs", f"Blob {blob_id} is unknown, not yours, or already used.")
             blob.job_id = body.job_id
+        if not account.is_validator:
+            active = s.scalar(
+                select(func.count())
+                .select_from(Job)
+                .where(Job.account_id == account.id, Job.status.in_([JobState.QUEUED.value, JobState.RUNNING.value]))
+            )
+            if active >= state.settings.max_active_jobs:
+                raise _error(429, "too_many_active_jobs", f"You already have {active} videos in progress. Wait for one to finish.")
+        if body.webhook_url:
+            webhooks.ensure_secret(s.get(Account, account.id))
         price = profile.price_usd(params)
         try:
             ledger.post(
@@ -225,6 +246,23 @@ async def get_account(request: Request, account: Account = Depends(require_accou
     with gw(request).session() as s:
         current = s.get(Account, account.id)
     return {"account_id": current.id, "name": current.name, "balance_usd": ledger.to_usd(current.balance_micros)}
+
+
+@router.get("/account/webhook-secret")
+async def get_webhook_secret(request: Request, account: Account = Depends(require_account)):
+    """The secret that signs this account's webhook deliveries, for verifying them."""
+    with gw(request).session() as s, s.begin():
+        secret = webhooks.ensure_secret(s.get(Account, account.id))
+    return {"secret": secret}
+
+
+@router.post("/account/webhook-secret/rotate")
+async def rotate_webhook_secret(request: Request, account: Account = Depends(require_account)):
+    with gw(request).session() as s, s.begin():
+        current = s.get(Account, account.id)
+        current.webhook_secret = None
+        secret = webhooks.ensure_secret(current)
+    return {"secret": secret}
 
 
 @router.get("/account/ledger")

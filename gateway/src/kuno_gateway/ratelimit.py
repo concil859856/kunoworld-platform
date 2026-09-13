@@ -42,3 +42,46 @@ class RateLimiter:
     def __len__(self) -> int:
         with self._lock:
             return len(self._hits)
+
+
+class DatabaseRateLimiter:
+    """Fixed-window counters in the shared database, for several gateway processes behind one limit.
+
+    Unlike the in-memory limiter, a refused attempt still counts toward its window; the window resets
+    on its own, so the effect is the same for a client that backs off.
+    """
+
+    def __init__(self, session_factory) -> None:
+        self._session = session_factory
+
+    def allow(self, key: str, limit: int, window_s: float, now: float | None = None) -> bool:
+        from sqlalchemy.exc import IntegrityError
+
+        from .db import RateLimitCounter
+
+        now = time.time() if now is None else now
+        window = int(now // window_s)
+        for _ in range(3):
+            try:
+                with self._session() as s, s.begin():
+                    row = s.get(RateLimitCounter, (key, window), with_for_update=True)
+                    if row is None:
+                        s.add(RateLimitCounter(key=key, window=window, count=1, expires_at=(window + 1) * window_s))
+                        return True
+                    if row.count >= limit:
+                        return False
+                    row.count += 1
+                    return True
+            except IntegrityError:
+                # Another process created this window's counter first; count against it instead.
+                continue
+        return False
+
+    def prune(self, max_window_s: float, now: float | None = None) -> None:
+        from sqlalchemy import delete
+
+        from .db import RateLimitCounter
+
+        now = time.time() if now is None else now
+        with self._session() as s, s.begin():
+            s.execute(delete(RateLimitCounter).where(RateLimitCounter.expires_at < now))

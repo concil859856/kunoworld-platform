@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Boolean, Float, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, Float, Index, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -15,6 +15,8 @@ class Account(Base):
     name: Mapped[str] = mapped_column(String(200))
     # The signed-in user who owns this account; none for the seeded dev and validator accounts.
     owner_user_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    # Signs this account's webhook deliveries. Created the first time it is needed.
+    webhook_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # USD micro-dollars. Always the running total of this account's ledger entries.
     balance_micros: Mapped[int] = mapped_column(BigInteger, default=0)
     is_validator: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -73,6 +75,50 @@ class UserSession(Base):
     created_at: Mapped[float] = mapped_column(Float)
     expires_at: Mapped[float] = mapped_column(Float, index=True)
     revoked_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class Nonce(Base):
+    """A single-use registration nonce, in the database so any gateway process can redeem it."""
+
+    __tablename__ = "nonces"
+
+    nonce: Mapped[str] = mapped_column(String(64), primary_key=True)
+    expires_at: Mapped[float] = mapped_column(Float, index=True)
+
+
+class RateLimitCounter(Base):
+    """A fixed-window hit counter, for rate limits shared by several gateway processes."""
+
+    __tablename__ = "rate_limit_counters"
+
+    key: Mapped[str] = mapped_column(String(200), primary_key=True)
+    window: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    count: Mapped[int] = mapped_column(Integer)
+    expires_at: Mapped[float] = mapped_column(Float, index=True)
+
+
+class WebhookDelivery(Base):
+    """One job event to post to a customer's webhook, retried until it lands or gives up."""
+
+    __tablename__ = "webhook_deliveries"
+    __table_args__ = (Index("uq_webhook_deliveries_job_event", "job_id", "event", unique=True),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(32), index=True)
+    job_id: Mapped[str] = mapped_column(String(36), index=True)
+    url: Mapped[str] = mapped_column(Text)
+    event: Mapped[str] = mapped_column(String(32))
+    payload: Mapped[str] = mapped_column(Text)
+    # pending, delivered or failed
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[float] = mapped_column(Float, index=True)
+    # Claimed by one gateway process at a time.
+    locked_until: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[float] = mapped_column(Float)
+    delivered_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class LedgerEntry(Base):

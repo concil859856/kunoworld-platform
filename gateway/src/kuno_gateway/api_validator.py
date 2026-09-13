@@ -1,5 +1,5 @@
-"""Transparency endpoints validators score from. They expose receipts and
-attestation evidence, never content."""
+"""Endpoints validators score from. They expose receipts and attestation evidence, never content,
+but job timings and models per job are still metadata worth keeping to registered validators."""
 
 from __future__ import annotations
 
@@ -29,13 +29,13 @@ class ChallengeCreate(BaseModel):
 
 
 @router.get("/enclaves")
-async def enclaves(request: Request):
+async def enclaves(request: Request, _validator: Account = Depends(require_validator)):
     with gw(request).session() as s:
         return [enclave_public(e) for e in s.scalars(select(Enclave)).all()]
 
 
 @router.get("/ledger")
-async def ledger(request: Request, since: float = 0.0, limit: int = 1000):
+async def ledger(request: Request, since: float = 0.0, limit: int = 1000, _validator: Account = Depends(require_validator)):
     """Finished jobs with their receipts. Canary jobs look like any other job here."""
     with gw(request).session() as s:
         rows = s.execute(
