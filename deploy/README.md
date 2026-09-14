@@ -89,9 +89,20 @@ outbox:
 docker compose exec gateway sh -c 'ls -t /var/lib/kuno/data/outbox | head -1 | xargs -I{} cat /var/lib/kuno/data/outbox/{}'
 ```
 
-The dev API key, admin token and validator key are in `/var/lib/kuno/data/dev.env` inside
-the `kuno-keys` volume. `docker compose logs devkit` prints the dev API key, so treat those
-logs as secret.
+The dev API key and validator key are in `/var/lib/kuno/data/dev.env` inside the `kuno-keys`
+volume. `docker compose logs devkit` prints the dev API key, so treat those logs as secret.
+
+**Operators:** operators sign in on the website by email, like customers, and hold a role
+(`moderator` or `admin`, see `platform/gateway/MODERATION.md`). Grant the first admin once the
+gateway is up; after that, admins manage roles through `/admin/v1/roles`:
+
+```sh
+docker compose exec gateway kuno-gateway grant-role --email you@example.com --role admin
+```
+
+The devkit also writes a `KUNO_ADMIN_TOKEN`. It is break-glass only: ignored unless
+`KUNO_ALLOW_ADMIN_TOKEN=1`, never honoured on a production gateway, and logged as operator
+`break-glass`. Leave it off.
 
 Stop with `docker compose down`. `docker compose down -v` also deletes the database, the
 blobs and the keys.
@@ -142,42 +153,77 @@ docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTG
 - Test restores. A backup is only real once a restore has worked and the ledger totals
   match: `select sum(amount_micros) from ledger_entries` against `select sum(balance_micros) from accounts`.
 
-**Blobs are short-lived ciphertext.** Uploads and outputs are encrypted to keys the gateway
-never holds, and expire after `blob_retention_s` (7 days). The gateway's janitor deletes
-expired objects. A bucket lifecycle rule is the safety net in case the janitor is down:
+**Blobs are customers' videos, and they stay until the owner deletes them.** Stored objects are
+uploads, sealed job inputs and outputs, and Standard videos and thumbnails. Standard media is
+encrypted at rest by the gateway (`KUNO_STANDARD_STORAGE_KEY`); Private media is ciphertext only
+the customer's key opens. Nothing a job stores expires. Only uploads that no job used expire after
+24 hours, and the gateway's janitor deletes those. Deleting a video (`DELETE /v1/videos/{job_id}`)
+deletes its objects; preservation holds can delay that.
 
-- MinIO (this stack): `minio-setup` imports an expiry rule for `blobs/` of
-  `KUNO_S3_EXPIRE_DAYS` (default 8). Keep that above the retention period. MinIO removes
-  abandoned multipart uploads itself.
-- AWS S3 or R2: set the equivalent rule, and also abort incomplete multipart uploads:
+- **Never add an expiry lifecycle rule** to the bucket: it would delete videos their owners kept.
+  This stack's `minio-setup` removes any expiry rule an older version installed.
+- On R2, incomplete multipart uploads are aborted automatically after 7 days by default. To shorten
+  that, add only an abort rule, in the R2 dashboard (bucket, Settings, Object lifecycle rules) or with:
 
   ```json
   {"Rules": [
-    {"ID": "kuno-expire-blobs", "Status": "Enabled", "Filter": {"Prefix": "blobs/"}, "Expiration": {"Days": 8}},
     {"ID": "kuno-abort-multipart", "Status": "Enabled", "Filter": {"Prefix": ""}, "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 1}}
   ]}
   ```
 
-  `aws s3api put-bucket-lifecycle-configuration --bucket <bucket> --lifecycle-configuration file://lifecycle.json`
-  (for R2, add `--endpoint-url https://<account>.r2.cloudflarestorage.com`).
+  `aws s3api put-bucket-lifecycle-configuration --bucket <bucket> --lifecycle-configuration file://lifecycle.json --endpoint-url https://<ACCOUNT_ID>.r2.cloudflarestorage.com`
 
-Backing up blobs is usually unnecessary: they are ciphertext that customers download within
-days, and losing one fails a download, not a balance. If you do want copies, use bucket
-replication to a second bucket with the same lifecycle rule. Never make the bucket public:
-every read goes through the gateway's access checks.
+Blob loss now loses a customer's video, so decide deliberately whether to keep a second copy
+(for example R2 bucket replication or a periodic copy to a separate account). A copy must honour
+deletions: an owner's deleted video must not survive in it beyond what counsel accepts
+(`platform/gateway/MODERATION.md`, "Storage and deletion"). Never make the bucket public: every read
+goes through the gateway's access checks, which let only the owner open a video.
 
-**Keys:** the owner key, admin token and golden manifest are not in Postgres. In production
+**Keys:** the owner key, `KUNO_STANDARD_STORAGE_KEY` and golden manifest are not in Postgres.
+Losing the storage key loses every Standard video. In production
 they come from your secret manager. In this stack they live in the `kuno-keys` volume, so
 back that up too if the stack matters to you.
 
 ## Production notes
 
-- Gateway env for S3: `KUNO_BLOB_BACKEND=s3`, `KUNO_S3_BUCKET`, `KUNO_S3_REGION` (`auto` for R2),
-  `KUNO_S3_ENDPOINT_URL` (unset for AWS), and `KUNO_S3_ACCESS_KEY_ID`/`KUNO_S3_SECRET_ACCESS_KEY`
-  (or the standard AWS credential chain, such as an instance role).
+- **Production mode:** set `KUNO_ENV=production` (and `KUNO_ATTESTATION=production` once the real
+  verifiers are configured). A production gateway refuses to start with the local blob backend and
+  never honours the break-glass admin token.
+- **Blob storage is Cloudflare R2**, through the S3 backend:
+
+  ```
+  KUNO_BLOB_BACKEND=s3
+  KUNO_S3_ENDPOINT_URL=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+  KUNO_S3_REGION=auto
+  KUNO_S3_BUCKET=kuno-blobs
+  KUNO_S3_ACCESS_KEY_ID=...        # an R2 API token with Object Read & Write, scoped to this bucket
+  KUNO_S3_SECRET_ACCESS_KEY=...
+  ```
+
+  Leave `KUNO_S3_ADDRESSING_STYLE` at `auto` (R2 accepts both path-style and virtual-hosted
+  requests) and `KUNO_S3_CREATE_BUCKET` unset; create the bucket in the dashboard. R2 compatibility
+  of what the backend uses:
+  - `PutObject`, `GetObject`, `DeleteObject`, `HeadBucket`, `CreateBucket` and multipart upload
+    (`CreateMultipartUpload`, `UploadPart`, `CompleteMultipartUpload`, `AbortMultipartUpload`) are
+    all supported ([S3 API compatibility](https://developers.cloudflare.com/r2/api/s3/api/)).
+  - The region is `auto`; `us-east-1` and an empty region alias to it (same page).
+  - Multipart parts must all be the same size except the last, at least 5 MiB, and at most 10,000
+    parts ([multipart objects](https://developers.cloudflare.com/r2/objects/multipart-objects/)).
+    The backend uploads fixed 8 MiB parts.
+  - The compatibility table lists `x-amz-checksum-*` and `x-amz-sdk-checksum-algorithm` as
+    unsupported on `PutObject` and `CreateMultipartUpload`. boto3 1.36 and later send CRC checksums
+    by default, so the backend sets `request_checksum_calculation` and
+    `response_checksum_validation` to `when_required`.
+  - The table doesn't list user metadata (`x-amz-meta-*`), so the backend stores none; the
+    database keeps each blob's digest.
+  - R2 encrypts every object at rest with AES-256 ([data security](https://developers.cloudflare.com/r2/reference/data-security/)).
+  - boto3 configuration: [R2 boto3 example](https://developers.cloudflare.com/r2/examples/aws/boto3/).
 - Observability: `KUNO_LOG_FORMAT=json`, `KUNO_METRICS_TOKEN`, and optionally `SENTRY_DSN`.
   Metrics are per process; the gateway runs as a single uvicorn process.
 - Terminate TLS in front of the gateway and the site. The gateway reads the visitor's
   country from `cf-ipcountry`, so behind Cloudflare make sure only Cloudflare can reach
   the origin.
 - Use `KUNO_RATE_LIMIT_BACKEND=database` when more than one gateway shares the database.
+- Operators: grant the first admin with `kuno-gateway grant-role --email ... --role admin` against
+  the production database; don't set `KUNO_ADMIN_TOKEN` at all.
+- Prices are placeholders until the owner sets them (`platform/gateway/PAYMENTS.md`).

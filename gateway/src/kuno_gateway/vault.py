@@ -71,7 +71,7 @@ def vault(state: GatewayState) -> Vault:
     configured = state.settings.standard_storage_key
     if configured:
         key = b64d(configured)
-    elif state.policy.production:
+    elif state.policy.production or state.settings.production:
         raise StorageKeyMissing("KUNO_STANDARD_STORAGE_KEY is required in production")
     else:
         key = _dev_key(state)

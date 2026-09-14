@@ -140,12 +140,10 @@ export function Inspector({ entry, film, profiles, composer, onCancel, onRemove,
               <dt>Privacy</dt>
               <dd>{PRIVACY_COPY[entry.privacy ?? "private"].label}</dd>
             </div>
-            {entry.expiresAt && (
-              <div>
-                <dt>Kept until</dt>
-                <dd>{new Date(entry.expiresAt * 1000).toLocaleDateString("en-US", { dateStyle: "medium" })}</dd>
-              </div>
-            )}
+            <div>
+              <dt>Kept</dt>
+              <dd>Until you delete it</dd>
+            </div>
             <div>
               <dt>Mode</dt>
               <dd>{MODE_LABEL[entry.mode]}</dd>
@@ -248,7 +246,7 @@ export function Inspector({ entry, film, profiles, composer, onCancel, onRemove,
           </a>
         )}
         <button onClick={() => onRemove(entry)}>
-          <X size={16} /> {entry.privacy === "standard" ? "Delete" : "Remove"}
+          <X size={16} /> {entry.handle ? "Delete" : "Remove"}
         </button>
       </div>
     </aside>

@@ -130,7 +130,9 @@ def test_reusing_a_key_for_a_different_movement_is_refused(state):
 
 def test_admin_credit_posts_once_per_key_and_refuses_overdrafts(settings):
     client = TestClient(create_app(settings))
-    admin = {"authorization": f"Bearer {settings.admin_token}"}
+    from operator_sessions import operator_headers
+
+    admin = operator_headers(client.app.state.gw, "support@kunoworld.test")
     dev = {"authorization": f"Bearer {settings.dev_api_key}"}
     start = client.get("/v1/account", headers=dev).json()["balance_usd"]
 

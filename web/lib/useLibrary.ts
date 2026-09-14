@@ -30,14 +30,14 @@ import type { ComposerTab, EditOp, ShotSettings } from "./shot";
  *
  * Every private take is persisted in this browser with its JobHandle, and the handle carries the
  * output key — the only key that opens the finished film. So a take survives a reload:
- * the ciphertext is re-downloaded from the relay and decrypted here, rather than the
- * video being held in memory. Nothing about private takes is ever sent to the server.
+ * the ciphertext is re-downloaded from storage and decrypted here, rather than the
+ * video being held in memory. The key is never sent to the server.
  *
- * Standard takes are the gateway's to keep: they are listed from GET /v1/standard/videos when
- * the studio connects, shown with a preview frame, and downloaded when opened.
+ * Standard takes are listed from GET /v1/standard/videos when the studio signs in, shown with a
+ * preview frame, and downloaded when opened.
  *
- * Libraries are kept per API key, so connecting with a different key shows a different
- * shelf rather than mixing them.
+ * In both modes the stored video stays until it is deleted here (DELETE /v1/videos/{id}).
+ * Libraries are kept per signed-in account, so another account shows a different shelf.
  */
 
 export interface FilmState {
@@ -94,7 +94,6 @@ function standardEntry(client: KunoClient, row: StandardVideoSummary): LibraryEn
     id: row.job_id,
     handle: client.standardHandle(row),
     privacy: "standard",
-    expiresAt: row.expires_at ?? null,
     createdAt: row.created_at * 1000,
     prompt: row.prompt ?? "",
     tab: "text",
@@ -122,8 +121,9 @@ function standardEntry(client: KunoClient, row: StandardVideoSummary): LibraryEn
   };
 }
 
-export function useLibrary(client: KunoClient | null, apiKey: string | null) {
-  const fingerprint = useMemo(() => (apiKey ? keyFingerprint(apiKey) : null), [apiKey]);
+export function useLibrary(client: KunoClient | null, accountId: string | null) {
+  // Same label the studio used when it keyed libraries by "account:<id>", so saved takes carry over.
+  const fingerprint = useMemo(() => (accountId ? keyFingerprint(`account:${accountId}`) : null), [accountId]);
 
   const [entries, setEntries] = useState<LibraryEntry[]>([]);
   const [films, setFilms] = useState<Record<string, FilmState>>({});
@@ -381,25 +381,43 @@ export function useLibrary(client: KunoClient | null, apiKey: string | null) {
     });
   }, []);
 
-  /** Private: forgets the take and its key here. Standard: deletes it from the gateway. */
+  /**
+   * Deletes a take from KunoWorld's storage, in either mode, and then from this shelf. A private
+   * take's key is removed from this browser only after the server delete succeeds, so a failed
+   * delete never leaves an encrypted video stored with no key to open or find it.
+   */
   const remove = useCallback(
     async (entry: LibraryEntry) => {
       const standard = isStandard(entry);
+      if (!entry.handle) {
+        // Never reached the gateway: nothing is stored anywhere.
+        if (!window.confirm("Remove this take from the library? It was never made, so nothing is stored.")) return;
+        setEntries((list) => list.filter((e) => e.id !== entry.id));
+        return;
+      }
       const ok = window.confirm(
         standard
-          ? "Delete this video from KunoWorld? Its stored video, prompt and inputs are deleted for good. If it's still rendering, it's canceled and refunded first. The charge record stays in your account activity."
-          : "Remove this take from the library? This deletes the only key to the film from this browser — download it first if you want to keep it.",
+          ? "Delete this video from KunoWorld? Its stored video, prompt and inputs are deleted for good. If it's still rendering, it's canceled first. The charge record stays in your account activity."
+          : "Delete this video from KunoWorld? Its encrypted copy is deleted from storage for good, and its key is removed from this browser. Download it first if you want to keep it. If it's still rendering, it's canceled first. The charge record stays in your account activity.",
       );
       if (!ok) return;
-      if (standard && entry.handle && client) {
-        try {
-          await client.deleteStandard(entry.handle.jobId);
-        } catch (err) {
-          const error = friendlyError(err, "open", "standard");
-          if (!["not_found", "expired", "deleted", "removed"].includes(error.code)) {
-            setNotice(`Couldn't delete that video — ${error.title}.`);
-            return;
-          }
+      if (!client) {
+        setNotice("Sign in to delete videos.");
+        return;
+      }
+      const jobId = entry.handle.jobId;
+      if (isActive(entry)) {
+        controllers.current.get(entry.id)?.abort();
+        await client.cancel(jobId).catch(() => undefined);
+      }
+      try {
+        await client.delete(jobId);
+      } catch (err) {
+        const error = friendlyError(err, "open", entry.privacy);
+        // Already gone on the server: finish removing it here.
+        if (!["not_found", "expired", "deleted", "removed"].includes(error.code)) {
+          setNotice(`Couldn't delete that video — ${error.title}. It's still in your library${standard ? "" : ", with its key"}.`);
+          return;
         }
       }
       controllers.current.get(entry.id)?.abort();
@@ -412,7 +430,7 @@ export function useLibrary(client: KunoClient | null, apiKey: string | null) {
   const forgetAll = useCallback(() => {
     const keepsStandard = entriesRef.current.some(isStandard);
     const ok = window.confirm(
-      "Forget the whole library? This deletes every film key stored in this browser. Films you haven't downloaded can't be opened afterwards." +
+      "Forget every private video key in this browser? Their encrypted videos stay on KunoWorld's storage, but nobody can open them without a key — back up your keys first. To remove the videos themselves, delete them instead." +
         (keepsStandard ? " Standard takes stay in your KunoWorld library." : ""),
     );
     if (!ok) return;

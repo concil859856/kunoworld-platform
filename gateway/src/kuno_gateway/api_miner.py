@@ -21,7 +21,7 @@ from kuno_protocol.schemas import GenerationParams, JobState, MinerRegistration
 from kuno_protocol.tiers import OPEN, hotkey_proof_required, tier_for_tee, tier_serves
 
 from .auth import gw, require_enclave, verify_enclave_signature
-from .db import Blob, Challenge, Enclave, Job
+from .db import NEVER_EXPIRES, Blob, Challenge, Enclave, Job
 from .state import HardwareInUse
 
 router = APIRouter(prefix="/miner/v1", tags=["miner"])
@@ -259,7 +259,8 @@ async def upload_output(request: Request, auth=Depends(require_enclave)):
                 size=size,
                 sha256=digest,
                 created_at=now,
-                expires_at=now + state.settings.blob_retention_s,
+                # An output that never completes its job expires like an unused upload; complete() keeps it.
+                expires_at=now + state.settings.upload_ttl_s,
             )
         )
     return {"blob_id": blob_id, "sha256": digest, "size": size}
@@ -292,6 +293,8 @@ async def complete(job_id: str, request: Request, auth=Depends(require_enclave))
         if problems:
             raise _error(422, "bad_receipt", "; ".join(problems))
         job.output_blob_id = blob.id
+        # The video stays until its owner deletes it.
+        blob.expires_at = NEVER_EXPIRES
         job.receipt = receipt.model_dump_json()
         job.content_digest = r.content_digest
         job.progress, job.stage = 1.0, "done"

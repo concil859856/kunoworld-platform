@@ -20,7 +20,7 @@ const png = (name: string, rgb: [number, number, number]) => ({ name, mimeType: 
 
 /** The modes LTX-2.5 serves. MiniMax H3's own modes live in h3-director.spec.ts. */
 
-test("keyframes pinned to their own times render on LTX-2.5", async ({ page }) => {
+test("keyframes pinned to their own times render on LTX-2.5 @needs-session-gateway", async ({ page }) => {
   await connect(page);
   await openTab(page, "Keyframes");
   // Keyframes are an LTX feature, so the composer loads an LTX stock by itself.
@@ -49,7 +49,7 @@ test("keyframes pinned to their own times render on LTX-2.5", async ({ page }) =
   expect((await inspectFilm(page)).ftyp).toBe("ftyp");
 });
 
-test("retake regenerates a window of a clip on LTX-2.5", async ({ page }) => {
+test("retake regenerates a window of a clip on LTX-2.5 @needs-session-gateway", async ({ page }) => {
   await connect(page);
   await openTab(page, "Edit");
   await pickEditOp(page, "Retake");
@@ -70,7 +70,7 @@ test("retake regenerates a window of a clip on LTX-2.5", async ({ page }) => {
   expect((await inspectFilm(page)).ftyp).toBe("ftyp");
 });
 
-test("a soundtrack drives the picture on LTX-2.5 Pro", async ({ page }) => {
+test("a soundtrack drives the picture on LTX-2.5 Pro @needs-session-gateway", async ({ page }) => {
   await connect(page);
   await openTab(page, "Edit");
   await pickEditOp(page, "Audio → video");

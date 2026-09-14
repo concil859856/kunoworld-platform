@@ -20,7 +20,7 @@ import {
   TABS,
 } from "@/lib/shot";
 import { MODE_LABEL, validateParams, validatePrompt, type Problem } from "@/lib/validation";
-import { PRIVACY_COPY } from "@/lib/privacy-copy";
+import { NSFW_SENTENCE, PRIVACY_COPY } from "@/lib/privacy-copy";
 import { setPrivacyChoice, usePrivacyChoice } from "@/lib/usePrivacyChoice";
 
 import { EditTray, FramesTray, KeyframesTray, ReferencesTray } from "./Trays";
@@ -365,6 +365,7 @@ export function Composer({
             </label>
           ))}
         </div>
+        <small className="privacy-policy-note">{NSFW_SENTENCE}</small>
       </fieldset>
 
       <div className="composer-footer">
@@ -389,7 +390,7 @@ export function Composer({
           Cancel generation
         </button>
       )}
-      <p className="estimate">{estimate === null ? "Price unavailable" : "Preview pricing"}</p>
+      <p className="estimate">{estimate === null ? "Price unavailable" : "Placeholder price — not final"}</p>
       {routeNotice && <p className="status-message">{routeNotice}</p>}
       {(generalProblems.length > 0 || trayProblems.length > 0) && (
         <ul className="problem-list" aria-label="Problems to fix">

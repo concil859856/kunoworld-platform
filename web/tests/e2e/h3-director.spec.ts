@@ -28,7 +28,7 @@ const png = (name: string, rgb: [number, number, number]) => ({ name, mimeType: 
 const pngs = (n: number, from = 0) =>
   Array.from({ length: n }, (_, i) => png(`cast-${from + i + 1}.png`, [30 + i * 20, 70, 120 - i * 10]));
 
-test("References: the 9/3/3/12 caps, the audio rule, and a directed shot", async ({ page }) => {
+test("References: the 9/3/3/12 caps, the audio rule, and a directed shot @needs-session-gateway", async ({ page }) => {
   await connect(page);
   await openTab(page, "References");
   await expect(stockButton(page)).toContainText("Director");
@@ -73,7 +73,7 @@ test("References: the 9/3/3/12 caps, the audio rule, and a directed shot", async
   expect((await inspectFilm(page)).ftyp).toBe("ftyp");
 });
 
-test("Edit and Extend both run a source clip through MiniMax H3 Director", async ({ page }) => {
+test("Edit and Extend both run a source clip through MiniMax H3 Director @needs-session-gateway", async ({ page }) => {
   await connect(page);
   await openTab(page, "Edit");
   await expect(page.getByRole("radio", { name: "Edit", exact: true })).toHaveAttribute("aria-checked", "true");
@@ -98,7 +98,7 @@ test("Edit and Extend both run a source clip through MiniMax H3 Director", async
   expect((await inspectFilm(page)).ftyp).toBe("ftyp");
 });
 
-test("Audio to video on Director needs a visual alongside the soundtrack", async ({ page }) => {
+test("Audio to video on Director needs a visual alongside the soundtrack @needs-session-gateway", async ({ page }) => {
   await connect(page);
   await openTab(page, "Edit");
   await pickEditOp(page, "Audio → video");

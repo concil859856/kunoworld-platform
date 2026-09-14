@@ -1,4 +1,4 @@
-"""Signing in by email link, sessions, studio tokens and API keys."""
+"""Signing in by email link, web sessions and API keys."""
 
 from __future__ import annotations
 
@@ -114,27 +114,30 @@ def test_a_key_is_shown_once_works_and_stops_when_revoked(client, settings):
 
 
 def test_each_credential_only_does_its_own_job(client, settings):
-    session = sign_in(client, settings)["session_token"]
-    studio = client.post("/v1/me/studio-token", headers=bearer(session))
-    assert studio.status_code == 201
-    token = studio.json()["token"]
-    assert token.startswith("kwt_")
+    signed_in = sign_in(client, settings)
+    session = signed_in["session_token"]
+    assert session.startswith("kws_")
 
-    # A studio token makes videos; it can't manage keys.
-    assert client.get("/v1/account", headers=bearer(token)).status_code == 200
-    assert client.get("/v1/me/keys", headers=bearer(token)).status_code == 401
-    # A web session manages the account; it isn't an API credential.
-    assert client.get("/v1/account", headers=bearer(session)).status_code == 401
-    # An API key is neither.
+    # The web session is the customer's credential for everything, the job API included (the website's server
+    # forwards it); account management needs it.
+    assert client.get("/v1/account", headers=bearer(session)).json()["account_id"] == signed_in["account"]["account_id"]
+    assert client.get("/v1/videos", headers=bearer(session)).status_code == 200
+    assert client.get("/v1/me/keys", headers=bearer(session)).status_code == 200
+    assert client.get("/v1/me", headers=bearer(session)).json()["roles"] == []
+    # Studio tokens are retired.
+    retired = client.post("/v1/me/studio-token", headers=bearer(session))
+    assert retired.status_code == 410 and retired.json()["detail"]["code"] == "gone"
+    # An API key works on the job API but manages nothing.
     assert client.get("/v1/me", headers=bearer(settings.dev_api_key)).status_code == 401
+    assert client.get("/v1/me/keys", headers=bearer(settings.dev_api_key)).status_code == 401
 
 
-def test_signing_out_ends_the_session_and_every_studio_token_it_issued(client, settings):
+def test_signing_out_ends_the_session_everywhere(client, settings):
     session = sign_in(client, settings)["session_token"]
-    token = client.post("/v1/me/studio-token", headers=bearer(session)).json()["token"]
+    assert client.get("/v1/account", headers=bearer(session)).status_code == 200
     assert client.post("/v1/auth/logout", headers=bearer(session)).status_code == 204
     assert client.get("/v1/me", headers=bearer(session)).status_code == 401
-    assert client.get("/v1/account", headers=bearer(token)).status_code == 401
+    assert client.get("/v1/account", headers=bearer(session)).status_code == 401
 
 
 def test_a_welcome_credit_is_given_once(settings):
@@ -150,3 +153,7 @@ def test_a_welcome_credit_is_given_once(settings):
 def test_the_seeded_development_keys_still_work(client, settings):
     assert client.get("/v1/account", headers=bearer(settings.dev_api_key)).json()["account_id"] == "dev"
     assert client.get("/v1/account", headers=bearer(settings.validator_api_key)).json()["account_id"] == "validator"
+
+
+def test_models_say_every_price_is_a_placeholder(client):
+    assert client.get("/v1/models").json()["pricing_placeholder"] is True

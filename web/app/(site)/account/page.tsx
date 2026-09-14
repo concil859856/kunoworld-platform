@@ -9,17 +9,21 @@ import { WebhookSecret } from "@/components/site/WebhookSecret";
 import { PrivateModeStatus } from "@/components/site/PrivateModeStatus";
 import type { Eligibility } from "@kunoworld/sdk";
 import styles from "@/components/site/Account.module.css";
-import { gateway, sessionToken } from "@/lib/gateway.server";
+import { gateway, rolesOf, sessionToken, type Me } from "@/lib/gateway.server";
+import {
+  KEY_BACKUP_SENTENCE,
+  NSFW_SENTENCE,
+  OPERATOR_ACCESS_SENTENCE,
+  PRICE_PLACEHOLDER_SENTENCE,
+  PRIVACY_COPY,
+  SIGN_IN_SENTENCE,
+  STORAGE_SENTENCE,
+} from "@/lib/privacy-copy";
 
 export const metadata: Metadata = {
   title: "Account — KunoWorld",
   robots: { index: false },
 };
-
-interface Me {
-  user: { user_id: string; email: string; created_at: number };
-  account: { account_id: string; balance_usd: number } | null;
-}
 
 interface Entry {
   entry_id: string;
@@ -122,12 +126,13 @@ export default async function Account({ searchParams }: { searchParams: Promise<
   }
 
   const { user, account } = me.data;
+  const roles = rolesOf(me.data);
   return (
     <div className={styles.account}>
       <header className="page-heading">
         <span className="section-kicker">YOUR ACCOUNT</span>
         <h1 className={styles.email}>{user.email}</h1>
-        <p>Your balance and top-ups, your API keys, and every charge and refund.</p>
+        <p>Your balance and top-ups, how your videos are kept, your developer API keys, and every charge and refund.</p>
       </header>
 
       <div className="inner-content">
@@ -167,11 +172,37 @@ export default async function Account({ searchParams }: { searchParams: Promise<
                 <dd>{date(user.created_at)}</dd>
               </div>
             </dl>
+            {roles.length > 0 && (
+              <a className="text-link" href="/admin">
+                Open the operator console
+              </a>
+            )}
             <form method="post" action="/auth/logout">
               <button type="submit" className="text-link">
                 Sign out
               </button>
             </form>
+          </div>
+        </section>
+
+        <section id="your-videos" className={styles.section} aria-labelledby="your-videos-title">
+          <h2 id="your-videos-title" className={styles.sectionTitle}>
+            How your videos are kept
+          </h2>
+          <div className={`${styles.panel} ${styles.wide}`}>
+            <p className={styles.fine}>{SIGN_IN_SENTENCE}</p>
+            <p className={styles.fine}>{STORAGE_SENTENCE} Delete a video in the studio library and its stored copy is gone.</p>
+            <ul className={styles.list}>
+              <li>
+                <strong>{PRIVACY_COPY.private.label}:</strong> {PRIVACY_COPY.private.sentence} {KEY_BACKUP_SENTENCE}
+              </li>
+              <li>
+                <strong>{PRIVACY_COPY.standard.label}:</strong> {PRIVACY_COPY.standard.sentence}
+              </li>
+            </ul>
+            <p className={styles.fine}>
+              {OPERATOR_ACCESS_SENTENCE} {NSFW_SENTENCE} {PRICE_PLACEHOLDER_SENTENCE}
+            </p>
           </div>
         </section>
 
@@ -249,9 +280,10 @@ export default async function Account({ searchParams }: { searchParams: Promise<
         </section>
 
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>API keys</h2>
+          <h2 className={styles.sectionTitle}>API keys for developers</h2>
           <p className={styles.fine}>
-            For the SDKs and the API from your own programs. The studio doesn&apos;t need one: it uses your sign-in.
+            Only for calling the API or the SDKs from programs you run yourself. You don&apos;t need one to use KunoWorld:
+            the studio, your library and payments all work with your email sign-in. Never put a key in a web page.
           </p>
           <KeyManager initialKeys={keys.ok ? keys.data : []} />
         </section>

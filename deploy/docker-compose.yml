@@ -70,8 +70,8 @@ services:
       timeout: 3s
       retries: 30
 
-  # One-shot: bucket, a least-privilege user for the gateway, and a lifecycle rule that
-  # backs up the gateway janitor's blob expiry.
+  # One-shot: bucket and a least-privilege user for the gateway. No expiry lifecycle rule:
+  # stored videos stay until their owner deletes them, and the gateway deletes the objects.
   minio-setup:
     image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
     depends_on:
@@ -83,7 +83,6 @@ services:
       BUCKET: ${KUNO_S3_BUCKET:-kuno-blobs}
       GATEWAY_KEY: ${KUNO_S3_ACCESS_KEY_ID}
       GATEWAY_SECRET: ${KUNO_S3_SECRET_ACCESS_KEY}
-      EXPIRE_DAYS: ${KUNO_S3_EXPIRE_DAYS:-8}
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
@@ -99,19 +98,15 @@ services:
         mc admin policy create local kuno-gateway /tmp/kuno-gateway-policy.json
         mc admin user add local "$$GATEWAY_KEY" "$$GATEWAY_SECRET"
         mc admin policy attach local kuno-gateway --user "$$GATEWAY_KEY" 2>/dev/null || true
-        # import replaces the whole lifecycle configuration, so re-running doesn't stack rules.
-        # (MinIO cleans up abandoned multipart uploads itself; on AWS/R2 add an
-        # AbortIncompleteMultipartUpload rule too, see README.md.)
-        cat > /tmp/kuno-lifecycle.json <<EOF
-        {"Rules": [{"ID": "kuno-expire-blobs", "Status": "Enabled", "Filter": {"Prefix": "blobs/"}, "Expiration": {"Days": $$EXPIRE_DAYS}}]}
-        EOF
-        mc ilm import "local/$$BUCKET" < /tmp/kuno-lifecycle.json
-        echo "minio ready: bucket $$BUCKET, blobs expire after $$EXPIRE_DAYS days"
+        # Remove any expiry rule an older version of this stack installed: it would delete kept videos.
+        # (MinIO cleans up abandoned multipart uploads itself; on R2 see README.md.)
+        mc ilm rule remove --all --force "local/$$BUCKET" >/dev/null 2>&1 || true
+        echo "minio ready: bucket $$BUCKET, no expiry (videos stay until their owner deletes them)"
     restart: "no"
 
   # One-shot: development keys, golden manifest and signed switch for the mock TEE, written
   # to the shared volume. Re-running keeps existing keys. Production supplies a real
-  # manifest, owner key and admin token instead.
+  # manifest and owner key instead; operators sign in by email (grant-role).
   devkit:
     image: kunoworld/mock-worker:${KUNO_IMAGE_TAG:-local}
     build:

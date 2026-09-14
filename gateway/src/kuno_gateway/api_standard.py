@@ -1,6 +1,7 @@
 """Standard jobs (STANDARD_MODE.md): plaintext uploads, gateway-sealed jobs, and the owner's stored videos.
 
-Each route exists twice: on the job API (API key or studio token) and under /v1/me/standard for the web session.
+The job API routes (`/v1/standard/...`) accept an API key or the web session. The `/v1/me/standard/...` aliases accept
+only the web session. Stored videos, prompts and inputs stay until their owner deletes them.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from sqlalchemy import select
 from . import holds, identity, moderation, standard_jobs
 from .api_public import admit_job, check_job_rate, validate_request
 from .auth import SignedIn, gw, require_account, require_user
-from .db import Account, Blob, Enclave, Job
+from .db import NEVER_EXPIRES, Account, Blob, Enclave, Job
 from .db_moderation import StandardJob, StandardUpload
 from .state import job_status
 from .upload_scan import ScanUnavailable, build_scanner
@@ -48,6 +49,23 @@ async def require_me_account(request: Request, who: SignedIn = Depends(require_u
     if account is None:
         raise _error(409, "no_account", "This user has no account yet. Sign in again.")
     return account
+
+
+CONTENT_POLICY_MESSAGE = "This prompt isn't allowed. Sexual and NSFW content is not permitted."
+
+
+def check_content_policy(state, account: Account, prompt: str, negative_prompt: str | None) -> None:
+    """`kuno_protocol.content_policy.check_prompt`; a violation is `422 content_policy` and one `content_policy` strike."""
+    from kuno_protocol.content_policy import ContentPolicyViolation, check_prompt
+
+    try:
+        check_prompt(prompt, negative_prompt)
+    except ContentPolicyViolation:
+        with state.session() as s, s.begin():
+            moderation.record_strike(s, state.settings, account.id, "content_policy")
+        # The prompt is never logged.
+        log.info("refused a standard prompt under the content policy: account=%s", account.id)
+        raise _error(422, "content_policy", CONTENT_POLICY_MESSAGE) from None
 
 
 def _vault(state) -> Vault:
@@ -177,6 +195,9 @@ async def _create(body: StandardJobCreate, request: Request, account: Account) -
         raise _error(422, "prompt_too_long", f"Prompts are limited to {profile.limits.max_prompt_chars} characters.")
     if body.negative_prompt and not profile.limits.negative_prompt:
         raise _error(422, "unsupported_option", f"{profile.name} does not use negative prompts.")
+    # Sexual and NSFW content is banned in both modes. The gateway can read a Standard prompt, so it refuses one here,
+    # before anything is sealed; private prompts are checked inside the enclave.
+    check_content_policy(state, account, body.prompt, body.negative_prompt)
     refs = sorted(body.inputs, key=lambda i: i.index)
     if (
         [r.index for r in refs] != list(range(len(refs)))
@@ -240,7 +261,7 @@ async def _create(body: StandardJobCreate, request: Request, account: Account) -
                 s.add(
                     Blob(
                         id=blob_id, owner_kind="account", owner_id=account.id, job_id=job_id, size=size, sha256=digest,
-                        created_at=now, expires_at=now + state.settings.blob_retention_s,
+                        created_at=now, expires_at=NEVER_EXPIRES,
                     )
                 )
             s.add(
@@ -253,7 +274,7 @@ async def _create(body: StandardJobCreate, request: Request, account: Account) -
                         separators=(",", ":"),
                     ),
                     output_key=store.seal_secret(standard_jobs.output_key_label(job_id), sealed.output_key),
-                    created_at=now, expires_at=now + state.settings.standard_retention_s,
+                    created_at=now, expires_at=NEVER_EXPIRES,
                 )
             )
     except BaseException:
@@ -293,7 +314,8 @@ def _list(request: Request, account: Account, limit: int) -> list[dict]:
             "finished_at": job.finished_at,
             "has_video": row.video_blob_id is not None and row.deleted_at is None,
             "error_code": job.error_code,
-            "expires_at": row.expires_at,
+            # Stored videos don't expire; kept for clients that read it.
+            "expires_at": None,
             "deleted": row.deleted_at is not None,
         }
         for job, row in rows
@@ -321,7 +343,7 @@ def _owned(s, account: Account, job_id: str) -> tuple[Job, StandardJob]:
 def _available(job: Job, row: StandardJob) -> None:
     if row.deleted_at is not None:
         code = row.delete_reason or "deleted"
-        raise _error(410, code, {"expired": "This video has passed its retention period.",
+        raise _error(410, code, {"expired": "This video expired under an earlier storage policy.",
                                  "removed": "This video was removed."}.get(code, "This video was deleted."))
     if job.status != JobState.SUCCEEDED.value or row.video_blob_id is None:
         raise _error(404, "not_ready", "The video isn't ready.")
@@ -379,11 +401,8 @@ def _delete(request: Request, account: Account, job_id: str) -> Response:
     state = gw(request)
     now = time.time()
     with state.session() as s, s.begin():
-        job, row = _owned(s, account, job_id)
-        if not JobState(job.status).terminal:
-            state.finish_job(s, job, JobState.CANCELED, "canceled", "Deleted by the customer.")
-        if row.deleted_at is None:
-            standard_jobs.purge(state, s, row, "deleted", now)
+        job, _ = _owned(s, account, job_id)
+        standard_jobs.delete_for_owner(state, s, job, now)
     return Response(status_code=204)
 
 

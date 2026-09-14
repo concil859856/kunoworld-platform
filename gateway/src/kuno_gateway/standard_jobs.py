@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import logging
-import random
 import shutil
 import subprocess
 import time
@@ -38,7 +37,7 @@ from kuno_protocol.tiers import tier_for_tee, tier_serves
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import holds, moderation
+from . import holds
 from .db import Blob, Enclave, Job
 from .db_moderation import StandardJob, StandardUpload
 from .vault import vault
@@ -195,8 +194,6 @@ def ingest_output(state: GatewayState, s: Session, job: Job, now: float) -> str 
     blob_id, _, _ = state.blobs.put(store.seal(video_label(job.id), video))
     row.video_blob_id, row.video_sha256, row.video_bytes = blob_id, digest, len(video)
     row.output_key = None
-    if state.settings.moderation_sample_rate > 0 and random.random() < state.settings.moderation_sample_rate:
-        moderation.add_item(s, "sample", moderation.SAMPLE_PRIORITY, job_id=job.id, account_id=job.account_id, now=now)
     return None
 
 
@@ -255,7 +252,10 @@ def thumbnail(state: GatewayState, job_id: str) -> bytes:
     return jpeg
 
 
-# ------------------------------------------------------------------ deletion and retention
+# ------------------------------------------------------------------ deletion
+#
+# Stored content never expires: only the owner's deletion or an operator's removal destroys it (and a preservation
+# hold can delay that). Unused uploads are the one thing that expires.
 
 
 def purge(state: GatewayState, s: Session, row: StandardJob, reason: str, now: float) -> None:
@@ -311,28 +311,35 @@ def open_private_output(state: GatewayState, job: Job, output_key: bytes) -> byt
     return video
 
 
-def expire(state: GatewayState, now: float | None = None) -> dict[str, int]:
-    """Retention: purges standard content past its expiry and uploads that were never used."""
+def expire_unused_uploads(state: GatewayState, s: Session, now: float | None = None) -> int:
+    """Deletes standard uploads that never became part of a job, once past their expiry (24 h by default), unless a
+    hold keeps them. Uploads a job used, and everything else a job stores, stay until the owner deletes the job."""
     now = time.time() if now is None else now
-    purged = uploads = 0
-    with state.session() as s, s.begin():
-        rows = s.scalars(select(StandardJob).where(StandardJob.expires_at < now, StandardJob.deleted_at.is_(None))).all()
-        for row in rows:
-            job = s.get(Job, row.job_id)
-            if job is not None and not JobState(job.status).terminal:
-                continue
-            purge(state, s, row, "expired", now)
-            purged += 1
-        for upload in s.scalars(
-            select(StandardUpload).where(StandardUpload.expires_at < now, StandardUpload.job_id.is_(None))
-        ).all():
-            if holds.upload_held(s, upload.id, now):
-                continue
-            if upload.blob_id:
-                discard_blobs(state, [upload.blob_id])
-            s.delete(upload)
-            uploads += 1
-    return {"purged": purged, "uploads": uploads}
+    deleted = 0
+    for upload in s.scalars(
+        select(StandardUpload).where(StandardUpload.expires_at < now, StandardUpload.job_id.is_(None))
+    ).all():
+        if holds.upload_held(s, upload.id, now):
+            continue
+        if upload.blob_id:
+            discard_blobs(state, [upload.blob_id])
+        s.delete(upload)
+        deleted += 1
+    return deleted
+
+
+def delete_for_owner(state: GatewayState, s: Session, job: Job, now: float) -> None:
+    """The owner's DELETE, either mode. Cancels (and refunds) a job still in progress, then deletes what it stores:
+    Standard: the video, thumbnail, prompt, inputs and sealed blobs; Private: the sealed input and output blobs.
+    Billing records and receipts stay. Under a preservation hold the content is hidden but kept."""
+    if not JobState(job.status).terminal:
+        state.finish_job(s, job, JobState.CANCELED, "canceled", "Deleted by the customer.")
+    row = s.get(StandardJob, job.id) if job.privacy == STANDARD else None
+    if row is not None:
+        if row.deleted_at is None:
+            purge(state, s, row, "deleted", now)
+    else:
+        remove_job_blobs(state, s, job.id, now)
 
 
 def inputs_json(row: StandardJob) -> list[dict]:

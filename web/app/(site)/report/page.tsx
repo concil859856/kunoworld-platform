@@ -38,17 +38,23 @@ export default async function Report({ searchParams }: { searchParams: Promise<Q
           <div className={styles.panel}>
             <h2 className={styles.panelTitle}>What we can look at</h2>
             <p className={styles.fine}>
-              <strong>Standard videos</strong> are kept readable by KunoWorld, so a reviewer can watch the video and read
-              the prompt behind it.
+              KunoWorld operators open a video only for a report of <strong>child sexual abuse material</strong> or{" "}
+              <strong>sexual content involving a minor</strong>, or when it is under a legal hold. Every view is logged.
+              Nobody at KunoWorld browses or samples videos.
             </p>
             <p className={styles.fine}>
-              <strong>Private videos</strong> are encrypted end to end, and nobody at KunoWorld can open them. A reviewer
-              can see one only if your report includes its output key. Without the key we can still act on the account
-              that made it, but not look at the video.
+              <strong>Other reports</strong> (harassment, copyright, extremism, intimate imagery shared without consent,
+              and so on) are handled without opening the video: from what you tell us, the job&apos;s details and the
+              account&apos;s history. We can still remove the video or restrict the account.
             </p>
             <p className={styles.fine}>
-              Reports about child sexual abuse material and sexual content involving minors are handled first. Every
-              action taken on a report is recorded.
+              <strong>Standard videos</strong> are stored readable by KunoWorld&apos;s systems. <strong>Private
+              videos</strong> are encrypted end to end: even for a child-safety report, a reviewer can open one only if
+              the report includes its output key.
+            </p>
+            <p className={styles.fine}>
+              NSFW content is banned in both modes. Reports about children are handled first, and every action taken on a
+              report is recorded.
             </p>
             <p className={styles.fine}>
               How reports, strikes and reviews work is set out in the{" "}

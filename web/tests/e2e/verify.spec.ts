@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { cards, connect, generate, pickStock, watchToReady } from "./helpers";
 
-test("verify finds a real film's certificate and rejects an unrelated file", async ({ page }, testInfo) => {
+test("verify finds a real film's certificate and rejects an unrelated file @needs-session-gateway", async ({ page }, testInfo) => {
   await connect(page);
   await pickStock(page, /LTX-2\.5 Fast/);
   await generate(page, "Slow dolly through a darkroom as a print develops in the tray");

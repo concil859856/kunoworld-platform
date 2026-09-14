@@ -1,9 +1,10 @@
 """Sign-in, sessions and API keys.
 
-The website's server holds the long-lived web session, in an HttpOnly cookie on its own origin,
-and calls these endpoints with it. The browser never sees that session: for making videos the
-studio gets a short-lived studio token, which works on the job API but can't manage keys or sign
-out. API keys are for programs; each is shown once, stored only as a hash, and can be revoked.
+The website's server holds the web session, in an HttpOnly cookie on its own origin, and forwards
+it as a bearer token for everything the signed-in customer does: account management here, and the
+job API (making, listing, downloading and deleting videos). The browser never holds a token.
+API keys are for developers' programs; each is shown once, stored only as a hash, and can be
+revoked. They work on the job API but can't manage keys or payments.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import identity, ledger
+from . import identity, ledger, roles
 from .auth import SignedIn, gw, require_user
 from .db import Account, ApiKey, LedgerEntry, UserSession
 from .mailer import sign_in_message
@@ -127,7 +128,8 @@ async def logout(request: Request, who: SignedIn = Depends(require_user)):
 async def me(request: Request, who: SignedIn = Depends(require_user)):
     with gw(request).session() as s:
         account = identity.account_for_user(s, who.user.id)
-    return {"user": identity.user_json(who.user), "account": identity.account_json(account)}
+        held = roles.active_roles(s, who.user.id)
+    return {"user": identity.user_json(who.user), "account": identity.account_json(account), "roles": held}
 
 
 @router.get("/me/keys")
@@ -170,14 +172,10 @@ async def revoke_key(key_id: str, request: Request, who: SignedIn = Depends(requ
     return payload
 
 
-@router.post("/me/studio-token", status_code=201)
-async def studio_token(request: Request, who: SignedIn = Depends(require_user)):
-    state = gw(request)
-    with state.session() as s, s.begin():
-        _account(s, who)
-        ttl = min(state.settings.studio_token_ttl_s, who.session.expires_at - time.time())
-        token, row = identity.open_session(s, who.user.id, identity.STUDIO, ttl, parent_id=who.session.id)
-    return {"token": token, "expires_at": row.expires_at}
+@router.post("/me/studio-token")
+async def studio_token():
+    """Retired. The website's server forwards the web session to the job API instead."""
+    raise _error(410, "gone", "Studio tokens were retired. Call the job API with the web session (from the website's server) or an API key.")
 
 
 @router.get("/me/ledger")

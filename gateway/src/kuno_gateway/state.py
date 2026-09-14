@@ -63,6 +63,10 @@ class HardwareInUse(Exception):
 class GatewayState:
     def __init__(self, settings: Settings):
         self.settings = settings
+        # Production keeps customers' videos on durable object storage (R2), never on a local disk.
+        from .blobstore_s3 import require_durable_blob_backend
+
+        require_durable_blob_backend(settings)
         settings.data_dir.mkdir(parents=True, exist_ok=True)
         sqlite = settings.db_url.startswith("sqlite")
         # Postgres can lock rows across processes; SQLite serializes writers already.
@@ -79,6 +83,8 @@ class GatewayState:
         if settings.owner_public_key:
             env["KUNO_OWNER_PUBLIC_KEY"] = settings.owner_public_key
         self.policy = policy_from_env(env)
+        if self.policy.production:
+            require_durable_blob_backend(settings, production=True)
         self.manifest = self.policy.load_manifest(env.get("KUNO_SIGNED_MANIFEST") or settings.manifest_path)
         self.quote_verifier = self.policy.quote_verifier
         self.gpu_verifier = self.policy.gpu_verifier
@@ -386,11 +392,14 @@ class GatewayState:
             for challenge in s.scalars(select(Challenge).where(Challenge.status.in_(["pending", "sent"]))).all():
                 if now - challenge.created_at > CHALLENGE_TTL_S:
                     challenge.status = "expired"
-            # Expired blobs, except those a preservation hold keeps; also ends expired holds and finishes the
-            # deletions holds deferred (holds.sweep_blobs).
+            # Expired blobs (unused uploads, and content already hidden) except those a preservation hold keeps; also
+            # ends expired holds and finishes the deletions holds deferred (holds.sweep_blobs). Blobs that belong to a
+            # job never expire, so stored videos stay until their owner deletes them.
             from .holds import sweep_blobs
+            from .standard_jobs import expire_unused_uploads
 
             sweep_blobs(self, s, now)
+            expire_unused_uploads(self, s, now)
             # A day past expiry, sign-in links and sessions have nothing left to protect.
             s.execute(delete(LoginToken).where(LoginToken.expires_at < now - 86400))
             s.execute(delete(UserSession).where(UserSession.expires_at < now - 86400))

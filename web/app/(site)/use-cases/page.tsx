@@ -135,7 +135,7 @@ export default function UseCasesPage() {
         <div className="cases-workflow-grid">
           <Reveal><span className="cases-step">01 / FRAME THE IDEA</span><h3>Start with a single shot.</h3><p>Choose your subject, action, camera move, and light. Keep the first experiment simple enough to learn from.</p><a href="/blog/directing-the-impossible" className="text-link">Find your direction <ArrowUpRight size={15} /></a></Reveal>
           <Reveal><span className="cases-step">02 / CHOOSE YOUR TOOLS</span><h3>Match the model to the moment.</h3><p>Compare durations, aspect ratios, and creation modes. Select the controls that matter to your scene.</p><a href="/models" className="text-link">Explore the model catalog <ArrowUpRight size={15} /></a></Reveal>
-          <Reveal><span className="cases-step">03 / MAKE THE CONNECTION</span><h3>Bring your gateway.</h3><p>Connect a configured gateway with your API key and trusted manifest, then prepare a generation in the studio.</p><a href="/docs#quickstart" className="text-link">Get your workflow ready <ArrowUpRight size={15} /></a></Reveal>
+          <Reveal><span className="cases-step">03 / SIGN IN AND CREATE</span><h3>Sign in with your email.</h3><p>Open the studio signed in, choose Private or Standard, and generate. Building your own app instead? Create an API key on your account page.</p><a href="/docs#studio" className="text-link">Get your workflow ready <ArrowUpRight size={15} /></a></Reveal>
         </div>
         <p className="cases-preview-note">Creative studies shown here were generated through external models. KunoWorld is a development preview; production GPU serving is still being built. <a href="/docs#project-status">See project status <ArrowUpRight size={12} /></a></p>
       </section>

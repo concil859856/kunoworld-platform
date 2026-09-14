@@ -34,8 +34,32 @@ runs against the plain one.
 | `unknown-region` | 3000 | none (H3 unlicensed) | `studio`, `modes`, `actions`, `validation`, `verify`, `responsive` |
 | `japan` | 3001 | `NEXT_PUBLIC_KUNO_DEV_COUNTRY=JP` | `h3-region`, `h3-director` |
 
-The API key is read from `/tmp/kuno-web-data/dev.env` (override with `KUNO_DATA_DIR`
-or `KUNO_DEV_API_KEY`).
+The studio has no API key: specs sign in through the gateway's email-link API and give the
+browser only the HttpOnly `kw_session` cookie (`connect()` and `signInWithCookie()` in
+`helpers.ts`), once per email per run. Credit goes through `creditAccount()`, which uses the
+break-glass `KUNO_ADMIN_TOKEN` from `/tmp/kuno-web-data/dev.env` (the dev gateway runs with
+`KUNO_ALLOW_ADMIN_TOKEN=1`) and otherwise an admin's session. Operator roles are granted with the
+gateway's CLI, `uv run kuno-gateway grant-role --email <e> --role moderator|admin` with
+`KUNO_DATA_DIR` set (`grantRole()`); the run's admin is `KUNO_E2E_ADMIN_EMAIL`, default
+`e2e-admin@example.com`. `KUNO_DEV_API_KEY` is still read by one test that proves a page-supplied key is ignored.
+
+### `@needs-session-gateway`
+
+Tests tagged `@needs-session-gateway` need a gateway whose job API accepts the web session
+(`Authorization: Bearer <session>` from the site's `/api/kuno` proxy), serves
+`DELETE /v1/videos/{id}`, lists roles on `GET /v1/me` and takes operator sessions on `/admin/v1`.
+Every spec that renders a film is tagged, because rendering now goes through the session. On an
+older gateway run the rest:
+
+```bash
+npx playwright test --workers=1 --grep-invert @needs-session-gateway
+```
+
+and the tagged ones once the gateway is current:
+
+```bash
+npx playwright test --workers=1 --grep @needs-session-gateway
+```
 
 ## What each spec covers
 
@@ -56,6 +80,13 @@ or `KUNO_DEV_API_KEY`).
   already on another account, unlink), the webhook secret's reveal / copy / rotate, and
   no sideways scroll at 320 / 375 / 768 px.
 
+- **session-studio** — no key or token in the page (storage, cookies, HTML, request headers,
+  no direct gateway calls), the proxy refusing a missing session, a page-supplied key, paths
+  outside its allow-list and cross-site calls; the key-backup panel and its sentence; the NSFW
+  `content_policy` message; generating then deleting a private and a standard take (tagged).
+- **admin** — the operator console is a 404 for visitors and customers; a moderator granted
+  through the gateway sees reports and the queue but not admin pages, gets the "can't be opened"
+  note, resolves a report, and fits 320 / 375 / 768 px; an admin changes roles (tagged).
 - **privacy-modes** — the per-take Private / Standard choice and that it persists, refused
   private takes (not eligible, restricted until when) and a blocked standard upload (those
   errors are stood in with `page.route`), the report page (links, prefill, validation), and no

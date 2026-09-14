@@ -2,8 +2,9 @@
  * The studio library: one entry per take.
  *
  * Private takes are persisted in this browser's localStorage. Each holds the SDK JobHandle,
- * including the output key, the only key that opens the finished film. Nothing about them is
- * sent to the server; films are re-downloaded as ciphertext and decrypted locally when opened.
+ * including the output key, the only key that opens the finished film. The key is never sent to
+ * the server; films are re-downloaded as ciphertext and decrypted locally when opened. The
+ * encrypted copy stays on KunoWorld's storage until its owner deletes it.
  *
  * Standard takes live on the gateway and are listed from there, so they are never persisted
  * here and never go into a key backup.
@@ -40,8 +41,6 @@ export interface LibraryEntry {
   handle: AnyJobHandle | null;
   /** Absent on entries saved before standard mode existed: those are private. */
   privacy?: PrivacyMode;
-  /** Standard takes: when the gateway deletes the stored video (Unix seconds). */
-  expiresAt?: number | null;
   createdAt: number;
   prompt: string;
   tab: ComposerTab;

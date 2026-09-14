@@ -12,6 +12,9 @@ export const REPORT_REASONS: ReadonlyArray<{ value: ReportReason; label: string 
   { value: "other", label: "Something else" },
 ];
 
+/** The only reasons a private video's output key may be sent with (the gateway refuses others: key_not_accepted). */
+export const KEY_REASONS: ReadonlyArray<ReportReason> = ["csam", "sexual_minor"];
+
 export type ReportField = keyof ReportRequest;
 
 export type ReportCheck = { ok: true; report: ReportRequest } | { ok: false; field: ReportField; message: string };
@@ -54,6 +57,12 @@ export function checkReport(input: unknown): ReportCheck {
   if (!REPORT_REASONS.some((r) => r.value === reason)) return fail("reason", "Choose a reason.");
   if (details.length > LIMITS.details) return fail("details", `Keep the details under ${LIMITS.details.toLocaleString("en-US")} characters.`);
   // An output key is 32 bytes of base64url: 43 characters, perhaps with one "=" of padding.
+  if (outputKey && !KEY_REASONS.includes(reason as ReportReason)) {
+    return fail(
+      "output_key",
+      "An output key can be sent only with a report of child sexual abuse material or sexual content involving a minor. Leave it empty.",
+    );
+  }
   if (outputKey && (outputKey.length > LIMITS.output_key || !/^[A-Za-z0-9_-]{43}=?$/.test(outputKey))) {
     return fail("output_key", "That doesn't look like a KunoWorld output key. Copy it exactly, or leave it empty.");
   }

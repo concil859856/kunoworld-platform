@@ -8,6 +8,12 @@ class Base(DeclarativeBase):
     pass
 
 
+# `expires_at` of anything kept until someone deletes it (9999-12-31T23:59:59Z): job blobs of both modes, and
+# standard content. Stored videos never expire on their own; only their owner's deletion (or an operator's
+# removal) destroys them, and preservation holds can still delay that.
+NEVER_EXPIRES = 253402300799.0
+
+
 class Account(Base):
     __tablename__ = "accounts"
 
@@ -62,7 +68,7 @@ class LoginToken(Base):
 
 
 class UserSession(Base):
-    """A web session (held by the website's server) or a studio token issued from one."""
+    """A web session, held by the website's server. (Rows of kind "studio" are retired studio tokens, never accepted.)"""
 
     __tablename__ = "sessions"
 
@@ -70,7 +76,7 @@ class UserSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     user_id: Mapped[str] = mapped_column(String(32), index=True)
     kind: Mapped[str] = mapped_column(String(16))
-    # A studio token belongs to the web session that issued it and ends with it.
+    # A session issued from another ends with it. Only retired studio tokens used this.
     parent_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     created_at: Mapped[float] = mapped_column(Float)
     expires_at: Mapped[float] = mapped_column(Float, index=True)

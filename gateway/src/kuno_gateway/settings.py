@@ -18,7 +18,14 @@ class Settings:
     manifest_path: Path
     switch_path: Path | None = None
     owner_public_key: str | None = None
+    # Break-glass only: honoured when allow_admin_token is set, never in production, logged as operator "break-glass".
+    # Operators sign in by email and hold roles (roles.py).
     admin_token: str | None = None
+    allow_admin_token: bool = False
+    # KUNO_ENV: "production" marks a production gateway even before KUNO_ATTESTATION=production is set.
+    environment: str | None = None
+    # KUNO_ATTESTATION: "dev" (default) or "production".
+    attestation: str = "dev"
     dev_api_key: str | None = None
     validator_api_key: str | None = None
     database_url: str | None = None
@@ -34,7 +41,9 @@ class Settings:
     queued_grace_s: int = 45
     pull_wait_s: float = 20.0
     queue_timeout_s: int = 600
-    blob_retention_s: int = 7 * 86400
+    # A ciphertext blob uploaded for a private job that never uses it expires after this. Blobs that belong to a job
+    # (inputs and outputs, both modes) never expire: they stay until the owner deletes the video.
+    upload_ttl_s: int = 86400
     janitor_interval_s: float = 5.0
     # Where sign-in links point: the website, whose server finishes signing in.
     site_url: str = "http://localhost:3000"
@@ -44,7 +53,6 @@ class Settings:
     signup_credit_usd: float = 0.0
     login_token_ttl_s: int = 15 * 60
     web_session_ttl_s: int = 30 * 86400
-    studio_token_ttl_s: int = 3600
     # Per-account limits on the job API. Validators are exempt.
     jobs_per_minute: int = 30
     max_active_jobs: int = 10
@@ -97,7 +105,7 @@ class Settings:
     # base64url of 32 random bytes. Encrypts standard uploads, videos and held keys at rest. Unset: dev networks
     # generate data_dir/standard_storage.key; production refuses standard mode until it is configured.
     standard_storage_key: str | None = None
-    standard_retention_days: float = 30.0
+    # Unused standard uploads expire; uploads a job used stay with the job until the owner deletes it.
     standard_upload_ttl_s: int = 86400
     private_jobs_per_minute: int = 10
     # Private mode needs a credited top-up or an operator credit, and fewer than this many strikes in 30 days.
@@ -108,8 +116,6 @@ class Settings:
         default_factory=lambda: [(3, 86400, 3600), (5, 7 * 86400, 7 * 86400), (10, 30 * 86400, None)]
     )
     reports_per_hour_per_ip: int = 10
-    # Share of newly succeeded standard videos queued for operator review.
-    moderation_sample_rate: float = 0.05
     # One lowercase SHA-256 per line, optionally followed by a category; "#" starts a comment.
     blocked_hashes_file: Path | None = None
     ffmpeg_path: str | None = None
@@ -117,8 +123,14 @@ class Settings:
     preservation_days: float = 365.0
 
     @property
-    def standard_retention_s(self) -> float:
-        return self.standard_retention_days * 86400
+    def production(self) -> bool:
+        """KUNO_ENV=production or KUNO_ATTESTATION=production."""
+        return (self.environment or "").strip().lower() == "production" or self.attestation.strip().lower() == "production"
+
+    @property
+    def break_glass_enabled(self) -> bool:
+        """The shared admin token works only when explicitly allowed, and never in production."""
+        return bool(self.admin_token) and self.allow_admin_token and not self.production
 
     @property
     def c2pa_issuance_log(self) -> Path:
@@ -148,6 +160,9 @@ class Settings:
             switch_path=Path(switch) if switch else None,
             owner_public_key=env.get("KUNO_OWNER_PUBLIC_KEY"),
             admin_token=env.get("KUNO_ADMIN_TOKEN"),
+            allow_admin_token=env.get("KUNO_ALLOW_ADMIN_TOKEN", "0") == "1",
+            environment=env.get("KUNO_ENV") or None,
+            attestation=env.get("KUNO_ATTESTATION", "dev") or "dev",
             dev_api_key=env.get("KUNO_DEV_API_KEY"),
             validator_api_key=env.get("KUNO_VALIDATOR_API_KEY"),
             database_url=env.get("KUNO_DATABASE_URL"),
@@ -163,6 +178,7 @@ class Settings:
             max_json_body_bytes=int(env.get("KUNO_MAX_JSON_BODY_BYTES", str(1024 * 1024))),
             rate_limit_backend=env.get("KUNO_RATE_LIMIT_BACKEND", "memory"),
             allow_private_webhooks=env.get("KUNO_ALLOW_PRIVATE_WEBHOOKS", "0") == "1",
+            upload_ttl_s=int(env.get("KUNO_UPLOAD_TTL_S", "86400")),
             topup_min_usd=float(env.get("KUNO_TOPUP_MIN_USD", "5")),
             topup_max_usd=float(env.get("KUNO_TOPUP_MAX_USD", "5000")),
             stripe_secret_key=env.get("KUNO_STRIPE_SECRET_KEY") or None,
@@ -191,7 +207,6 @@ class Settings:
             c2pa_tsa_url=env.get("KUNO_C2PA_TSA_URL") or None,
             c2pa_issuance_log_path=Path(env["KUNO_C2PA_ISSUANCE_LOG"]) if env.get("KUNO_C2PA_ISSUANCE_LOG") else None,
             standard_storage_key=env.get("KUNO_STANDARD_STORAGE_KEY") or None,
-            standard_retention_days=float(env.get("KUNO_STANDARD_RETENTION_DAYS", "30")),
             standard_upload_ttl_s=int(env.get("KUNO_STANDARD_UPLOAD_TTL_S", "86400")),
             private_jobs_per_minute=int(env.get("KUNO_PRIVATE_JOBS_PER_MINUTE", "10")),
             private_requires_payment=env.get("KUNO_PRIVATE_REQUIRES_PAYMENT", "1") == "1",
@@ -199,7 +214,6 @@ class Settings:
             strike_rules=parse_strike_rules(env["KUNO_STRIKE_RULES"]) if env.get("KUNO_STRIKE_RULES") else
             [(3, 86400, 3600), (5, 7 * 86400, 7 * 86400), (10, 30 * 86400, None)],
             reports_per_hour_per_ip=int(env.get("KUNO_REPORTS_PER_HOUR_PER_IP", "10")),
-            moderation_sample_rate=float(env.get("KUNO_MODERATION_SAMPLE_RATE", "0.05")),
             blocked_hashes_file=Path(env["KUNO_BLOCKED_HASHES_FILE"]) if env.get("KUNO_BLOCKED_HASHES_FILE") else None,
             ffmpeg_path=env.get("KUNO_FFMPEG") or None,
             preservation_days=float(env.get("KUNO_PRESERVATION_DAYS", "365")),

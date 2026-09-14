@@ -37,7 +37,7 @@ def test_0009_adds_preservation_holds_and_round_trips(tmp_path):
             text("insert into reports (id, status, reason, priority, created_at) values ('r1', 'open', 'csam', 100, :t)"), {"t": now}
         )
 
-    upgrade_database(engine)
+    upgrade_database(engine, "0009")
     assert _version(engine) == "0009"
     insp = inspect(engine)
     columns = {c["name"]: c["nullable"] for c in insp.get_columns("preservation_holds")}

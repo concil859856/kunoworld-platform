@@ -6,7 +6,7 @@ import { cards, connect, expectStepOrder, generate, inspectFilm, inspector, pick
  * Runs against the dev server started with NEXT_PUBLIC_KUNO_DEV_COUNTRY=JP,
  * where the MiniMax H3 Community License allows serving.
  */
-test("MiniMax H3 serves directly in a licensed region and is named on the result", async ({ page }) => {
+test("MiniMax H3 serves directly in a licensed region and is named on the result @needs-session-gateway", async ({ page }) => {
   await connect(page);
   await pickStock(page, /MiniMax H3 Turbo/);
 

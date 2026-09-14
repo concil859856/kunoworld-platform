@@ -20,7 +20,7 @@ test.describe("narrow screens", () => {
   });
 
   test("studio stacks at 400px and the composer works", async ({ page }, testInfo) => {
-    await connect(page);
+    await connect(page, { credit: false });
     await expect(prompt(page)).toBeVisible();
     await expect(page.getByRole("button", { name: /^Generate|Connect to generate/ })).toBeVisible();
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);

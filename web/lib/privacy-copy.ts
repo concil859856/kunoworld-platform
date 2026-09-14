@@ -1,6 +1,6 @@
 /**
- * Words for the two privacy modes, shared by the studio, the account page and the report page.
- * No hooks here, so server components can import it too.
+ * Words for the two privacy modes, shared by the studio, the account page, the report page and
+ * the operator console. No hooks here, so server components can import it too.
  */
 
 import type { PrivacyMode } from "@kunoworld/sdk";
@@ -8,18 +8,34 @@ import type { PrivacyMode } from "@kunoworld/sdk";
 export const PRIVACY_COPY: Record<PrivacyMode, { label: string; sentence: string; short: string }> = {
   private: {
     label: "Private",
-    sentence: "Encrypted in your browser for a confidential GPU; nobody at KunoWorld can see this video or your prompt.",
+    sentence:
+      "Encrypted in your browser for a confidential GPU; nobody at KunoWorld can see this video or your prompt. It opens only with the key kept on your devices.",
     short: "Encrypted by the SDK",
   },
   standard: {
     label: "Standard",
-    sentence: "KunoWorld and the GPU provider can see this video and your prompt.",
+    sentence:
+      "KunoWorld and the GPU provider can see this video and your prompt. Only your account can open it in KunoWorld.",
     short: "Readable by KunoWorld",
   },
 };
 
-/** The gateway's default KUNO_STANDARD_RETENTION_DAYS. */
-export const STANDARD_RETENTION_DAYS = 30;
+/** The one sentence about private keys, used wherever keys are backed up or restored. */
+export const KEY_BACKUP_SENTENCE =
+  "Private videos can only be opened with keys stored on your devices — back them up, or a lost key means a lost video.";
+
+export const STORAGE_SENTENCE =
+  "In both modes, videos are stored on KunoWorld's storage (Cloudflare R2) until you delete them. Nothing expires on its own.";
+
+export const OPERATOR_ACCESS_SENTENCE =
+  "KunoWorld operators open a video only when it's reported as child sexual abuse material or is under a legal hold, and every view is logged.";
+
+export const NSFW_SENTENCE = "NSFW content is banned in both modes.";
+
+export const PRICE_PLACEHOLDER_SENTENCE = "Prices are placeholders until launch pricing is set.";
+
+export const SIGN_IN_SENTENCE =
+  "You use KunoWorld with your email sign-in. API keys are only for developers calling the API from their own programs.";
 
 export function privacyOf(value: string | null | undefined): PrivacyMode {
   return value === "standard" ? "standard" : "private";

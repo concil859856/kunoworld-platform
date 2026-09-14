@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from . import identity, ledger, moderation, standard_jobs, webhooks
 from .auth import SignedIn, gw, require_account, require_user
-from .db import Account, Blob, Enclave, Job, LedgerEntry
+from .db import NEVER_EXPIRES, Account, Blob, Enclave, Job, LedgerEntry
 from .state import GatewayState, enclave_public, job_status
 
 router = APIRouter(prefix="/v1", tags=["public"])
@@ -43,6 +43,8 @@ async def list_models(request: Request):
         "country": country,
         "workers_online": workers_online,
         "switch": switch.model_dump(mode="json"),
+        # Every price is a placeholder until the owner sets real pricing (STANDARD_MODE.md, PAYMENTS.md).
+        "pricing_placeholder": True,
         "models": [
             {
                 **profile.model_dump(mode="json"),
@@ -126,7 +128,8 @@ async def upload_blob(request: Request, account: Account = Depends(require_accou
                 size=size,
                 sha256=digest,
                 created_at=now,
-                expires_at=now + state.settings.blob_retention_s,
+                # Unused uploads expire; job creation makes the blob permanent (until the owner deletes the video).
+                expires_at=now + state.settings.upload_ttl_s,
             )
         )
     return {"blob_id": blob_id, "sha256": digest, "size": size}
@@ -265,7 +268,10 @@ async def create_video(body: JobCreate, request: Request, account: Account = Dep
             blob = s.get(Blob, blob_id)
             if blob is None or blob.owner_kind != "account" or blob.owner_id != account.id or blob.job_id is not None:
                 raise _error(422, "invalid_inputs", f"Blob {blob_id} is unknown, not yours, or already used.")
+            if blob.expires_at <= now:
+                raise _error(422, "invalid_inputs", f"Blob {blob_id} has expired. Upload it again.")
             blob.job_id = body.job_id
+            blob.expires_at = NEVER_EXPIRES
         job = admit_job(
             s, state, account, job_id=body.job_id, profile=profile, params=params, enclave=enclave, enc=body.enc,
             ciphertext=body.ciphertext, input_blob_ids=body.input_blob_ids, webhook_url=body.webhook_url,
@@ -290,6 +296,20 @@ async def get_video(job_id: str, request: Request, account: Account = Depends(re
     if job is None or job.account_id != account.id:
         raise _error(404, "not_found", "No such video job.")
     return job_status(job)
+
+
+@router.delete("/videos/{job_id}", status_code=204)
+async def delete_video(job_id: str, request: Request, account: Account = Depends(require_account)):
+    """The owner deletes a video, in either mode (API key or web session). A job still in progress is canceled and
+    refunded first. Private: the sealed input and output blobs are deleted. Standard: the video, thumbnail, prompt
+    and inputs too. Billing records and receipts stay; content under a preservation hold is hidden but kept."""
+    state = gw(request)
+    with state.session() as s, s.begin():
+        job = s.get(Job, job_id)
+        if job is None or job.account_id != account.id:
+            raise _error(404, "not_found", "No such video job.")
+        standard_jobs.delete_for_owner(state, s, job, time.time())
+    return Response(status_code=204)
 
 
 @router.post("/videos/{job_id}/cancel", response_model=JobStatus)

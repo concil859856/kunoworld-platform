@@ -86,7 +86,9 @@ def new_eval_set() -> EvalSet:
 
 def publish(gw, spec: TurboSpec, key=None):
     signed = sign_turbo_spec(key or gw.owner, spec)
-    return gw.client.put("/turbo/v1/spec", json=signed.model_dump(mode="json"), headers=bearer(gw.env["KUNO_ADMIN_TOKEN"]))
+    from operator_sessions import operator_headers
+
+    return gw.client.put("/turbo/v1/spec", json=signed.model_dump(mode="json"), headers=operator_headers(gw.state, "owner@kunoworld.test"))
 
 
 class Candidate:
@@ -148,7 +150,7 @@ def add_serving_enclave(gw) -> str:
 # ---------------------------------------------------------------- spec
 
 
-def test_the_spec_needs_the_admin_token_the_owner_signature_and_a_newer_issue(gw):
+def test_the_spec_needs_an_admin_operator_the_owner_signature_and_a_newer_issue(gw):
     spec = make_spec(new_eval_set())
     signed = sign_turbo_spec(gw.owner, spec).model_dump(mode="json")
     assert gw.client.get("/turbo/v1/spec").status_code == 404

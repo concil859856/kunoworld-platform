@@ -35,7 +35,7 @@ class StandardJob(Base):
     created_at: Mapped[float] = mapped_column(Float)
     expires_at: Mapped[float] = mapped_column(Float, index=True)
     deleted_at: Mapped[float | None] = mapped_column(Float, nullable=True)
-    # deleted (by the owner), expired (retention), removed (by an operator)
+    # deleted (by the owner), removed (by an operator); expired only on rows from before migration 0010
     delete_reason: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
 
@@ -118,7 +118,7 @@ class Report(Base):
 
 
 class ModerationItem(Base):
-    """Something for an operator to look at: a report, a sampled standard video, a blocked upload, an account review."""
+    """Something for an operator to look at: a report, a blocked upload, an account review. (`sample` rows are closed history.)"""
 
     __tablename__ = "moderation_items"
 

@@ -3,7 +3,8 @@
 import { useId, useState, type FormEvent } from "react";
 
 import styles from "@/components/site/Account.module.css";
-import { REPORT_REASONS, checkReport, type ReportField } from "@/lib/report";
+import { KEY_REASONS, REPORT_REASONS, checkReport, type ReportField } from "@/lib/report";
+import type { ReportReason } from "@kunoworld/sdk";
 
 type State =
   | { kind: "idle" }
@@ -21,6 +22,9 @@ export interface ReportInitial {
 export function ReportForm({ initial }: { initial: ReportInitial }) {
   const ids = useId();
   const [state, setState] = useState<State>({ kind: "idle" });
+  const [reason, setReason] = useState("");
+  // A private video's key can only go with a child-safety report; for anything else the field isn't offered.
+  const keyAllowed = KEY_REASONS.includes(reason as ReportReason);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -102,7 +106,7 @@ export function ReportForm({ initial }: { initial: ReportInitial }) {
 
       <label className={styles.field}>
         <span>Reason</span>
-        <select name="reason" defaultValue="" required aria-invalid={invalid("reason")}>
+        <select name="reason" value={reason} onChange={(e) => setReason(e.target.value)} required aria-invalid={invalid("reason")}>
           <option value="" disabled>
             Choose a reason
           </option>
@@ -119,21 +123,24 @@ export function ReportForm({ initial }: { initial: ReportInitial }) {
         <textarea name="details" rows={4} maxLength={4000} aria-invalid={invalid("details")} />
       </label>
 
-      <label className={styles.field}>
-        <span>Output key (optional)</span>
-        <input
-          name="output_key"
-          autoComplete="off"
-          spellCheck={false}
-          aria-describedby={hint("key")}
-          aria-invalid={invalid("output_key")}
-        />
-      </label>
+      {keyAllowed && (
+        <label className={styles.field}>
+          <span>Output key (optional)</span>
+          <input
+            name="output_key"
+            autoComplete="off"
+            spellCheck={false}
+            aria-describedby={hint("key")}
+            aria-invalid={invalid("output_key")}
+          />
+        </label>
+      )}
       <p className={styles.fine} id={hint("key")}>
-        Only for a <strong>private</strong> video that was shared with you together with its key, for example in a
-        KunoWorld film-key file. Private videos are encrypted and nobody at KunoWorld can open them, so this key is the
-        only way a reviewer can see that one video. It opens nothing else. Leave it empty for standard videos, or if you
-        don&apos;t have it.
+        <strong>Output key:</strong> only for a report of child sexual abuse material or sexual content involving a
+        minor, about a <strong>private</strong> video that was shared with you together with its key (for example in a
+        KunoWorld film-key file). Private videos are encrypted and nobody at KunoWorld can open them, so this key is the
+        only way a reviewer can see that one video. It opens nothing else, and the view is logged.{" "}
+        {keyAllowed ? "Leave it empty if you don't have it." : "Choose one of those two reasons to add a key."}
       </p>
 
       <label className={styles.field}>

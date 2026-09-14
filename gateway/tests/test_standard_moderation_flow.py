@@ -1,5 +1,6 @@
 """Standard jobs sealed by the gateway, upload scanning, reports (including a private video's key), the moderation
-queue, operator actions, the audit log, retention and the validator feed, on a test app with a simulated worker."""
+queue, operator actions, the audit log, storage without expiry and the validator feed, on a test app with a simulated
+worker."""
 
 from __future__ import annotations
 
@@ -33,7 +34,9 @@ from kuno_protocol.schemas import (
     output_label,
 )
 
-from kuno_gateway import identity, ledger, moderation, standard_jobs
+from operator_sessions import operator_headers
+
+from kuno_gateway import identity, ledger, moderation
 from kuno_gateway.app import create_app
 from kuno_gateway.db import Account, Blob, Enclave, Job
 from kuno_gateway.db_moderation import (
@@ -47,6 +50,7 @@ from kuno_gateway.settings import Settings
 from kuno_gateway.upload_scan import Sha256ListMatcher
 
 ENCLAVE = "s" * 32
+CAROL = "carol@kunoworld.test"
 TEXT = GenerationParams(profile_id="ltx-2.5-fast", mode=Mode.TEXT_TO_VIDEO, duration_s=2, resolution="720p", aspect_ratio="16:9", fps=24)
 IMAGE = TEXT.model_copy(update={"mode": Mode.IMAGE_TO_VIDEO, "input_roles": [InputRole.FIRST_FRAME]})
 
@@ -76,7 +80,6 @@ def gw(tmp_path, media, monkeypatch):
     data = tmp_path / "data"
     env = devkit.init(data)
     settings = Settings.from_env({"KUNO_DATA_DIR": str(data)})
-    settings.moderation_sample_rate = 1.0
     settings.blocked_hashes_file = data / "blocked_hashes.txt"
     settings.blocked_hashes_file.write_text(f"# known bad\n{sha256_hex(media.blue)} csam\n")
     app = create_app(settings)
@@ -95,7 +98,7 @@ def gw(tmp_path, media, monkeypatch):
         client=TestClient(app), state=state, settings=settings, env=env, hpke_private=hpke_private, signing=signing,
         dev={"authorization": f"Bearer {env['KUNO_DEV_API_KEY']}"},
         validator={"authorization": f"Bearer {env['KUNO_VALIDATOR_API_KEY']}"},
-        admin={"authorization": f"Bearer {env['KUNO_ADMIN_TOKEN']}", "x-kuno-operator": "carol"},
+        admin=operator_headers(state, CAROL),
     )
 
 
@@ -273,18 +276,20 @@ def test_standard_job_requests_are_validated_like_private_ones(gw, media):
     assert post(base).json()["detail"]["code"] == "no_capacity"
 
 
-def test_retention_deletes_standard_content_and_unused_uploads(gw, media):
-    job = create_standard(gw, gw.dev)
+def test_stored_videos_never_expire_but_unused_uploads_do(gw, media):
+    job = create_standard(gw, gw.dev, media=media.red)
     render(gw, job["job_id"], media.clip)
     stray = gw.client.post("/v1/standard/uploads", params={"role": "first_frame"}, content=media.red, headers=gw.dev).json()
+    listed = gw.client.get("/v1/standard/videos", headers=gw.dev).json()[0]
+    assert listed["expires_at"] is None and listed["deleted"] is False
     with gw.state.session() as s, s.begin():
-        s.get(StandardJob, job["job_id"]).expires_at = time.time() - 1
         s.get(StandardUpload, stray["upload_id"]).expires_at = time.time() - 1
-    assert standard_jobs.expire(gw.state) == {"purged": 1, "uploads": 1}
-    expired = gw.client.get(f"/v1/standard/videos/{job['job_id']}/video", headers=gw.dev)
-    assert expired.status_code == 410 and expired.json()["detail"]["code"] == "expired"
+    gw.state.janitor()
     with gw.state.session() as s:
         assert s.get(StandardUpload, stray["upload_id"]) is None
+        # The job's own upload stays with the job.
+        assert s.query(StandardUpload).filter(StandardUpload.job_id == job["job_id"]).count() == 1
+    assert gw.client.get(f"/v1/standard/videos/{job['job_id']}/video", headers=gw.dev).content == media.clip
 
 
 # ------------------------------------------------------------------ upload scanning
@@ -351,18 +356,22 @@ def test_a_report_with_a_private_videos_key_lets_operators_review_that_one_video
     account_id, _ = new_account(gw)
     job_id, key = _private_job(gw, account_id, media.clip)
     other_job, _ = _private_job(gw, account_id, media.clip)
+    # A job of its own: another job's sexual_minor report would hold it, and a hold of that reason makes it reviewable.
+    third_job, _ = _private_job(gw, account_id, media.clip)
 
     low = gw.client.post("/v1/reports", json={"content_digest": "a" * 64, "reason": "copyright", "details": "my film"})
-    # Not csam/sexual_minor: those place a preservation hold on removal (test_preservation_holds_flow.py).
-    keyed = gw.client.post("/v1/reports", json={"job_id": job_id, "reason": "nonconsensual_intimate", "output_key": b64e(key)})
-    keyless = gw.client.post("/v1/reports", json={"job_id": other_job, "reason": "harassment"})
-    wrong = gw.client.post("/v1/reports", json={"job_id": other_job, "reason": "other", "output_key": b64e(os.urandom(32))})
+    # Keys are accepted only with reports of child sexual abuse material, the only content operators may open.
+    refused = gw.client.post("/v1/reports", json={"job_id": job_id, "reason": "nonconsensual_intimate", "output_key": b64e(key)})
+    assert refused.status_code == 422 and refused.json()["detail"]["code"] == "key_not_accepted"
+    keyed = gw.client.post("/v1/reports", json={"job_id": job_id, "reason": "csam", "output_key": b64e(key)})
+    keyless = gw.client.post("/v1/reports", json={"job_id": third_job, "reason": "harassment"})
+    wrong = gw.client.post("/v1/reports", json={"job_id": other_job, "reason": "sexual_minor", "output_key": b64e(os.urandom(32))})
     assert [r.status_code for r in (low, keyed, keyless, wrong)] == [202, 202, 202, 202]
 
     reports = gw.client.get("/admin/v1/reports", headers=gw.admin)
     assert b64e(key) not in reports.text
     first = reports.json()[0]
-    assert first["reason"] == "nonconsensual_intimate"
+    assert first["reason"] == "csam"
     assert (first["job_id"], first["account_id"], first["has_output_key"]) == (job_id, account_id, True)
     with gw.state.session() as s:
         assert b64e(key) not in s.get(Report, keyed.json()["report_id"]).output_key
@@ -372,29 +381,36 @@ def test_a_report_with_a_private_videos_key_lets_operators_review_that_one_video
     keyed_item = items[keyed.json()["report_id"]]
     assert queue[0]["item_id"] == keyed_item["item_id"] and keyed_item["job"]["has_video"] is True
     assert keyed_item["job"]["privacy"] == "private" and keyed_item["job"]["prompt"] is None
+    assert (keyed_item["content_reviewable"], keyed_item["content_access"]) == (True, "report:csam")
 
     video = gw.client.get(f"/admin/v1/moderation/items/{keyed_item['item_id']}/video", headers=gw.admin)
     assert video.status_code == 200 and video.content == media.clip
     blind = gw.client.get(f"/admin/v1/moderation/items/{items[keyless.json()['report_id']]['item_id']}/video", headers=gw.admin)
-    assert blind.status_code == 403 and blind.json()["detail"]["code"] == "private_content"
+    assert blind.status_code == 403 and blind.json()["detail"]["code"] == "content_not_reviewable"
     mismatch = gw.client.get(f"/admin/v1/moderation/items/{items[wrong.json()['report_id']]['item_id']}/video", headers=gw.admin)
     assert mismatch.status_code == 422 and mismatch.json()["detail"]["code"] == "key_mismatch"
 
     resolved = gw.client.post(
-        f"/admin/v1/reports/{keyed.json()['report_id']}/resolve", json={"action": "remove_content", "note": "confirmed; reported to NCMEC"},
+        f"/admin/v1/reports/{keyed.json()['report_id']}/resolve", json={"action": "dismiss", "note": "not what was reported"},
         headers=gw.admin,
     )
     assert resolved.status_code == 200 and resolved.json()["status"] == "resolved" and resolved.json()["has_output_key"] is False
     with gw.state.session() as s:
         assert s.get(Report, keyed.json()["report_id"]).output_key is None
-        assert s.query(Blob).filter(Blob.job_id == job_id).count() == 0
-    assert gw.client.get(f"/admin/v1/moderation/items/{keyed_item['item_id']}/video", headers=gw.admin).status_code == 403
+        # Dismissal deletes nothing of the owner's.
+        assert s.query(Blob).filter(Blob.job_id == job_id).count() == 1
+    # Resolved without a hold: metadata only again.
+    after = gw.client.get(f"/admin/v1/moderation/items/{keyed_item['item_id']}/video", headers=gw.admin)
+    assert after.status_code == 403 and after.json()["detail"]["code"] == "content_not_reviewable"
     again = gw.client.post(f"/admin/v1/reports/{keyed.json()['report_id']}/resolve", json={"action": "dismiss", "note": "x"}, headers=gw.admin)
     assert again.status_code == 409
 
     log = gw.client.get("/admin/v1/audit-log", headers=gw.admin).json()
-    assert [(a["operator"], a["action"]) for a in log[:2]] == [("carol", "report.remove_content"), ("carol", "item.view_video")]
-    assert log[0]["reason"] == "confirmed; reported to NCMEC"
+    assert {(a["operator"], a["action"]) for a in log} >= {(CAROL, "report.dismiss"), (CAROL, "item.view_video")}
+    viewed = next(a for a in log if a["action"] == "item.view_video")
+    assert viewed["detail"]["basis"] == "report:csam" and viewed["detail"]["access"] == "private_with_report_key"
+    dismissal = next(a for a in log if a["action"] == "report.dismiss")
+    assert dismissal["reason"] == "not what was reported"
 
 
 def test_reports_are_validated_and_rate_limited_per_ip(gw):
@@ -403,24 +419,29 @@ def test_reports_are_validated_and_rate_limited_per_ip(gw):
     assert gw.client.post("/v1/reports", json={"reason": "other"}).status_code == 422
     assert gw.client.post("/v1/reports", json={"url": "https://x.example/v", "reason": "spam"}).status_code == 422
     # A malformed key is refused after the limiter has counted it: abuse attempts use up the allowance too.
-    short = gw.client.post("/v1/reports", json={"url": "https://x.example/v", "reason": "other", "output_key": b64e(b"k" * 8)})
+    short = gw.client.post("/v1/reports", json={"url": "https://x.example/v", "reason": "csam", "output_key": b64e(b"k" * 8)})
     assert short.json()["detail"]["code"] == "invalid_output_key"
     codes = [gw.client.post("/v1/reports", json={"url": "https://x.example/v", "reason": "other"}).status_code for _ in range(3)]
     assert codes == [202, 202, 429]
 
 
-def test_operators_act_on_standard_videos_from_reports_and_samples(gw, media):
+def test_operators_act_on_standard_videos_from_reports_without_seeing_them(gw, media):
     account_id, key = new_account(gw)
     job = create_standard(gw, key, prompt="a quiet harbour")
     render(gw, job["job_id"], media.clip)
     digest = gw.client.get(f"/v1/videos/{job['job_id']}", headers=key).json()["receipt"]["body"]["content_digest"]
-
-    queue = gw.client.get("/admin/v1/moderation/queue", headers=gw.admin).json()
-    sample = next(i for i in queue if i["kind"] == "sample")
-    assert sample["job"]["prompt"] == "a quiet harbour" and sample["job"]["has_video"] is True
-    assert gw.client.get(f"/admin/v1/moderation/items/{sample['item_id']}/video", headers=gw.admin).content == media.clip
+    # No sampled review: a new video never enters the queue by itself.
+    assert gw.client.get("/admin/v1/moderation/queue", headers=gw.admin).json() == []
 
     report = gw.client.post("/v1/reports", json={"content_digest": digest.upper(), "reason": "harassment"}).json()
+    [item] = gw.client.get("/admin/v1/moderation/queue", headers=gw.admin).json()
+    assert item["content_reviewable"] is False and item["job"]["prompt"] is None and item["job"]["has_video"] is False
+    assert item["job"]["has_prompt"] is True
+    detail = gw.client.get(f"/admin/v1/moderation/items/{item['item_id']}", headers=gw.admin).json()
+    assert detail["job"]["prompt"] is None
+    refused = gw.client.get(f"/admin/v1/moderation/items/{item['item_id']}/video", headers=gw.admin)
+    assert refused.status_code == 403 and refused.json()["detail"]["code"] == "content_not_reviewable"
+
     restricted = gw.client.post(f"/admin/v1/reports/{report['report_id']}/resolve",
                                 json={"action": "restrict_account", "note": "targeted harassment"}, headers=gw.admin)
     assert restricted.status_code == 200 and restricted.json()["account_id"] == account_id
@@ -432,12 +453,14 @@ def test_operators_act_on_standard_videos_from_reports_and_samples(gw, media):
     assert gw.client.get("/v1/account/eligibility", headers=key).json()["restricted_until"] == moderation.INDEFINITE_UNTIL
     assert gw.client.post("/v1/standard/videos", json={"params": TEXT.model_dump(mode="json"), "prompt": "x"}, headers=key).status_code == 403
 
-    removed = gw.client.post(f"/admin/v1/moderation/items/{sample['item_id']}/resolve",
+    removal = gw.client.post("/v1/reports", json={"job_id": job["job_id"], "reason": "other"}).json()
+    removal_item = next(i for i in gw.client.get("/admin/v1/moderation/queue", headers=gw.admin).json()
+                        if i["report"]["report_id"] == removal["report_id"])
+    removed = gw.client.post(f"/admin/v1/moderation/items/{removal_item['item_id']}/resolve",
                              json={"action": "remove_content", "note": "violates policy"}, headers=gw.admin)
     assert removed.status_code == 200 and removed.json()["status"] == "resolved"
     gone = gw.client.get(f"/v1/standard/videos/{job['job_id']}/video", headers=key)
     assert gone.status_code == 410 and gone.json()["detail"]["code"] == "removed"
-    assert gw.client.get(f"/admin/v1/moderation/items/{sample['item_id']}/video", headers=gw.admin).status_code == 410
 
     dismissed = gw.client.post("/v1/reports", json={"url": "https://elsewhere.example/v", "reason": "other"}).json()
     ok = gw.client.post(f"/admin/v1/reports/{dismissed['report_id']}/resolve", json={"action": "dismiss", "note": "not ours"}, headers=gw.admin)
@@ -447,6 +470,7 @@ def test_operators_act_on_standard_videos_from_reports_and_samples(gw, media):
                           headers=gw.admin).status_code == 422
     assert gw.client.get("/admin/v1/reports", headers={"authorization": key["authorization"]}).status_code == 403
 
-    actions = [a["action"] for a in gw.client.get("/admin/v1/audit-log", headers=gw.admin).json()]
-    assert actions == ["report.dismiss", "item.remove_content", "report.ban_account", "report.restrict_account", "item.view_video"]
+    log = gw.client.get("/admin/v1/audit-log", headers=gw.admin).json()
+    assert [a["action"] for a in log] == ["report.dismiss", "report.remove_content", "report.ban_account", "report.restrict_account"]
+    assert {a["operator"] for a in log} == {CAROL}
     assert gw.client.get(f"/admin/v1/accounts/{account_id}/safety", headers=gw.admin).json()["restrictions"][0]["kind"] == "ban"

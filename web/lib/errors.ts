@@ -2,8 +2,7 @@
 
 import { KunoError, type PrivacyMode } from "@kunoworld/sdk";
 
-import { API_BASE, RELAY_RETENTION_DAYS } from "./config";
-import { STANDARD_RETENTION_DAYS, isIndefiniteRestriction, restrictionUntil } from "./privacy-copy";
+import { isIndefiniteRestriction, restrictionUntil } from "./privacy-copy";
 
 /** submit: before the job exists (nothing charged). render: after submission (failures are refunded). open: fetching a finished film. */
 export type Phase = "submit" | "render" | "open" | "lookup";
@@ -50,7 +49,21 @@ const COPY: Record<string, Copy | ((phase: Phase) => Copy)> = {
     title: "That coldkey belongs to another account",
     detail: "It's already linked to a different KunoWorld account. Unlink it there first.",
   },
-  signed_out: { title: "You've been signed out", detail: "Sign in again to continue." },
+  signed_out: { title: "You're not signed in", detail: "Sign in with your email to make, open and delete videos." },
+  content_policy: {
+    title: "Blocked by the content policy",
+    detail: "This request breaks KunoWorld's content policy, so it wasn't made. NSFW content is banned in both modes. Nothing was charged.",
+  },
+  content_not_reviewable: {
+    title: "This content can't be opened",
+    detail:
+      "Operators can open a video only for a report of child sexual abuse material or sexual content involving a minor, or under a legal hold.",
+  },
+  key_not_accepted: {
+    title: "An output key can't be sent with this report",
+    detail: "Output keys are accepted only for reports of child sexual abuse material or sexual content involving a minor. Leave the key empty.",
+  },
+  gone: { title: "This feature was retired", detail: "Reload the page to use the current version." },
   private_mode_not_eligible: {
     title: "Private mode isn't available on this account yet",
     detail:
@@ -129,7 +142,8 @@ const COPY: Record<string, Copy | ((phase: Phase) => Copy)> = {
     phase === "open"
       ? {
           title: "This film didn't open with the key in this browser",
-          detail: "The film's key lives only in this browser, so it can't be recovered from our side. If you generated it in another browser, open it there.",
+          detail:
+            "Private videos open only with the key stored on your devices, and KunoWorld can't recover it. If you made it in another browser, open it there, or restore a key backup.",
         }
       : {
           title: "The stage couldn't open your sealed request",
@@ -140,8 +154,8 @@ const COPY: Record<string, Copy | ((phase: Phase) => Copy)> = {
     detail: "What came back didn't match the stage's signed receipt, so it wasn't shown. Try opening it again.",
   },
   unauthorized: {
-    title: "That API key wasn't accepted",
-    detail: "Connect with a valid key. Self-serve accounts are coming; for now keys are issued by hand.",
+    title: "You're not signed in",
+    detail: "Your sign-in ended. Sign in with your email again to continue.",
   },
   invalid_params: { title: "The settings don't fit this stock", detail: "" },
   invalid_inputs: { title: "An input couldn't be attached", detail: "" },
@@ -151,13 +165,13 @@ const COPY: Record<string, Copy | ((phase: Phase) => Copy)> = {
   prompt_too_long: { title: "The prompt is too long", detail: "" },
   unsupported_option: { title: "That option isn't available on this stock", detail: "" },
   expired: {
-    title: "This sealed copy has expired",
-    detail: `The relay keeps encrypted films for ${RELAY_RETENTION_DAYS} days, then deletes them. Download films you want to keep.`,
+    title: "This video is no longer stored",
+    detail: "Its stored copy was deleted earlier. Videos made now are kept until you delete them.",
   },
   not_found: (phase) =>
     phase === "lookup"
       ? { title: "No KunoWorld certificate matches this file", detail: "" }
-      : { title: "Not found", detail: "This job isn't on the account connected in this browser." },
+      : { title: "Not found", detail: "This video isn't on the account you're signed in with, or it was deleted." },
   queue_timeout: { title: "No stage picked this up in time", detail: "Submit again." },
   internal_error: { title: "The render failed inside the stage", detail: "The stage reported an internal error." },
   timeout: { title: "Still rendering after 30 minutes", detail: "We stopped waiting. Reopen the studio later — the key for this film is still in this browser." },
@@ -166,7 +180,7 @@ const COPY: Record<string, Copy | ((phase: Phase) => Copy)> = {
   aborted: { title: "Stopped waiting", detail: "" },
   network: {
     title: "Can't reach KunoWorld",
-    detail: `Your browser couldn't reach ${API_BASE}.`,
+    detail: "KunoWorld didn't answer. Check your connection and try again.",
   },
 };
 
@@ -177,12 +191,6 @@ function splitJobError(message: string): { code: string | null; message: string 
 
 /** Copy that depends on who could read the take. */
 function privacyCopy(code: string, privacy: PrivacyMode): Copy | null {
-  if (code === "expired" && privacy === "standard") {
-    return {
-      title: "This video has expired",
-      detail: `KunoWorld keeps standard videos for ${STANDARD_RETENTION_DAYS} days, then deletes them. Download videos you want to keep.`,
-    };
-  }
   if (code === "safety_blocked") {
     return privacy === "standard"
       ? {
@@ -221,6 +229,9 @@ export function friendlyError(err: unknown, phase: Phase, privacy: PrivacyMode =
     phase === "submit" ? "none" : phase === "render" ? "refunded" : phase === "open" ? "kept" : null;
   const friendly: FriendlyError = { code, title, detail: copy?.detail || message || "", charge };
 
+  if (code === "signed_out" || code === "unauthorized") {
+    friendly.link = { href: "/signin?next=/studio", label: "Sign in" };
+  }
   if (err instanceof KunoError && code === "private_mode_not_eligible") {
     friendly.reasons = err.reasons;
     friendly.link = { href: "/account#add-credit", label: "Add credit" };

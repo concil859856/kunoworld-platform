@@ -44,7 +44,7 @@ from kuno_protocol.turbo import (
 )
 
 from . import ledger
-from .auth import gw, require_admin, require_enclave, require_validator, verify_enclave_signature
+from .auth import gw, require_enclave, require_operator, require_validator, verify_enclave_signature
 from .db import Account, Blob, Challenge, Enclave, Job, Setting
 from .state import GatewayState, enclave_public, job_status
 
@@ -128,7 +128,7 @@ async def get_spec(request: Request):
     return signed.model_dump(mode="json")
 
 
-@router.put("/spec", dependencies=[Depends(require_admin)])
+@router.put("/spec", dependencies=[Depends(require_operator("admin"))])
 async def put_spec(body: SignedTurboSpec, request: Request):
     state = gw(request)
     if state.owner_public_key is not None:

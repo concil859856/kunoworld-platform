@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-import { GATEWAY, cards, devEnv, generate, horizontalOverflow, pickStock, signIn, watchToReady } from "./helpers";
+import { GATEWAY, cards, creditAccount, generate, horizontalOverflow, pickStock, signIn, studioSignedIn, watchToReady } from "./helpers";
 
 /** Signing in by email link, managing keys, and making videos on your own balance. */
 
-test("sign in by email link, manage a key, make a video on your own balance, sign out", async ({ page, request }) => {
+test("sign in by email link, get credit, manage a key, sign out", async ({ page, request }) => {
   const email = `e2e-${Date.now()}@example.com`;
   await signIn(page, email);
 
@@ -14,11 +14,7 @@ test("sign in by email link, manage a key, make a video on your own balance, sig
 
   // Credit arrives through the ledger and shows up as activity.
   const accountId = await page.locator("[data-account-id]").getAttribute("data-account-id");
-  const credit = await request.post(`${GATEWAY}/admin/v1/accounts/${accountId}/credits`, {
-    headers: { authorization: `Bearer ${devEnv("KUNO_ADMIN_TOKEN")}` },
-    data: { amount_usd: 2, idempotency_key: `e2e-${accountId}`, note: "End-to-end test credit" },
-  });
-  expect(credit.ok()).toBe(true);
+  await creditAccount(request, accountId!, 2, `e2e-${accountId}`);
   await page.reload();
   await expect(page.getByLabel("Balance")).toHaveText("$2.00");
   await expect(page.getByRole("cell", { name: "End-to-end test credit" })).toBeVisible();
@@ -48,9 +44,23 @@ test("sign in by email link, manage a key, make a video on your own balance, sig
   await expect(row).toContainText("Revoked");
   expect((await request.get(`${GATEWAY}/v1/account`, { headers: { authorization: `Bearer ${key}` } })).status()).toBe(401);
 
+  // Signing out ends the session.
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goto("/account");
+  await expect(page).toHaveURL(/\/signin/);
+});
+
+test("the studio uses the email sign-in, with no key in the page, and charges your own balance @needs-session-gateway", async ({ page, request }) => {
+  const email = `e2e-balance-${Date.now()}@example.com`;
+  await signIn(page, email);
+  await expect(page).toHaveURL(/\/account$/);
+  const accountId = await page.locator("[data-account-id]").getAttribute("data-account-id");
+  await creditAccount(request, accountId!, 2, `e2e-balance-${accountId}`);
+
   // The studio connects itself from the session, with no key in the page, and charges this account.
   await page.goto("/studio");
-  await expect(page.getByRole("button", { name: /Gateway connected/ })).toBeVisible();
+  await expect(studioSignedIn(page)).toBeVisible();
   await pickStock(page, /LTX-2\.5 Fast/);
   await generate(page, "A paper boat crosses a rain puddle");
   await watchToReady(cards(page).first());
@@ -59,11 +69,6 @@ test("sign in by email link, manage a key, make a video on your own balance, sig
   await expect(page.getByRole("cell", { name: "Video", exact: true }).first()).toBeVisible();
   await expect(page.getByLabel("Balance")).not.toHaveText("$2.00");
 
-  // Signing out ends the session.
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page).toHaveURL(/\/$/);
-  await page.goto("/account");
-  await expect(page).toHaveURL(/\/signin/);
 });
 
 test("a spent or made-up link sends you back to ask for another", async ({ page }) => {

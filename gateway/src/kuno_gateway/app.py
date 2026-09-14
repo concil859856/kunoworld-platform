@@ -4,9 +4,11 @@ import argparse
 import asyncio
 import logging
 import os
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import (
@@ -25,7 +27,6 @@ from . import (
     api_validator,
     api_validator_standard,
     observability,
-    standard_jobs,
     webhooks,
 )
 from .ca import IssuingCA
@@ -55,16 +56,6 @@ async def _webhook_loop(state: GatewayState) -> None:
         except Exception:  # keep delivering; surface the error in logs
             log.exception("webhook delivery pass failed")
         await asyncio.sleep(state.settings.webhook_interval_s)
-
-
-async def _standard_retention_loop(state: GatewayState) -> None:
-    """Deletes standard content past KUNO_STANDARD_RETENTION_DAYS and uploads nobody used."""
-    while True:
-        try:
-            await asyncio.to_thread(standard_jobs.expire, state)
-        except Exception:  # keep the loop alive; surface the error in logs
-            log.exception("standard retention pass failed")
-        await asyncio.sleep(max(state.settings.janitor_interval_s, 60.0))
 
 
 async def _chain_loop(state: GatewayState) -> None:
@@ -107,7 +98,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tasks = [
             asyncio.create_task(_janitor_loop(state)),
             asyncio.create_task(_webhook_loop(state)),
-            asyncio.create_task(_standard_retention_loop(state)),
         ]
         if settings.tao_treasury_address:
             tasks.append(asyncio.create_task(_chain_loop(state)))
@@ -124,6 +114,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.upload_scanner = build_scanner(settings)
     # A misconfigured CA stops start-up; an unconfigured one just answers 503.
     app.state.c2pa_ca = IssuingCA.from_settings(settings)
+    if settings.allow_admin_token and settings.production:
+        log.error("KUNO_ALLOW_ADMIN_TOKEN is ignored in production: operators sign in by email")
+    elif settings.break_glass_enabled:
+        log.warning("break-glass admin token is enabled (KUNO_ALLOW_ADMIN_TOKEN=1); every use is logged as 'break-glass'")
     if app.state.c2pa_ca is not None and not settings.c2pa_tsa_url and state.policy.production:
         log.warning("C2PA CA without KUNO_C2PA_TSA_URL: manifests stop validating when their short-lived certificates expire")
     app.add_middleware(
@@ -148,13 +142,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
-def main() -> None:
-    import uvicorn
+def role_command(command: str, email: str, role: str, settings: Settings | None = None) -> tuple[int, str]:
+    """`grant-role` / `revoke-role` against the gateway's database, for bootstrapping the first admin.
+    Logged in the audit log as operator "cli". Returns (exit code, message)."""
+    from sqlalchemy import create_engine
 
+    from . import roles
+    from .migrations import upgrade_database
+
+    settings = settings or Settings.from_env()
+    engine = create_engine(settings.db_url)
+    try:
+        upgrade_database(engine)
+        with engine.connect() as connection, Session(bind=connection) as s, s.begin():
+            try:
+                if command == "grant-role":
+                    user, _, created = roles.grant(s, email, role, roles.CLI)
+                    return 0, f"{'granted' if created else 'already held'}: {user.email} is {role}"
+                revoked = roles.revoke(s, email, role, roles.CLI)
+                if revoked is None:
+                    return 1, f"{email.strip().lower()} does not hold {role}"
+                return 0, f"revoked: {email.strip().lower()} is no longer {role}"
+            except roles.RoleError as exc:
+                return 2, exc.message
+    finally:
+        engine.dispose()
+
+
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="kuno-gateway")
     parser.add_argument("--host", default=os.environ.get("KUNO_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("KUNO_PORT", "8080")))
-    args = parser.parse_args()
+    commands = parser.add_subparsers(dest="command")
+    for name, help_text in (("grant-role", "grant an operator role"), ("revoke-role", "revoke an operator role")):
+        sub = commands.add_parser(name, help=help_text)
+        sub.add_argument("--email", required=True)
+        sub.add_argument("--role", required=True, choices=["moderator", "admin"])
+    args = parser.parse_args(argv)
+    if args.command in ("grant-role", "revoke-role"):
+        code, message = role_command(args.command, args.email, args.role)
+        print(message, file=sys.stdout if code == 0 else sys.stderr)
+        raise SystemExit(code)
+
+    import uvicorn
+
     observability.configure_logging(os.environ.get("KUNO_LOG_LEVEL", "INFO"), os.environ.get("KUNO_LOG_FORMAT", "json"))
     uvicorn.run(create_app(), host=args.host, port=args.port, log_config=None)
 

@@ -63,7 +63,9 @@ def test_ids_are_unique(store):
 def test_objects_live_under_the_prefix(store):
     blob_id, digest, _ = store.put(b"hello")
     head = store.client.head_object(Bucket=BUCKET, Key=f"blobs/{blob_id}")
-    assert head["Metadata"]["sha256"] == digest
+    assert head["ContentLength"] == 5 and digest
+    # No user metadata: R2's S3 compatibility table doesn't list x-amz-meta-*; the database keeps the digest.
+    assert head.get("Metadata", {}) == {}
 
 
 def test_missing_and_malformed_ids_raise_key_error(store):

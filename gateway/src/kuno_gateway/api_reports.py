@@ -21,6 +21,8 @@ from .vault import StorageKeyMissing, vault
 router = APIRouter(prefix="/v1", tags=["reports"])
 
 ReportReason = Literal["csam", "sexual_minor", "nonconsensual_intimate", "violent_extremism", "harassment", "copyright", "other"]
+# The only reasons a report may carry a private video's output_key.
+KEY_REASONS = ("csam", "sexual_minor")
 
 
 def _error(status: int, code: str, message: str) -> HTTPException:
@@ -52,6 +54,10 @@ async def create_report(body: ReportCreate, request: Request):
         raise _error(429, "rate_limited", "Too many reports from this network. Try again later.")
     output_key = None
     if body.output_key:
+        if body.reason not in KEY_REASONS:
+            # Operators may only open content reported as child sexual abuse material (api_moderation.content_access),
+            # so a key is taken only with those reports and never stored for any other.
+            raise _error(422, "key_not_accepted", "A video key can only be included with a csam or sexual_minor report.")
         try:
             output_key = b64d(body.output_key)
         except ValueError:

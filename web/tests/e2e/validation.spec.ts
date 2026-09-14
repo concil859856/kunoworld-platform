@@ -24,7 +24,7 @@ import {
 const png = (name: string) => ({ name, mimeType: "image/png", buffer: pngBytes(320, 320, [40, 80, 120]) });
 
 test("Generate is off with a reason, and pressing it explains rather than spends", async ({ page }) => {
-  await connect(page);
+  await connect(page, { credit: false });
   await pickStock(page, /LTX-2\.5 Fast/);
 
   const go = generateButton(page);
@@ -45,7 +45,7 @@ test("Generate is off with a reason, and pressing it explains rather than spends
 });
 
 test("a prompt past the stock's limit is caught before anything is encrypted", async ({ page }) => {
-  await connect(page);
+  await connect(page, { credit: false });
   await pickStock(page, /LTX-2\.5 Fast/);
 
   await prompt(page).fill("x".repeat(4001));
@@ -58,7 +58,7 @@ test("a prompt past the stock's limit is caught before anything is encrypted", a
 });
 
 test("a seed outside the range is refused with the range", async ({ page }) => {
-  await connect(page);
+  await connect(page, { credit: false });
   await pickStock(page, /LTX-2\.5 Fast/);
   await prompt(page).fill("A ferry crosses a harbour at first light");
 
@@ -72,7 +72,7 @@ test("a seed outside the range is refused with the range", async ({ page }) => {
 });
 
 test("negative prompts and the prompt enhancer follow the profile", async ({ page }) => {
-  await connect(page);
+  await connect(page, { credit: false });
 
   // LTX-2.5 Fast: a seed and the enhancer, no negative prompt.
   await pickStock(page, /LTX-2\.5 Fast/);
@@ -92,7 +92,7 @@ test("negative prompts and the prompt enhancer follow the profile", async ({ pag
 });
 
 test("the chips only offer sizes, lengths and frame rates the stock renders", async ({ page }) => {
-  await connect(page);
+  await connect(page, { credit: false });
 
   await pickStock(page, /LTX-2\.5 Fast/);
   expect(await settingOptions(page, "Frame rate")).toEqual(["24 fps", "25 fps", "48 fps", "50 fps"]);
@@ -109,7 +109,7 @@ test("the chips only offer sizes, lengths and frame rates the stock renders", as
 });
 
 test("more keyframes than the stock takes are turned away at the slot", async ({ page }) => {
-  await connect(page);
+  await connect(page, { credit: false });
   await openTab(page, "Keyframes");
 
   await slot(page, "Add keyframes").setInputFiles(Array.from({ length: 10 }, (_, i) => png(`k${i}.png`)));
@@ -119,7 +119,7 @@ test("more keyframes than the stock takes are turned away at the slot", async ({
 });
 
 test("the retake window has to start before it ends and fit inside the clip", async ({ page }) => {
-  await connect(page);
+  await connect(page, { credit: false });
   await openTab(page, "Edit");
   await pickEditOp(page, "Retake");
   await prompt(page).fill("Re-shoot the middle of the take");

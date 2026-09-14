@@ -1,5 +1,5 @@
-"""Preservation holds: removal, owner deletion, retention and the blob sweep hide held content without destroying
-it; blocked uploads and report keys are preserved; releasing or expiring a hold lets the normal paths delete.
+"""Preservation holds: removal, owner deletion and the blob sweep hide held content without destroying it; blocked
+uploads and report keys are preserved; releasing or expiring a hold lets the normal paths delete.
 
 Reuses the simulated worker and fixtures of test_standard_moderation_flow.py.
 """
@@ -11,6 +11,7 @@ import time
 import pytest
 from kuno_protocol.canonical import b64e
 from test_standard_moderation_flow import (  # fixtures and helpers
+    CAROL,
     ENCLAVE,
     _private_job,
     create_standard,
@@ -21,7 +22,6 @@ from test_standard_moderation_flow import (  # fixtures and helpers
     render,
 )
 
-from kuno_gateway import standard_jobs
 from kuno_gateway.db import Blob, Enclave, Job
 from kuno_gateway.db_holds import PreservationHold
 from kuno_gateway.db_moderation import Report, StandardJob, StandardUpload
@@ -120,13 +120,11 @@ def test_removing_reported_csam_holds_the_job_hides_it_and_deletes_only_after_re
     view = gw.client.get(f"/admin/v1/moderation/items/{item['item_id']}/video", headers=gw.admin)
     assert view.status_code == 200 and view.content == media.clip
 
-    # Owner delete, retention and the janitor all leave held content alone.
-    assert gw.client.delete(f"/v1/standard/videos/{job_id}", headers=key).status_code == 204
+    # Owner delete (on the job API's DELETE /v1/videos/{job_id}) and the janitor leave held content alone.
+    assert gw.client.delete(f"/v1/videos/{job_id}", headers=key).status_code == 204
     with gw.state.session() as s, s.begin():
-        s.get(StandardJob, job_id).expires_at = time.time() - 1
         for upload in s.query(StandardUpload).filter(StandardUpload.job_id == job_id):
             upload.expires_at = time.time() - 1
-    standard_jobs.expire(gw.state)
     gw.state.janitor()
     row, uploads, blobs = content_ids(gw, job_id)
     assert row.delete_reason == "removed" and row.prompt and stored(gw, row.video_blob_id)
@@ -134,7 +132,7 @@ def test_removing_reported_csam_holds_the_job_hides_it_and_deletes_only_after_re
     assert len(blobs) == 2 and all(stored(gw, b.id) for b in blobs)
 
     released = gw.client.post(f"/admin/v1/holds/{hold['hold_id']}/release", json={"note": "counsel: preservation ended"}, headers=gw.admin)
-    assert released.status_code == 200 and released.json()["status"] == "released" and released.json()["released_by"] == "carol"
+    assert released.status_code == 200 and released.json()["status"] == "released" and released.json()["released_by"] == CAROL
     assert gw.client.post(f"/admin/v1/holds/{hold['hold_id']}/release", json={"note": "again"}, headers=gw.admin).status_code == 409
     assert holds(gw, "active") == [] and [h["hold_id"] for h in holds(gw, "released")] == [hold["hold_id"]]
 
@@ -144,69 +142,69 @@ def test_removing_reported_csam_holds_the_job_hides_it_and_deletes_only_after_re
     assert (row.prompt, row.inputs, row.options, row.video_blob_id, row.delete_reason) == (None, None, None, None, "removed")
     assert uploads == [] and blobs == []
     assert not any(stored(gw, b) for b in (video_blob, upload_blob, *sealed))
-    assert gw.client.get(f"/admin/v1/moderation/items/{item['item_id']}/video", headers=gw.admin).status_code == 410
+    # The report is resolved and no hold covers the job any more: metadata only.
+    closed = gw.client.get(f"/admin/v1/moderation/items/{item['item_id']}/video", headers=gw.admin)
+    assert closed.status_code == 403 and closed.json()["detail"]["code"] == "content_not_reviewable"
     with gw.state.session() as s:
         assert s.get(Job, job_id).price_usd > 0
 
     actions = {(a["operator"], a["action"], a["target_id"]) for a in audit(gw)}
     # The report's provisional hold is created by the system on arrival; carol's removal extends it.
-    assert {("system", "hold.create", hold["hold_id"]), ("carol", "hold.extend", hold["hold_id"]),
-            ("carol", "report.remove_content", report["report_id"]),
-            ("carol", "item.view_video", item["item_id"]), ("carol", "hold.release", hold["hold_id"])} <= actions
+    assert {("system", "hold.create", hold["hold_id"]), (CAROL, "hold.extend", hold["hold_id"]),
+            (CAROL, "report.remove_content", report["report_id"]),
+            (CAROL, "item.view_video", item["item_id"]), (CAROL, "hold.release", hold["hold_id"])} <= actions
     created = next(a for a in audit(gw, hold["hold_id"]) if a["action"] == "hold.create")
     assert created["detail"]["automatic"] is True and created["detail"]["report_id"] == report["report_id"]
     removal = next(a for a in audit(gw, report["report_id"]))
     assert removal["detail"]["hold_id"] == hold["hold_id"] and removal["detail"]["preserved"] is True
 
 
-def test_holds_on_live_content_survive_owner_deletion_retention_and_expire_on_schedule(gw, media):
+def test_holds_on_live_content_survive_owner_deletion_and_expire_on_schedule(gw, media):
     account_id, key = new_account(gw)
     deleted = create_standard(gw, key, prompt="first")["job_id"]
-    retained = create_standard(gw, key, prompt="second")["job_id"]
-    for job_id in (deleted, retained):
+    kept = create_standard(gw, key, prompt="second")["job_id"]
+    for job_id in (deleted, kept):
         render(gw, job_id, media.clip)
     stray = gw.client.post("/v1/standard/uploads", params={"role": "first_frame"}, content=media.red, headers=key).json()
 
     placed = [
         gw.client.post("/admin/v1/holds", json={"job_id": job_id, "reason": "legal_request", "days": 30, "note": "preservation letter 42"},
                        headers=gw.admin)
-        for job_id in (deleted, retained)
+        for job_id in (deleted, kept)
     ] + [gw.client.post("/admin/v1/holds", json={"upload_id": stray["upload_id"], "reason": "operator", "note": "keep"}, headers=gw.admin)]
     assert [p.status_code for p in placed] == [201, 201, 201]
     assert placed[0].json()["expires_at"] == pytest.approx(time.time() + 30 * 86400, abs=60)
     assert placed[2].json()["account_id"] == account_id and placed[2].json()["preserved"] == {"upload": True}
     # Holding doesn't hide live content.
-    assert gw.client.get(f"/v1/standard/videos/{retained}/video", headers=key).status_code == 200
+    assert gw.client.get(f"/v1/standard/videos/{kept}/video", headers=key).status_code == 200
 
     assert gw.client.delete(f"/v1/standard/videos/{deleted}", headers=key).status_code == 204
     assert gw.client.get(f"/v1/standard/videos/{deleted}/video", headers=key).json()["detail"]["code"] == "deleted"
     with gw.state.session() as s, s.begin():
-        s.get(StandardJob, retained).expires_at = time.time() - 1
         s.get(StandardUpload, stray["upload_id"]).expires_at = time.time() - 1
-        # Past the 7-day blob retention too: the sweep would normally delete these.
-        for blob in s.query(Blob).filter(Blob.job_id.in_([deleted, retained])):
-            blob.expires_at = time.time() - 1
-    assert standard_jobs.expire(gw.state) == {"purged": 1, "uploads": 0}
     gw.state.janitor()
-    assert gw.client.get(f"/v1/standard/videos/{retained}/video", headers=key).json()["detail"]["code"] == "expired"
-    for job_id in (deleted, retained):
+    for job_id in (deleted, kept):
         # Text-to-video: the sealed output is the job's only sealed blob.
         row, _, blobs = content_ids(gw, job_id)
         assert row.prompt and stored(gw, row.video_blob_id) and len(blobs) == 1 and stored(gw, blobs[0].id)
     with gw.state.session() as s:
         assert stored(gw, s.get(StandardUpload, stray["upload_id"]).blob_id)
 
-    # The holds reach their end: the janitor releases them as the system and the content follows normal deletion.
+    # The holds reach their end: the janitor releases them as the system; the deleted job's content and the unused
+    # upload are deleted, while the video its owner kept stays.
     with gw.state.session() as s, s.begin():
         for hold in s.query(PreservationHold):
             hold.expires_at = time.time() - 1
     assert holds(gw, "active") == []
     gw.state.janitor()
     assert {(h["status"], h["released_by"]) for h in holds(gw)} == {("released", "system")}
-    for job_id in (deleted, retained):
-        row, uploads, blobs = content_ids(gw, job_id)
-        assert row.prompt is None and row.video_blob_id is None and uploads == [] and blobs == []
-    assert standard_jobs.expire(gw.state)["uploads"] == 1
+    row, uploads, blobs = content_ids(gw, deleted)
+    assert row.prompt is None and row.video_blob_id is None and uploads == [] and blobs == []
+    row, _, blobs = content_ids(gw, kept)
+    assert row.prompt == "second" and stored(gw, row.video_blob_id) and len(blobs) == 1
+    assert gw.client.get(f"/v1/standard/videos/{kept}/video", headers=key).status_code == 200
+    with gw.state.session() as s:
+        assert s.get(StandardUpload, stray["upload_id"]) is None
     expired = [a for a in audit(gw) if a["action"] == "hold.expire"]
     assert len(expired) == 3 and {a["operator"] for a in expired} == {"system"}
 
@@ -260,11 +258,11 @@ def test_a_blocked_upload_is_stored_encrypted_under_a_hold_and_reviewable_only_b
     view = gw.client.get(f"/admin/v1/moderation/items/{item['item_id']}/video", headers=gw.admin)
     assert view.status_code == 200 and view.content == media.blue and view.headers["content-type"] == "image/png"
     [logged] = [a for a in audit(gw, item["item_id"]) if a["action"] == "item.view_upload"]
-    assert logged["operator"] == "carol" and logged["detail"]["access"] == "held_upload"
+    assert logged["operator"] == CAROL and logged["detail"]["access"] == "held_upload"
+    assert logged["detail"]["basis"] == "hold:upload_match"
     assert [a["operator"] for a in audit(gw, hold["hold_id"]) if a["action"] == "hold.create"] == ["system"]
 
-    # Retention and the janitor leave it; an operator hold on the same upload shares the stored copy.
-    standard_jobs.expire(gw.state)
+    # The janitor leaves it; an operator hold on the same upload shares the stored copy.
     gw.state.janitor()
     assert stored(gw, blob_id)
     second = gw.client.post("/admin/v1/holds", json={"upload_id": hold["upload_id"], "reason": "legal_request", "note": "LE request"},
@@ -323,7 +321,8 @@ def test_a_held_private_job_keeps_its_ciphertext_and_the_reported_key_past_resol
     assert last.json()["has_output_key"] is False
     with gw.state.session() as s:
         assert {h.output_key for h in s.query(PreservationHold)} == {None}
-    assert gw.client.get(f"/admin/v1/moderation/items/{item['item_id']}/video", headers=gw.admin).status_code == 403
+    closed = gw.client.get(f"/admin/v1/moderation/items/{item['item_id']}/video", headers=gw.admin)
+    assert closed.status_code == 403 and closed.json()["detail"]["code"] == "content_not_reviewable"
     gw.state.janitor()
     assert not stored(gw, blob.id)
     with gw.state.session() as s:

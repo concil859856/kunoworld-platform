@@ -7,7 +7,8 @@ import { API_BASE } from "./config";
 /*
  * The website's side of signing in. The gateway issues a web session; this module keeps it in
  * an HttpOnly cookie on the site's own origin and uses it for server-to-server calls. It never
- * reaches the browser's JavaScript: the studio is given short-lived studio tokens instead.
+ * reaches the browser's JavaScript: the studio goes through this site's /api/kuno proxy, which
+ * adds the session on the server, and operators use the same session for the /admin console.
  */
 
 export const SESSION_COOKIE = "kw_session";
@@ -22,8 +23,31 @@ export interface GatewayError {
 
 export type GatewayResult<T> = { ok: true; data: T } | { ok: false; error: GatewayError };
 
+export type OperatorRole = "moderator" | "admin";
+
+/** `GET /v1/me`. */
+export interface Me {
+  user: { user_id: string; email: string; created_at: number; roles?: string[] };
+  account: { account_id: string; balance_usd: number } | null;
+  /** Operator roles the user holds; absent or empty for everyone else. */
+  roles?: string[];
+}
+
 export async function sessionToken(): Promise<string | null> {
   return (await cookies()).get(SESSION_COOKIE)?.value ?? null;
+}
+
+/** The signed-in user, or a 401 when there's no session. */
+export async function getMe(): Promise<GatewayResult<Me>> {
+  const token = await sessionToken();
+  if (!token) return { ok: false, error: { status: 401, code: "signed_out", message: "Sign in again." } };
+  return gateway<Me>("/v1/me", { token });
+}
+
+/** Operator roles only; anything else the gateway lists is ignored. Accepts `roles` at the top or on `user`. */
+export function rolesOf(me: Me): OperatorRole[] {
+  const raw = me.roles ?? me.user.roles ?? [];
+  return raw.filter((role): role is OperatorRole => role === "moderator" || role === "admin");
 }
 
 export async function gateway<T>(

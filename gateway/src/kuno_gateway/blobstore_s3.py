@@ -1,8 +1,9 @@
-"""Ciphertext blob storage on S3-compatible object stores (AWS S3, Cloudflare R2, MinIO).
+"""Blob storage on S3-compatible object stores. Production uses Cloudflare R2; MinIO and AWS S3 also work.
 
 Same interface and semantics as `blobstore.BlobStore`:
 
-* `put(data) -> (blob_id, sha256_hex, size)`; ids are 32 lowercase hex characters.
+* `put(data) -> (blob_id, sha256_hex, size)`; ids are 32 lowercase hex characters. The digest is recorded in the
+  gateway's database, not as object metadata: R2's S3 compatibility table doesn't list `x-amz-meta-*`.
 * `get(blob_id) -> bytes`; raises `KeyError` for a missing object or a malformed id.
 * `delete(blob_id)`; missing objects and malformed ids are ignored.
 
@@ -166,7 +167,6 @@ class S3BlobStore:
             Key=self._key(blob_id),
             Body=data,
             ContentType="application/octet-stream",
-            Metadata={"sha256": digest},
         )
         return blob_id, digest, len(data)
 
@@ -179,13 +179,9 @@ class S3BlobStore:
         hasher.update(first)
         if len(first) < self.chunk_bytes:
             digest = hasher.hexdigest()
-            self.client.put_object(
-                Bucket=self.bucket, Key=key, Body=first, ContentType="application/octet-stream", Metadata={"sha256": digest}
-            )
+            self.client.put_object(Bucket=self.bucket, Key=key, Body=first, ContentType="application/octet-stream")
             return blob_id, digest, len(first)
 
-        # The digest is only known at the end, so it can't go into object metadata here; the
-        # gateway's database row is the record of it either way.
         upload = self.client.create_multipart_upload(Bucket=self.bucket, Key=key, ContentType="application/octet-stream")
         upload_id = upload["UploadId"]
         parts: list[dict[str, Any]] = []
@@ -262,6 +258,24 @@ def _read_exactly(stream: IO[bytes], n: int) -> bytes:
             break
         buf += piece
     return bytes(buf)
+
+
+class LocalBlobsInProduction(RuntimeError):
+    pass
+
+
+def require_durable_blob_backend(settings: Any, env: dict[str, str] | None = None, production: bool | None = None) -> None:
+    """Production (KUNO_ENV=production or KUNO_ATTESTATION=production) refuses to start on the local blob backend:
+    customers' videos are kept until they delete them, so they belong on R2 (or another S3-compatible store)."""
+    env = dict(os.environ if env is None else env)
+    if production is None:
+        production = bool(getattr(settings, "production", False))
+    backend = (getattr(settings, "blob_backend", None) or env.get("KUNO_BLOB_BACKEND") or "local").lower()
+    if production and backend == "local":
+        raise LocalBlobsInProduction(
+            "A production gateway needs KUNO_BLOB_BACKEND=s3 (Cloudflare R2: KUNO_S3_ENDPOINT_URL="
+            "https://<account>.r2.cloudflarestorage.com, KUNO_S3_REGION=auto); the local blob backend is for development."
+        )
 
 
 def select_blob_store(settings: Any, env: dict[str, str] | None = None):

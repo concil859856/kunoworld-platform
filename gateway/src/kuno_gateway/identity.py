@@ -21,10 +21,8 @@ from .db import Account, ApiKey, LoginToken, User, UserSession
 
 API_KEY_PREFIX = "kw_live_"
 WEB_SESSION_PREFIX = "kws_"
-STUDIO_TOKEN_PREFIX = "kwt_"
 
 WEB = "web"
-STUDIO = "studio"
 
 # The window sign-in rate limits use; the janitor prunes limiter state older than this.
 AUTH_LIMIT_WINDOW_S = 15 * 60
@@ -101,7 +99,9 @@ def account_for_user(s: Session, user_id: str) -> Account | None:
 
 
 def open_session(s: Session, user_id: str, kind: str, ttl_s: float, parent_id: str | None = None) -> tuple[str, UserSession]:
-    token = (WEB_SESSION_PREFIX if kind == WEB else STUDIO_TOKEN_PREFIX) + secrets.token_urlsafe(32)
+    if kind != WEB:
+        raise ValueError(f"unknown session kind {kind!r}")
+    token = WEB_SESSION_PREFIX + secrets.token_urlsafe(32)
     now = time.time()
     row = UserSession(
         id=_new_id(), token_hash=hash_secret(token), user_id=user_id, kind=kind, parent_id=parent_id,
@@ -113,7 +113,7 @@ def open_session(s: Session, user_id: str, kind: str, ttl_s: float, parent_id: s
 
 
 def find_session(s: Session, token: str, kind: str) -> UserSession | None:
-    """A live session of exactly this kind. A studio token dies with the web session that issued it."""
+    """A live session of exactly this kind (retired studio-token rows never match `WEB`)."""
     now = time.time()
     row = s.scalars(select(UserSession).where(UserSession.token_hash == hash_secret(token))).first()
     if row is None or row.kind != kind or row.revoked_at is not None or row.expires_at <= now:

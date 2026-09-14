@@ -1,9 +1,30 @@
 /** Public configuration. Everything here is safe to ship to the browser. */
 
+import type { GoldenManifest } from "@kunoworld/sdk";
+
+/** The gateway, as this site's server reaches it. The browser talks to PROXY_BASE instead. */
 export const API_BASE = (process.env.NEXT_PUBLIC_KUNO_API || "http://localhost:8080").replace(/\/+$/, "");
+
+/** This site's same-origin proxy to the gateway's job API (app/api/kuno). */
+export const PROXY_BASE = "/api/kuno";
 
 /** Development only: sent as x-kuno-country (the gateway ignores it unless KUNO_ALLOW_COUNTRY_OVERRIDE=1). */
 export const DEV_COUNTRY = process.env.NEXT_PUBLIC_KUNO_DEV_COUNTRY?.trim() || undefined;
+
+/**
+ * A golden manifest pinned at build time (JSON). Without one, the studio trusts the manifest the
+ * gateway serves, which is fine for development but not a zero-trust setup.
+ */
+export const PINNED_MANIFEST: GoldenManifest | undefined = (() => {
+  const raw = process.env.NEXT_PUBLIC_KUNO_MANIFEST?.trim();
+  if (!raw) return undefined;
+  try {
+    const value = JSON.parse(raw) as GoldenManifest;
+    return Array.isArray(value.allowed) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+})();
 
 export const SITE = {
   name: "KunoWorld",
@@ -17,6 +38,3 @@ export const LINKS = {
   subnetRepo: "https://github.com/kunoworld/subnet",
   sdkRepo: "https://github.com/kunoworld/sdk",
 } as const;
-
-/** How long the relay keeps sealed blobs (gateway blob_retention_s). */
-export const RELAY_RETENTION_DAYS = 7;

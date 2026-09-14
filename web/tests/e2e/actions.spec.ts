@@ -6,7 +6,7 @@ import { cards, connect, expectSetting, generate, inspectFilm, inspector, pickSt
 
 /** The things you do to a take after (or while) it renders. */
 
-test("canceling a running take marks it canceled and refunds it", async ({ page }) => {
+test("canceling a running take marks it canceled and refunds it @needs-session-gateway", async ({ page }) => {
   await connect(page);
   await pickStock(page, /LTX-2\.5 Fast/);
   // The longest, largest shot this stock makes, so there is room to cancel it.
@@ -28,7 +28,7 @@ test("canceling a running take marks it canceled and refunds it", async ({ page 
   await expect(page.getByRole("link", { name: "Download" })).toHaveCount(0);
 });
 
-test("removing a take asks first, then forgets its key for good", async ({ page }) => {
+test("deleting a take asks first, then deletes it and forgets its key for good @needs-session-gateway", async ({ page }) => {
   await connect(page);
   await pickStock(page, /LTX-2\.5 Fast/);
   await generate(page, "Rain on a tram window at night");
@@ -37,7 +37,7 @@ test("removing a take asks first, then forgets its key for good", async ({ page 
   let accept = false;
   page.on("dialog", (d) => (accept ? d.accept() : d.dismiss()));
 
-  const remove = inspector(page).getByRole("button", { name: "Remove", exact: true });
+  const remove = inspector(page).getByRole("button", { name: "Delete", exact: true });
   await remove.click();
   await expect(cards(page)).toHaveCount(1);
 
@@ -51,7 +51,7 @@ test("removing a take asks first, then forgets its key for good", async ({ page 
   await expect(cards(page)).toHaveCount(0);
 });
 
-test("use last frame starts the next shot where the film ended", async ({ page }) => {
+test("use last frame starts the next shot where the film ended @needs-session-gateway", async ({ page }) => {
   await connect(page);
   await pickStock(page, /LTX-2\.5 Fast/);
   await generate(page, "A lighthouse keeper climbs the stair to the lamp");
@@ -72,7 +72,7 @@ test("use last frame starts the next shot where the film ended", async ({ page }
   expect((await inspectFilm(page)).ftyp).toBe("ftyp");
 });
 
-test("reuse settings puts a take's whole setup back in the composer", async ({ page }) => {
+test("reuse settings puts a take's whole setup back in the composer @needs-session-gateway", async ({ page }) => {
   await connect(page);
   await pickStock(page, /LTX-2\.5 Fast/);
   await setSetting(page, "Resolution", "1080p");
@@ -103,7 +103,7 @@ test("reuse settings puts a take's whole setup back in the composer", async ({ p
   await expectSetting(page, "Frame rate", "48");
 });
 
-test("film keys survive a backup, a forget-all and a restore", async ({ page }) => {
+test("film keys survive a backup, a forget-all and a restore @needs-session-gateway", async ({ page }) => {
   await connect(page);
   await pickStock(page, /LTX-2\.5 Fast/);
   await generate(page, "A print develops in the tray under a red safelight");

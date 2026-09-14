@@ -1,5 +1,9 @@
 # Top-ups
 
+> **Prices are placeholders.** Every job price the gateway charges and shows (`GET /v1/models`, `JobStatus.price_usd`)
+> is a placeholder until the owner sets real pricing; `GET /v1/models` returns `pricing_placeholder: true`. The top-up
+> limits below are configuration, not pricing.
+
 Customers buy credit ahead of use. Every top-up is a row in `payments`, keyed by provider and the
 provider's own reference, and credits the ledger at most once under the key
 `topup:{provider}:{reference}`. Each method stays off until it is configured, and
@@ -110,7 +114,7 @@ A payment's `status` is one of:
 - a partial payment;
 - a refund or dispute.
 
-Resolve these by hand. To credit, use `POST /admin/v1/accounts/{id}/credits` (`amount_usd`, `idempotency_key` naming the payment, `note`). To refund, send it back through the provider or on chain.
+Resolve these by hand. To credit, an operator with the `admin` role (signed in by email; see `MODERATION.md`) uses `POST /admin/v1/accounts/{id}/credits` (`amount_usd`, `idempotency_key` naming the payment, `note`); each credit is in the audit log under their email. To refund, send it back through the provider or on chain.
 
 Find them with:
 

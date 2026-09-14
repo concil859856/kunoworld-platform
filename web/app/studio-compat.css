@@ -405,3 +405,34 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* The library's key backup panel: the one place private-video keys are explained. */
+.key-backup {
+  display: grid;
+  gap: 10px;
+}
+
+.key-backup-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.key-backup-sentence {
+  margin: 0;
+  font-weight: 600;
+}
+
+.key-backup-note {
+  margin: 0;
+  opacity: 0.8;
+}
+
+.privacy-policy-note {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  opacity: 0.8;
+}

@@ -1,7 +1,7 @@
 """Preservation holds (MODERATION.md, "Preservation holds").
 
 A hold stops the platform destroying a job's or an upload's stored content; it never makes content visible again.
-Every deletion path (owner delete, operator removal, retention, the blob sweep) still hides what it would have
+Every deletion path (owner delete, operator removal, the blob sweep) still hides what it would have
 deleted, and asks `job_held` / `upload_held` before destroying anything. When a hold is released or expires,
 `settle` and the blob sweep finish the deletion those paths deferred.
 

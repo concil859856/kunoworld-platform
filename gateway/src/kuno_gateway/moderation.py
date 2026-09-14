@@ -31,7 +31,6 @@ PRIORITY = {"csam": 100, "sexual_minor": 100, "nonconsensual_intimate": 60, "vio
 DEFAULT_REPORT_PRIORITY = 20
 UPLOAD_MATCH_PRIORITY = 90
 ACCOUNT_REVIEW_PRIORITY = 70
-SAMPLE_PRIORITY = 0
 
 # Eligibility reasons, stable codes the site and SDKs translate.
 NO_VERIFIED_PAYMENT = "no_verified_payment"

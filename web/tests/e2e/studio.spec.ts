@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { cards, connect, expectStepOrder, generate, inspectFilm, inspector, pickStock, pngBytes, prompt, slot, watchToReady } from "./helpers";
 
-test("text to video on LTX-2.5 Fast: steps, decrypted film, valid certificate", async ({ page }) => {
+test("text to video on LTX-2.5 Fast: steps, decrypted film, valid certificate @needs-session-gateway", async ({ page }) => {
   await connect(page);
   await pickStock(page, /LTX-2\.5 Fast/);
 
@@ -30,7 +30,7 @@ test("text to video on LTX-2.5 Fast: steps, decrypted film, valid certificate", 
   await expect(inspector(page)).toContainText("LTX-2.5 Fast");
 });
 
-test("first and last frame switches mode and renders", async ({ page }) => {
+test("first and last frame switches mode and renders @needs-session-gateway", async ({ page }) => {
   await connect(page);
   await pickStock(page, /LTX-2\.5 Fast/);
   await page.getByRole("tab", { name: "Frames", exact: true }).click();
@@ -48,7 +48,7 @@ test("first and last frame switches mode and renders", async ({ page }) => {
   expect(film.ftyp).toBe("ftyp");
 });
 
-test("library survives a reload and re-opens the film", async ({ page }) => {
+test("library survives a reload and re-opens the film @needs-session-gateway", async ({ page }) => {
   await connect(page);
   await pickStock(page, /LTX-2\.5 Fast/);
   await generate(page, "Rain on a tram window at night, neon smearing in the glass");
@@ -69,7 +69,7 @@ test("library survives a reload and re-opens the film", async ({ page }) => {
   expect(film.ftyp).toBe("ftyp");
 });
 
-test("MiniMax H3 falls back to LTX-2.5 where it isn't licensed", async ({ page }) => {
+test("MiniMax H3 falls back to LTX-2.5 where it isn't licensed @needs-session-gateway", async ({ page }) => {
   await connect(page);
   await pickStock(page, /MiniMax H3 Turbo/);
 

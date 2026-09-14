@@ -14,6 +14,7 @@ from kuno_protocol import devkit
 from kuno_protocol.profiles import Mode
 from kuno_protocol.schemas import GenerationParams, JobState
 
+from operator_sessions import operator_headers
 from kuno_gateway import identity, ledger, moderation
 from kuno_gateway.app import create_app
 from kuno_gateway.db import Account, Enclave, Job
@@ -52,7 +53,7 @@ def gw(tmp_path):
     add_enclave(state, OPEN, "open")
     return SimpleNamespace(
         client=TestClient(app), state=state, settings=settings, env=env,
-        admin={"authorization": f"Bearer {env['KUNO_ADMIN_TOKEN']}"},
+        admin=operator_headers(state, "ops@kunoworld.test"),
     )
 
 
@@ -238,14 +239,14 @@ def test_ten_strikes_in_a_month_restrict_the_account_until_an_operator_reviews_i
 
     lifted = gw.client.post(
         f"/admin/v1/accounts/{account_id}/unrestrict", json={"reason": "reviewed, false positives"},
-        headers={**gw.admin, "x-kuno-operator": "alice"},
+        headers=operator_headers(gw.state, "alice@kunoworld.test"),
     )
     assert lifted.status_code == 200 and lifted.json()["lifted"] == 1
     eligibility = gw.client.get("/v1/account/eligibility", headers=key).json()
     assert eligibility["restricted_until"] is None
     assert eligibility["private_mode"]["reasons"] == ["too_many_strikes"]
     log = gw.client.get("/admin/v1/audit-log", params={"target_id": account_id}, headers=gw.admin).json()
-    assert [(a["operator"], a["action"], a["reason"]) for a in log] == [("alice", "account.unrestrict", "reviewed, false positives")]
+    assert [(a["operator"], a["action"], a["reason"]) for a in log] == [("alice@kunoworld.test", "account.unrestrict", "reviewed, false positives")]
 
 
 def test_strike_thresholds_are_configurable(gw):
@@ -270,7 +271,7 @@ def test_validators_collect_strikes_without_being_restricted(gw):
 
 def test_operators_restrict_and_unrestrict_accounts_and_every_action_is_logged(gw):
     account_id, key = new_account(gw, source="admin")
-    bob = {**gw.admin, "x-kuno-operator": "bob"}
+    bob = operator_headers(gw.state, "bob@kunoworld.test")
     until = time.time() + 3600
     restricted = gw.client.post(f"/admin/v1/accounts/{account_id}/restrict", json={"until": until, "reason": "chargeback fraud"}, headers=bob)
     assert restricted.status_code == 200 and restricted.json()["restricted_until"] == pytest.approx(until)
@@ -283,7 +284,7 @@ def test_operators_restrict_and_unrestrict_accounts_and_every_action_is_logged(g
     assert gw.client.post("/v1/videos", json=job_body(), headers=key).status_code == 201
 
     log = gw.client.get("/admin/v1/audit-log", params={"target_id": account_id}, headers=gw.admin).json()
-    assert [(a["action"], a["operator"]) for a in log] == [("account.unrestrict", "bob"), ("account.restrict", "bob")]
+    assert [(a["action"], a["operator"]) for a in log] == [("account.unrestrict", "bob@kunoworld.test"), ("account.restrict", "bob@kunoworld.test")]
     assert log[1]["reason"] == "chargeback fraud" and log[1]["created_at"] > 0
 
     past = gw.client.post(f"/admin/v1/accounts/{account_id}/restrict", json={"until": time.time() - 1, "reason": "x"}, headers=bob)

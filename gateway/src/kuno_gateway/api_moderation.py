@@ -1,6 +1,12 @@
 """Operator moderation (STANDARD_MODE.md "Operators", MODERATION.md). Every action lands in the audit log.
 
-The admin token is shared, so operators name themselves with `X-Kuno-Operator`; the log records that name.
+Operators sign in by email and hold a role (roles.py); the audit log records their email. Moderators handle reports,
+the queue, items and holds; restricting accounts, releasing holds and reading the audit log need `admin`.
+
+Only a video's owner can open it. An operator may open an item's content (video, blocked upload, Standard prompt)
+only for an open report of `csam` or `sexual_minor`, or under an active preservation hold whose reason is
+`report_csam`, `report_sexual_minor`, `upload_match` or `legal_request` (`content_access`). Everything else is
+metadata only. Every content view is logged.
 """
 
 from __future__ import annotations
@@ -17,25 +23,27 @@ from sqlalchemy.orm import Session
 
 from kuno_protocol.crypto import DecryptionError
 
-from . import holds, moderation, standard_jobs
-from .auth import gw, require_admin
+from . import holds, moderation, roles, standard_jobs
+from .auth import gw, operator_name, require_operator
 from .db import Account, Blob, Job
 from .db_holds import PreservationHold
 from .db_moderation import ModerationItem, OperatorAction, Report, StandardJob, StandardUpload
 from .vault import StorageKeyMissing, vault
 
-router = APIRouter(prefix="/admin/v1", tags=["moderation"], dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="/admin/v1", tags=["moderation"], dependencies=[Depends(require_operator(roles.MODERATOR))])
+ADMIN_ONLY = [Depends(require_operator(roles.ADMIN))]
 
 Action = Literal["dismiss", "remove_content", "restrict_account", "ban_account"]
 DEFAULT_RESTRICTION_S = 7 * 86400
 
+# Reports whose content an operator may review (the only reasons a report may carry a private video's key).
+ILLEGAL_REPORT_REASONS = ("csam", "sexual_minor")
+# Holds under which an operator may review the held content.
+REVIEWABLE_HOLD_REASONS = ("report_csam", "report_sexual_minor", "upload_match", "legal_request")
+
 
 def _error(status: int, code: str, message: str) -> HTTPException:
     return HTTPException(status, {"code": code, "message": message})
-
-
-def operator(request: Request) -> str:
-    return (request.headers.get("x-kuno-operator") or "admin").strip()[:64] or "admin"
 
 
 class ResolveBody(BaseModel):
@@ -77,6 +85,39 @@ class HoldCreate(BaseModel):
 
 class HoldRelease(BaseModel):
     note: str = Field(min_length=1, max_length=2000)
+
+
+# ------------------------------------------------------------------ who may see content
+
+
+def content_access(
+    s: Session, now: float, *, report: Report | None, job_id: str | None, upload_id: str | None = None,
+) -> str | None:
+    """The basis on which an operator may open this content, or None (metadata only).
+
+    An open report of csam or sexual_minor, or an active hold with a reviewable reason on the job or upload.
+    """
+    if report is not None and report.status == "open" and report.reason in ILLEGAL_REPORT_REASONS:
+        return f"report:{report.reason}"
+    candidates: list[PreservationHold] = []
+    if job_id is not None:
+        candidates += holds.active_holds(s, now, job_id=job_id)
+    if upload_id is not None:
+        candidates += holds.active_holds(s, now, upload_id=upload_id)
+    for hold in candidates:
+        if hold.reason in REVIEWABLE_HOLD_REASONS:
+            return f"hold:{hold.reason}"
+    return None
+
+
+def _item_access(s: Session, item: ModerationItem, now: float) -> str | None:
+    report = s.get(Report, item.report_id) if item.report_id else None
+    detail = json.loads(item.detail) if item.detail else {}
+    upload_id = None if item.job_id else detail.get("upload_id")
+    return content_access(s, now, report=report, job_id=item.job_id, upload_id=upload_id)
+
+
+# ------------------------------------------------------------------ JSON
 
 
 def _preserved(s: Session, hold: PreservationHold) -> dict:
@@ -152,7 +193,9 @@ def report_json(report: Report) -> dict:
     }
 
 
-def _job_json(s: Session, job: Job | None, report: Report | None) -> dict | None:
+def _job_json(s: Session, job: Job | None, report: Report | None, *, reviewable: bool, show_prompt: bool = False) -> dict | None:
+    """Job metadata. `has_video` means a video exists that this operator may open; the prompt is only included when
+    `show_prompt` (item detail of reviewable content, logged by the caller)."""
     if job is None:
         return None
     now = time.time()
@@ -164,9 +207,10 @@ def _job_json(s: Session, job: Job | None, report: Report | None) -> dict | None
     if job.privacy == standard_jobs.STANDARD:
         row = s.get(StandardJob, job.id)
         out.update(
-            prompt=row.prompt if row else None,
-            negative_prompt=row.negative_prompt if row else None,
-            has_video=bool(row and row.video_blob_id),
+            prompt=row.prompt if (row and show_prompt) else None,
+            negative_prompt=row.negative_prompt if (row and show_prompt) else None,
+            has_prompt=bool(row and row.prompt),
+            has_video=bool(reviewable and row and row.video_blob_id),
             deleted=row.delete_reason if row and row.deleted_at else None,
         )
     else:
@@ -174,9 +218,37 @@ def _job_json(s: Session, job: Job | None, report: Report | None) -> dict | None
         has_key = bool(report and report.output_key) or any(
             h.output_key is not None for h in holds.active_holds(s, now, job_id=job.id)
         )
-        out.update(prompt=None, has_video=bool(has_key and job.output_blob_id))
+        out.update(prompt=None, has_prompt=False, has_video=bool(reviewable and has_key and job.output_blob_id))
     out["holds"] = _holds_for(s, now, job_id=job.id)
     return out
+
+
+def _item_json(s: Session, item: ModerationItem, *, show_prompt: bool = False) -> dict:
+    now = time.time()
+    report = s.get(Report, item.report_id) if item.report_id else None
+    job = s.get(Job, item.job_id) if item.job_id else None
+    detail = json.loads(item.detail) if item.detail else None
+    access = _item_access(s, item, now)
+    return {
+        "item_id": item.id,
+        "kind": item.kind,
+        "status": item.status,
+        "priority": item.priority,
+        "account_id": item.account_id,
+        "created_at": item.created_at,
+        "detail": detail,
+        "report": report_json(report) if report else None,
+        # Whether an operator may open this item's content now, and on what basis ("report:csam", "hold:legal_request").
+        "content_reviewable": access is not None,
+        "content_access": access,
+        "job": _job_json(s, job, report, reviewable=access is not None, show_prompt=show_prompt and access is not None),
+        "resolution": item.resolution,
+        # Holds on the item's job, or on a blocked upload's stored file.
+        "holds": _holds_for(s, now, job_id=item.job_id, upload_id=None if item.job_id else (detail or {}).get("upload_id")),
+    }
+
+
+# ------------------------------------------------------------------ actions
 
 
 def _apply(
@@ -262,7 +334,7 @@ async def list_reports(request: Request, status: Literal["open", "resolved", "al
 @router.post("/reports/{report_id}/resolve")
 async def resolve_report(report_id: str, body: ResolveBody, request: Request):
     state = gw(request)
-    by, now = operator(request), time.time()
+    by, now = operator_name(request), time.time()
     with state.session() as s, s.begin():
         report = s.get(Report, report_id)
         if report is None:
@@ -272,26 +344,6 @@ async def resolve_report(report_id: str, body: ResolveBody, request: Request):
 
 
 # ------------------------------------------------------------------ queue
-
-
-def _item_json(s: Session, item: ModerationItem) -> dict:
-    report = s.get(Report, item.report_id) if item.report_id else None
-    job = s.get(Job, item.job_id) if item.job_id else None
-    detail = json.loads(item.detail) if item.detail else None
-    return {
-        "item_id": item.id,
-        "kind": item.kind,
-        "status": item.status,
-        "priority": item.priority,
-        "account_id": item.account_id,
-        "created_at": item.created_at,
-        "detail": detail,
-        "report": report_json(report) if report else None,
-        "job": _job_json(s, job, report),
-        "resolution": item.resolution,
-        # Holds on the item's job, or on a blocked upload's stored file.
-        "holds": _holds_for(s, time.time(), job_id=item.job_id, upload_id=None if item.job_id else (detail or {}).get("upload_id")),
-    }
 
 
 @router.get("/moderation/queue")
@@ -308,17 +360,25 @@ async def queue(request: Request, limit: int = 100, status: Literal["open", "res
 
 @router.get("/moderation/items/{item_id}")
 async def get_item(item_id: str, request: Request):
-    with gw(request).session() as s:
+    """Item detail. A Standard job's prompt is included only when the content is reviewable, and that view is logged."""
+    by = operator_name(request)
+    with gw(request).session() as s, s.begin():
         item = s.get(ModerationItem, item_id)
         if item is None:
             raise _error(404, "not_found", "No such moderation item.")
-        return _item_json(s, item)
+        out = _item_json(s, item, show_prompt=True)
+        if out["job"] and out["job"].get("prompt") is not None:
+            moderation.log_action(
+                s, by, "item.view_prompt", "moderation_item", item_id, None,
+                {"job_id": item.job_id, "access": out["content_access"]},
+            )
+        return out
 
 
 @router.get("/moderation/items/{item_id}/video")
 async def item_video(item_id: str, request: Request):
     state = gw(request)
-    by = operator(request)
+    by = operator_name(request)
     try:
         store = vault(state)
     except StorageKeyMissing:
@@ -336,9 +396,17 @@ async def item_video(item_id: str, request: Request):
         held = job is not None and holds.job_held(s, job.id, now)
         held_key = holds.held_output_key(state, s, job.id, now) if job is not None and row is None else None
         upload_hold = holds.item_upload_hold(s, item, detail, now) if job is None else None
+        basis = _item_access(s, item, now)
+    if job is None and upload_hold is None:
+        raise _error(404, "no_video", "This item names no job.")
+    if basis is None:
+        # Only the owner opens a video. Operators get metadata unless the item is reported illegal content or legally held.
+        raise _error(
+            403, "content_not_reviewable",
+            "Operators can open content only for an open csam or sexual_minor report, or under a csam, upload-match or "
+            "legal-request preservation hold. This item is metadata only.",
+        )
     if job is None:
-        if upload_hold is None:
-            raise _error(404, "no_video", "This item names no job.")
         # A blocked upload preserved under a hold (it may be an image, not a video).
         loader, kind = (lambda: holds.open_blocked_upload(state, upload_hold, detail.get("sha256"))), "held_upload"
         media_type, action = detail.get("mime") or "application/octet-stream", "item.view_upload"
@@ -368,7 +436,8 @@ async def item_video(item_id: str, request: Request):
     with state.session() as s, s.begin():
         moderation.log_action(
             s, by, action, "moderation_item", item_id, None,
-            {"job_id": job.id if job else None, "upload_id": detail.get("upload_id") if job is None else None, "access": kind},
+            {"job_id": job.id if job else None, "upload_id": detail.get("upload_id") if job is None else None, "access": kind,
+             "basis": basis},
         )
     return Response(content=data, media_type=media_type)
 
@@ -376,7 +445,7 @@ async def item_video(item_id: str, request: Request):
 @router.post("/moderation/items/{item_id}/resolve")
 async def resolve_item(item_id: str, body: ResolveBody, request: Request):
     state = gw(request)
-    by, now = operator(request), time.time()
+    by, now = operator_name(request), time.time()
     with state.session() as s, s.begin():
         item = s.get(ModerationItem, item_id)
         if item is None:
@@ -401,7 +470,7 @@ async def resolve_item(item_id: str, body: ResolveBody, request: Request):
 @router.post("/holds", status_code=201)
 async def create_hold(body: HoldCreate, request: Request):
     state = gw(request)
-    by, now = operator(request), time.time()
+    by, now = operator_name(request), time.time()
     with state.session() as s, s.begin():
         blob_id = None
         if body.job_id is not None:
@@ -456,10 +525,10 @@ async def get_hold(hold_id: str, request: Request):
         return hold_json(s, hold, time.time())
 
 
-@router.post("/holds/{hold_id}/release")
+@router.post("/holds/{hold_id}/release", dependencies=ADMIN_ONLY)
 async def release_hold(hold_id: str, body: HoldRelease, request: Request):
     state = gw(request)
-    by, now = operator(request), time.time()
+    by, now = operator_name(request), time.time()
     with state.session() as s, s.begin():
         hold = s.get(PreservationHold, hold_id, with_for_update=state.postgres)
         if hold is None:
@@ -473,10 +542,10 @@ async def release_hold(hold_id: str, body: HoldRelease, request: Request):
 # ------------------------------------------------------------------ accounts
 
 
-@router.post("/accounts/{account_id}/restrict")
+@router.post("/accounts/{account_id}/restrict", dependencies=ADMIN_ONLY)
 async def restrict_account(account_id: str, body: RestrictBody, request: Request):
     state = gw(request)
-    by, now = operator(request), time.time()
+    by, now = operator_name(request), time.time()
     if body.until is not None and body.until <= now:
         raise _error(422, "invalid_until", "until must be in the future, or null for no end.")
     with state.session() as s, s.begin():
@@ -488,10 +557,10 @@ async def restrict_account(account_id: str, body: RestrictBody, request: Request
     return {"account_id": account_id, "restricted_until": until}
 
 
-@router.post("/accounts/{account_id}/unrestrict")
+@router.post("/accounts/{account_id}/unrestrict", dependencies=ADMIN_ONLY)
 async def unrestrict_account(account_id: str, request: Request, body: UnrestrictBody | None = None):
     state = gw(request)
-    by, now = operator(request), time.time()
+    by, now = operator_name(request), time.time()
     with state.session() as s, s.begin():
         if s.get(Account, account_id) is None:
             raise _error(404, "not_found", "No such account.")
@@ -524,7 +593,7 @@ async def account_safety(account_id: str, request: Request):
         }
 
 
-@router.get("/audit-log")
+@router.get("/audit-log", dependencies=ADMIN_ONLY)
 async def audit_log(request: Request, limit: int = 100, target_id: str | None = None):
     with gw(request).session() as s:
         query = select(OperatorAction).order_by(OperatorAction.created_at.desc()).limit(min(max(limit, 1), 1000))
