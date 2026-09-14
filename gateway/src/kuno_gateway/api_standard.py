@@ -222,10 +222,14 @@ async def _create(body: StandardJobCreate, request: Request, account: Account) -
             ):
                 raise _error(422, "invalid_inputs", f"Upload {ref.upload_id} is unknown, not yours, expired, already used, or for another role.")
             uploads.append(up)
-        from .admission import order_for_account
+        from .admission import family_profile_ids, order_for_account
 
-        # Open-tier miners get customer jobs only after passing validator probes (admission.py).
-        candidates = order_for_account(s, state.settings, standard_jobs.enclaves_for(state, s, profile.id, STANDARD), account)
+        # Open-tier miners get customer jobs only after passing validator probes, and validators' jobs reach
+        # confidential miners that haven't served this family lately (admission.py).
+        candidates = order_for_account(
+            s, state.settings, standard_jobs.enclaves_for(state, s, profile.id, STANDARD), account,
+            profile_ids=family_profile_ids(state.profiles, profile),
+        )
     if not candidates:
         raise _error(503, "no_capacity", f"No workers are serving {profile.name} right now. Try again shortly.")
     enclave = candidates[0]

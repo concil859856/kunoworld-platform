@@ -16,7 +16,7 @@ from kuno_protocol.schemas import GenerationParams, JobCreate, JobState, JobStat
 from kuno_protocol.switch import RouteError, resolve_route
 from sqlalchemy.orm import Session
 
-from . import identity, ledger, moderation, standard_jobs, webhooks
+from . import admission, identity, ledger, moderation, standard_jobs, webhooks
 from .auth import SignedIn, gw, require_account, require_user
 from .db import NEVER_EXPIRES, Account, Blob, Enclave, Job, LedgerEntry
 from .state import GatewayState, enclave_public, job_status
@@ -98,7 +98,13 @@ async def route(
     except RouteError as exc:
         raise _error(exc.status, exc.code, exc.message) from None
     with state.session() as s:
-        enclaves = [enclave_public(e) for e in standard_jobs.enclaves_for(state, s, chosen.profile.id, privacy)[:5]]
+        candidates = standard_jobs.enclaves_for(state, s, chosen.profile.id, privacy)
+        if account is not None:
+            # A client seals to the first attested enclave listed, so the order is the routing (admission.py).
+            candidates = admission.order_for_account(
+                s, state.settings, candidates, account, profile_ids=admission.family_profile_ids(state.profiles, chosen.profile)
+            )
+        enclaves = [enclave_public(e) for e in candidates[:5]]
     return RouteResponse(
         profile_id=chosen.profile.id,
         requested_profile_id=chosen.requested_profile_id,

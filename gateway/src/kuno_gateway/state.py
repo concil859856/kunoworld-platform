@@ -231,7 +231,9 @@ class GatewayState:
           * the same hotkey on the same GPU (or on the same platform where either side has no GPU
             identities) replaces the older enclave, which is marked stale: one GPU is in one VM;
           * the same hotkey on one platform with disjoint GPUs keeps both, since one host can run
-            several confidential VMs that split its GPUs;
+            several confidential VMs that split its GPUs, and one Protected PCIe VM runs one worker per
+            GPU group whose evidence all names the VM's NVSwitches (shared NVSwitch identities don't
+            replace anything; another hotkey sharing one is still refused);
           * enclaves that are not fresh hold nothing, so a stale or retired enclave releases its hardware.
         Call it after every field of `enclave` is set: the queries here flush the session.
         """
