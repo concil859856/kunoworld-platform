@@ -83,7 +83,8 @@ test("a moderator prepares and validates a CyberTipline draft, and only an admin
 
   await section.getByRole("button", { name: "Validate report" }).click();
   await expect(page.getByTestId("console-status")).toContainText("passes validation");
-  await section.getByText("Report XML").click();
+  // The disclosure's summary, not the labelled XML block or the help text that also mention "Report XML".
+  await section.locator("summary", { hasText: "Report XML" }).click();
   await expect(section.getByLabel("Report XML")).toContainText("<incidentType>Child Pornography");
   await expectFits(page, "the item page with a CyberTipline draft");
 
