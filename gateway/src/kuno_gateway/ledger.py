@@ -15,7 +15,7 @@ import time
 import uuid
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .db import Account, LedgerEntry
@@ -26,6 +26,12 @@ CHARGE = "charge"
 REFUND = "refund"
 TOPUP = "topup"
 ADJUSTMENT = "adjustment"
+# Extra credit on a TAO or alpha deposit (payments.credit_bonus). Never real money.
+BONUS = "bonus"
+
+# Payment providers: their top-ups (and the clawbacks of those top-ups) are real customer money. Every other credit,
+# from operators, sign-up, promotions, bonuses or an unknown source, is granted.
+PAID_SOURCES = ("stripe", "nowpayments", "tao", "alpha")
 
 
 class UnknownAccount(Exception):
@@ -99,6 +105,32 @@ def post(
     # Flush now so a racing duplicate fails on the unique key inside this transaction.
     s.flush()
     return entry
+
+
+def paid_share(s: Session, account_id: str, dev_balances_paid: bool = False) -> float:
+    """The share of everything ever credited to an account that was real payment, between 0 and 1.
+
+    Paid: top-ups from PAID_SOURCES, less their clawbacks. Granted: every other credit (operator and sign-up credit,
+    bonuses, development balances, unknown sources). Charges and refunds only move credit already counted, so they
+    are left out. A job's billable USD is its price times this share at charge time (Job.billable_usd).
+
+    `dev_balances_paid` counts the seeded development balance (source "dev") as paid. Non-production gateways pass
+    it, so a dev network, which has no real payments, still exercises validators' paid-jobs-only rule end to end.
+    """
+    paid_sources = PAID_SOURCES + (("dev",) if dev_balances_paid else ())
+    rows = s.execute(
+        select(LedgerEntry.kind, LedgerEntry.source, func.sum(LedgerEntry.amount_micros))
+        .where(LedgerEntry.account_id == account_id, LedgerEntry.kind.not_in((CHARGE, REFUND)))
+        .group_by(LedgerEntry.kind, LedgerEntry.source)
+    ).all()
+    paid = granted = 0
+    for kind, source, total in rows:
+        if kind in (TOPUP, ADJUSTMENT) and source in paid_sources:
+            paid += int(total or 0)
+        else:
+            granted += int(total or 0)
+    paid, granted = max(paid, 0), max(granted, 0)
+    return paid / (paid + granted) if paid + granted else 0.0
 
 
 def entry_json(entry: LedgerEntry) -> dict:

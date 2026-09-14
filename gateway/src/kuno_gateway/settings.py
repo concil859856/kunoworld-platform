@@ -65,8 +65,8 @@ class Settings:
     allow_private_webhooks: bool = False
     webhook_max_attempts: int = 8
     webhook_interval_s: float = 2.0
-    # Top-ups. Each payment method stays off until it is configured.
-    topup_min_usd: float = 5.0
+    # Top-ups. Each payment method stays off until it is configured. Stripe keeps 8.9% of a $5 top-up and 5.9% of $10.
+    topup_min_usd: float = 10.0
     topup_max_usd: float = 5000.0
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None
@@ -82,6 +82,8 @@ class Settings:
     alpha_netuids: list[int] = field(default_factory=list)
     alpha_haircut: float = 0.10
     alpha_max_usd_per_deposit: float = 500.0
+    # Extra credit on TAO and alpha deposits, as a share of the credited USD (after the alpha haircut). Its own entry.
+    chain_credit_bonus: float = 0.05
     price_max_divergence: float = 0.02
     # The gateway's public URL, for callbacks providers make to it. Defaults to the request's own URL.
     public_api_url: str | None = None
@@ -238,7 +240,7 @@ class Settings:
             rate_limit_backend=env.get("KUNO_RATE_LIMIT_BACKEND", "memory"),
             allow_private_webhooks=env.get("KUNO_ALLOW_PRIVATE_WEBHOOKS", "0") == "1",
             upload_ttl_s=int(env.get("KUNO_UPLOAD_TTL_S", "86400")),
-            topup_min_usd=float(env.get("KUNO_TOPUP_MIN_USD", "5")),
+            topup_min_usd=float(env.get("KUNO_TOPUP_MIN_USD", "10")),
             topup_max_usd=float(env.get("KUNO_TOPUP_MAX_USD", "5000")),
             stripe_secret_key=env.get("KUNO_STRIPE_SECRET_KEY") or None,
             stripe_webhook_secret=env.get("KUNO_STRIPE_WEBHOOK_SECRET") or None,
@@ -252,6 +254,7 @@ class Settings:
             alpha_netuids=[int(n) for n in env.get("KUNO_ALPHA_NETUIDS", "").split(",") if n.strip()],
             alpha_haircut=float(env.get("KUNO_ALPHA_HAIRCUT", "0.10")),
             alpha_max_usd_per_deposit=float(env.get("KUNO_ALPHA_MAX_USD", "500")),
+            chain_credit_bonus=float(env.get("KUNO_CHAIN_CREDIT_BONUS", "0.05")),
             price_max_divergence=float(env.get("KUNO_PRICE_MAX_DIVERGENCE", "0.02")),
             public_api_url=env.get("KUNO_PUBLIC_API_URL") or None,
             blob_backend=env.get("KUNO_BLOB_BACKEND", "local"),

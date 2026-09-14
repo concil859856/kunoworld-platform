@@ -160,6 +160,10 @@ export function validateParams(profile: ModelProfile, params: ShotParams, roles:
     out.push({ code: "aspect", message: `${profile.name} doesn't render ${params.resolution} at ${params.aspectRatio}.` });
   }
   if (!lim.fps.includes(params.fps)) out.push({ code: "fps", message: `Frame rate must be one of ${lim.fps.join(", ")} fps.` });
+  const fpsMax = lim.max_duration_s_by_fps?.[String(params.fps)];
+  if (fpsMax !== undefined && lim.fps.includes(params.fps) && params.durationS > fpsMax) {
+    out.push({ code: "duration_fps", message: `At ${params.fps} fps, ${profile.name} renders up to ${fpsMax} seconds.` });
+  }
   if (params.audio && !lim.audio) out.push({ code: "audio", message: `${profile.name} can't generate audio.` });
   return [...out, ...validateRoles(profile, params.mode, roles)];
 }

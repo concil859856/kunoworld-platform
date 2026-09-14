@@ -13,10 +13,47 @@ provider's own reference, and credits the ledger at most once under the key
 | --- | --- | --- | --- |
 | Card | Stripe Checkout | Signed webhook | Session total, in cents |
 | USDT (TRON, Ethereum) | NOWPayments invoice | Signed IPN, then NOWPayments' API | Invoice price |
-| TAO | None; direct to the treasury | Finalized block | TAO x median TAO/USD |
-| Subnet alpha | None; stake transfer to the treasury | Finalized block | Conservative TAO value x TAO/USD |
+| TAO | None; direct to the treasury | Finalized block | TAO x median TAO/USD, plus the chain bonus |
+| Subnet alpha | None; stake transfer to the treasury | Finalized block | Conservative TAO value x TAO/USD, plus the chain bonus |
 
-Limits: `KUNO_TOPUP_MIN_USD` (default 5) and `KUNO_TOPUP_MAX_USD` (default 5000) apply to card and USDT.
+Limits: `KUNO_TOPUP_MIN_USD` (default 10) and `KUNO_TOPUP_MAX_USD` (default 5000) apply to card and USDT. The minimum
+is $10 because Stripe keeps 8.9% of a $5 top-up and 5.9% of a $10 one. USDT also has its own, higher minimum.
+
+**Credit never expires.** A balance changes only through ledger entries (charges, refunds, top-ups, bonuses and
+operator adjustments); nothing ages it or takes unused credit back. Closing an account records its unused balance
+without refunding it (`STANDARD_MODE.md`).
+
+## Job prices
+
+Prices are per output second, per resolution and per privacy mode, from each model profile's `pricing`
+(`kuno_protocol/profiles.json`):
+
+- `usd_per_second` is the **Private** price. Private is the default mode, so a client that reads only this field sees
+  what a default job costs. `standard_usd_per_second` is the **Standard** price, or `null` where the profile is sold
+  in Private mode only. `GET /v1/models` also lists each profile's `privacy_modes`.
+- **Private-only profiles:** full MiniMax H3 and H3 Director. A Standard job for either is refused with
+  `422 privacy_mode_unavailable` before anything is charged, and so is `GET /v1/route?privacy=standard` for them.
+- **Multipliers apply to the whole job:** `fps_multipliers` (LTX-2.5 at 48 or 50 fps costs 1.5x) and `long_clip`
+  (an H3 clip longer than 10 s costs 1.2x).
+- **Minimum charge:** no job costs less than `min_job_usd`, $0.10.
+
+| Profile | Private, per second | Standard, per second |
+| --- | --- | --- |
+| `ltx-2.5-fast` | 720p $0.05, 1080p $0.08 | 720p $0.04, 1080p $0.06 |
+| `ltx-2.5-pro` | 720p $0.075, 1080p $0.11 | 720p $0.055, 1080p $0.085 |
+| `ltx-2.5-4k` | 1440p $0.15, 2160p $0.32 | 1440p $0.12, 2160p $0.25 |
+| `h3-turbo` | 768p $0.065 | 768p $0.05 |
+| `h3` | 768p $0.20 | not offered |
+| `h3-reference` | 768p $0.30 | not offered |
+
+These placeholders follow `research/research_pricing.md`. LTX-2.5 Fast renders up to 20 s at 24 or 25 fps and up to
+10 s at 48 or 50 fps (`limits.max_duration_s_by_fps`); Pro and 4K render up to 10 s.
+
+**Refunds.** A job's price is charged when the gateway accepts it. If the job doesn't succeed, the price is refunded in
+full, automatically and once (key `refund:{job_id}`). That covers a failure, a timeout, a cancellation, a worker that
+went away, an output that didn't verify, and `safety_blocked`: a Private job the enclave's safety check blocked, or a
+Standard output that matched a hash list. A blocked job still counts as a strike (`MODERATION.md`). A Standard prompt
+refused with `422 content_policy` is refused before anything is charged.
 
 ## Card: Stripe
 
@@ -65,6 +102,7 @@ KUNO_TAO_MIN_DEPOSIT=0.05
 KUNO_ALPHA_NETUIDS=51                     # comma-separated; empty turns alpha off
 KUNO_ALPHA_HAIRCUT=0.10
 KUNO_ALPHA_MAX_USD=500
+KUNO_CHAIN_CREDIT_BONUS=0.05              # extra credit on TAO and alpha deposits; 0 turns it off
 KUNO_PRICE_MAX_DIVERGENCE=0.02
 ```
 
@@ -91,6 +129,13 @@ They send the signature to `POST /v1/me/wallets/verify`. A coldkey links to one 
 - the subnet's moving price.
 
 The haircut is then applied, and deposits above `KUNO_ALPHA_MAX_USD` are held for review. Pool state is read at the deposit's own block. Public nodes keep only about 256 blocks of state, so a watcher that falls more than 200 blocks behind holds alpha deposits for review instead of pricing them at today's pool.
+
+**Bonus.** A credited TAO or alpha deposit also earns `KUNO_CHAIN_CREDIT_BONUS` (default 0.05: 5%) of the USD it credited, after the alpha haircut, rounded down to the micro-dollar. The bonus is its own ledger entry, so it can be audited apart from the deposit:
+- kind `bonus`, source `tao` or `alpha`, key `bonus:{provider}:{reference}`;
+- posted in the same transaction as the deposit, so it lands once, together with it;
+- never counted as paid money (see "Billable USD" below).
+
+`GET /v1/payments/config` shows it as `credit_bonus` under `tao` and `alpha`. A deposit held for review and credited by an operator gets no automatic bonus; add it in the same credit if it's owed.
 
 **First start.** The cursor starts at the current finalized block. Deposits made before the watcher first ran aren't picked up.
 
@@ -122,3 +167,22 @@ Find them with:
 SELECT id, provider, provider_ref, account_id, asset, asset_amount, detail, created_at
 FROM payments WHERE status = 'needs_review' ORDER BY created_at;
 ```
+
+## Billable USD
+
+Every row of the validator ledger feed (`GET /validator/v1/ledger`) carries `billable_usd`: the USD of real customer
+money the job earned the network, so miner pay can follow what customers actually paid rather than list prices.
+
+- **A validator account's job** (canaries, standard canaries, Turbo benchmarks): 0.
+- **A job that didn't succeed:** 0. Every such job is refunded.
+- **Any other job:** its charged price x the account's paid share when it was charged. It is stored on the job
+  (`jobs.billable_usd`, migration 0015) and set to 0 if the job is refunded.
+
+The paid share is paid ÷ (paid + granted), over every credit the account has ever received (`ledger.paid_share`):
+- **paid:** top-ups from Stripe, NOWPayments, TAO and alpha, less refunds and disputes of those top-ups;
+- **granted:** everything else, such as operator credits, sign-up credit, the chain bonus, development balances and
+  any unrecognized source.
+
+Charges and refunds only spend or return credit already counted, so they don't change the share. An account with
+nothing but granted credit has a share of 0. Jobs charged before migration 0015 report 0, and an operator credit that
+settles a payment held for review counts as granted, so the figure can under-report paid money but never over-report it.

@@ -94,6 +94,24 @@ def test_a_failed_job_is_refunded_once_however_often_the_failure_is_reported(sta
     assert len(refunds) == 1
 
 
+def test_a_safety_blocked_job_is_refunded_like_any_other_failure(state):
+    """A job the worker's safety check blocks (or whose output a hash list matches) is refunded once, and still a strike."""
+    from kuno_gateway.db_moderation import Strike
+
+    before = balance(state)
+    add_job(state, "job-blocked", 0.25)
+    for _ in range(2):
+        with state.session() as s, s.begin():
+            job = s.get(Job, "job-blocked")
+            state.finish_job(s, job, JobState.FAILED, "safety_blocked", "The video was blocked by the content policy.")
+    assert balance(state) == before
+    with state.session() as s:
+        refunds = s.scalars(select(LedgerEntry).where(LedgerEntry.idempotency_key == "refund:job-blocked")).all()
+        assert [(r.kind, r.amount_micros, r.description) for r in refunds] == [(ledger.REFUND, 250_000, "safety_blocked")]
+        assert s.get(Job, "job-blocked").billable_usd == 0.0
+        assert s.scalars(select(Strike).where(Strike.job_id == "job-blocked")).first() is not None
+
+
 def test_a_succeeded_job_keeps_its_charge(state):
     before = balance(state)
     add_job(state, "job-ok", 0.5)

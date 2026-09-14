@@ -161,4 +161,4 @@ def test_the_payment_config_says_what_is_switched_on(settings):
     config = TestClient(create_app(settings)).get("/v1/payments/config").json()
     assert config["card"]["enabled"] is False and config["usdt"]["enabled"] is False
     assert config["tao"]["enabled"] is True and config["tao"]["treasury_address"] == settings.tao_treasury_address
-    assert config["alpha"] == {"enabled": True, "netuids": [51], "haircut": 0.10, "max_usd_per_deposit": 500.0}
+    assert config["alpha"] == {"enabled": True, "netuids": [51], "haircut": 0.10, "max_usd_per_deposit": 500.0, "credit_bonus": 0.05}

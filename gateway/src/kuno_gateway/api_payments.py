@@ -54,12 +54,15 @@ async def payment_config(request: Request):
             "treasury_address": st.tao_treasury_address,
             "min_tao": st.tao_min_deposit,
             "confirmation": "finalized",
+            # Extra credit, as a share of the credited USD.
+            "credit_bonus": st.chain_credit_bonus,
         },
         "alpha": {
             "enabled": bool(st.tao_treasury_address and st.alpha_netuids),
             "netuids": st.alpha_netuids,
             "haircut": st.alpha_haircut,
             "max_usd_per_deposit": st.alpha_max_usd_per_deposit,
+            "credit_bonus": st.chain_credit_bonus,
         },
     }
 

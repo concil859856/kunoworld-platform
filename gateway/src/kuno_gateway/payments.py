@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -19,7 +20,7 @@ from . import ledger
 from .db import Payment
 from .settings import Settings
 
-PROVIDERS = ("stripe", "nowpayments", "tao", "alpha")
+PROVIDERS = ledger.PAID_SOURCES
 
 
 class PaymentsUnavailable(Exception):
@@ -76,6 +77,22 @@ def credit(s: Session, payment: Payment, amount_micros: int, description: str) -
     payment.status = "credited"
     payment.amount_usd_micros = amount_micros
     payment.credited_at = payment.updated_at = now
+    return entry is not None
+
+
+def credit_bonus(s: Session, payment: Payment, credited_micros: int, share: float, description: str) -> bool:
+    """Extra credit on a credited payment, `share` of what it credited, rounded down to the micro-dollar.
+
+    It is its own ledger entry (kind `bonus`, key `bonus:{provider}:{reference}`), so it is auditable apart from the
+    payment, posts at most once, and never counts as paid money (ledger.paid_share). Returns False if nothing posted.
+    """
+    micros = int(Decimal(credited_micros) * Decimal(str(share)))
+    if micros <= 0:
+        return False
+    entry = ledger.post(
+        s, payment.account_id, micros, kind=ledger.BONUS, source=payment.provider,
+        idempotency_key=f"bonus:{payment.provider}:{payment.provider_ref}", description=description,
+    )
     return entry is not None
 
 

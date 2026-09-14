@@ -11,8 +11,8 @@ export interface PaymentConfig {
   max_usd: number;
   card: { enabled: boolean };
   usdt: { enabled: boolean; min_usd: number; networks: string[] };
-  tao: { enabled: boolean; treasury_address: string | null; min_tao: number; confirmation: string };
-  alpha: { enabled: boolean; netuids: number[]; haircut: number; max_usd_per_deposit: number };
+  tao: { enabled: boolean; treasury_address: string | null; min_tao: number; confirmation: string; credit_bonus?: number };
+  alpha: { enabled: boolean; netuids: number[]; haircut: number; max_usd_per_deposit: number; credit_bonus?: number };
 }
 
 type Method = "card" | "usdt";
@@ -218,7 +218,7 @@ export function TopUp({ config }: { config: PaymentConfig | null }) {
             {config.tao.enabled && (
               <li>
                 TAO: at least {config.tao.min_tao} TAO per deposit. Credited after the block is finalized, at the median
-                TAO/USD price.
+                TAO/USD price{config.tao.credit_bonus ? `, plus ${Math.round(config.tao.credit_bonus * 100)}% bonus credit` : ""}.
               </li>
             )}
             {config.alpha.enabled && (
@@ -226,6 +226,7 @@ export function TopUp({ config }: { config: PaymentConfig | null }) {
                 Alpha from subnet{config.alpha.netuids.length === 1 ? "" : "s"} {config.alpha.netuids.join(", ")}, moved
                 as stake to the treasury: valued conservatively at its TAO price less {Math.round(config.alpha.haircut * 100)}
                 %. Deposits worth over {dollars(config.alpha.max_usd_per_deposit)} are held for review.
+                {config.alpha.credit_bonus ? ` Credited deposits get ${Math.round(config.alpha.credit_bonus * 100)}% bonus credit.` : ""}
               </li>
             )}
           </ul>

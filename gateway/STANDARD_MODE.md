@@ -25,7 +25,11 @@ This is the contract the gateway, the website and both SDKs build against. Modes
 - **What is banned.** Sexual and NSFW content, in both modes. The gateway checks every Standard prompt before
   sealing it; Private prompts are checked inside the enclave, because the gateway can't read them.
 - **Prices.** Every price the gateway returns is a **placeholder**, to be set later. `GET /v1/models` says so with
-  `pricing_placeholder: true`.
+  `pricing_placeholder: true`. Standard is priced below Private: a profile's `pricing.standard_usd_per_second` against
+  its `pricing.usd_per_second`, which is the Private price. Full MiniMax H3 and H3 Director are sold in Private mode
+  only (`standard_usd_per_second: null`, `privacy_modes: ["private"]`), and a Standard job for either is refused with
+  `422 privacy_mode_unavailable` before anything is charged. Every job costs at least $0.10. Prices, multipliers and
+  refunds: `PAYMENTS.md`.
 
 ## Credentials
 
@@ -377,8 +381,9 @@ revocable, and optionally expiring.
 - Standard job failures from output scanning: `safety_blocked` (a hash-list match; the video is held under
   `output_match`), `scan_unavailable` (not kept, refunded); a video that doesn't decode for scanning fails as `bad_output`.
 - Standard job creation errors beyond `/v1/videos`'s: `422 content_policy`, `422 invalid_inputs`,
-  `422 prompt_too_long`, `422 unsupported_option`, `503 no_capacity`, `503 standard_unavailable` (storage keys not
-  configured; a production gateway refuses to start without a key management service instead). `seed` is `0..2^63-1`.
+  `422 privacy_mode_unavailable` (a Private-only model), `422 prompt_too_long`, `422 unsupported_option`,
+  `503 no_capacity`, `503 standard_unavailable` (storage keys not configured; a production gateway refuses to start
+  without a key management service instead). `seed` is `0..2^63-1`.
 - A standard job whose output doesn't verify fails with `error_code: "bad_output"` and is refunded.
 - Thumbnail: `503 thumbnail_unavailable` if ffmpeg can't read the video.
 - `GET /v1/blobs/{blob_id}` answers `404` for a blob that was deleted or hidden.

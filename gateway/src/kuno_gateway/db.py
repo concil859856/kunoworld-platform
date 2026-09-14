@@ -281,6 +281,9 @@ class Job(Base):
     finished_at: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
     # private (end to end, confidential miners only) or standard (sealed by the gateway, any miner). Migration 0008.
     privacy: Mapped[str] = mapped_column(String(16), default="private", server_default="private")
+    # The USD of real customer money this job earned the network: price x the account's paid share when it was charged
+    # (ledger.paid_share). 0 for validator accounts' jobs, and set to 0 when the job is refunded. Migration 0015.
+    billable_usd: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
 
 
 class Blob(Base):

@@ -199,7 +199,8 @@ class ChainWatcher:
         rate, source = self.oracle.usd_per_tao()
         micros = ledger.to_micros(tao * rate)
         payment = payments.record(s, account_id=account_id, status="pending", rate_usd=str(rate), rate_source=source, **common)
-        payments.credit(s, payment, micros, f"{tao.normalize()} TAO top-up")
+        if payments.credit(s, payment, micros, f"{tao.normalize()} TAO top-up"):
+            self._bonus(s, payment, micros)
 
     def _alpha(self, s, number: int, block_hash: str, event: ChainEvent, behind: int) -> None:
         origin, destination, _hotkey, origin_netuid, destination_netuid, tao_moved = event.attributes
@@ -241,4 +242,11 @@ class ChainWatcher:
             return
         payment = payments.record(s, account_id=account_id, status="pending", rate_usd=str(rate), rate_source=source,
                                   asset_amount=str(tao_value), detail=detail, **common)
-        payments.credit(s, payment, micros, f"Subnet {netuid} alpha top-up")
+        if payments.credit(s, payment, micros, f"Subnet {netuid} alpha top-up"):
+            self._bonus(s, payment, micros)
+
+    def _bonus(self, s, payment, credited_micros: int) -> None:
+        """KUNO_CHAIN_CREDIT_BONUS on what the deposit credited (after any alpha haircut), in the same transaction."""
+        share = self.state.settings.chain_credit_bonus
+        if share > 0:
+            payments.credit_bonus(s, payment, credited_micros, share, f"{share:.0%} bonus on a {payment.provider.upper()} top-up")

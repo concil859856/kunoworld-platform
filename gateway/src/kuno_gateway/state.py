@@ -197,11 +197,18 @@ class GatewayState:
 
     def routable_enclaves(self, s: Session, profile_id: str, privacy: str) -> list[Enclave]:
         """Where a job of `profile_id` in `privacy` mode may go: fresh enclaves whose tier serves the mode.
-        Private jobs get confidential-tier enclaves only; an unknown mode gets nothing."""
+        Private jobs get confidential-tier enclaves only; an unknown mode, or a mode the profile isn't sold in
+        (Standard for a Private-only profile), gets nothing."""
+        profile = self.profiles.get(profile_id)
+        if profile is not None and not profile.offers(privacy):
+            return []
         return self.fresh_enclaves(s, profile_id, privacy=privacy)
 
     def has_capacity(self, profile: ModelProfile, privacy: str | None = None) -> bool:
-        """Takes `privacy` by keyword, so a route resolver can use `functools.partial(state.has_capacity, privacy=...)`."""
+        """Takes `privacy` by keyword, so a route resolver can use `functools.partial(state.has_capacity, privacy=...)`.
+        A profile has no capacity in a mode it isn't sold in."""
+        if privacy is not None and not profile.offers(privacy):
+            return False
         with self.session() as s:
             return bool(self.fresh_enclaves(s, profile.id, privacy=privacy))
 
@@ -354,12 +361,15 @@ class GatewayState:
         job.status = status.value
         job.updated_at = job.finished_at = now
         job.error_code, job.error = error_code, error
-        if status is not JobState.SUCCEEDED and s.get(Account, job.account_id) is not None:
-            # Keyed on the job, so a failure reported twice is still refunded once.
-            ledger.post(
-                s, job.account_id, ledger.to_micros(job.price_usd), kind=ledger.REFUND, source="job",
-                idempotency_key=f"refund:{job.id}", job_id=job.id, description=error_code,
-            )
+        if status is not JobState.SUCCEEDED:
+            # Every failure is refunded, safety_blocked included, so the job earned the network nothing.
+            job.billable_usd = 0.0
+            if s.get(Account, job.account_id) is not None:
+                # Keyed on the job, so a failure reported twice is still refunded once.
+                ledger.post(
+                    s, job.account_id, ledger.to_micros(job.price_usd), kind=ledger.REFUND, source="job",
+                    idempotency_key=f"refund:{job.id}", job_id=job.id, description=error_code,
+                )
         if was_running:
             enclave = s.get(Enclave, job.enclave_id)
             if enclave is not None and enclave.inflight > 0:

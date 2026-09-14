@@ -194,6 +194,13 @@ async def _create(body: StandardJobCreate, request: Request, account: Account) -
     check_job_rate(state, account, STANDARD)
     params = body.params
     profile = await validate_request(state, request, params, body.webhook_url)
+    if not profile.offers(STANDARD):
+        # Before the content check, so asking for a mode the model isn't sold in is never a strike.
+        raise _error(
+            422, "privacy_mode_unavailable",
+            f"{profile.name} is offered in Private mode only. Use Private mode, or a model that offers Standard.",
+            privacy_modes=profile.privacy_modes,
+        )
     if len(body.prompt) > profile.limits.max_prompt_chars:
         raise _error(422, "prompt_too_long", f"Prompts are limited to {profile.limits.max_prompt_chars} characters.")
     if body.negative_prompt and not profile.limits.negative_prompt:

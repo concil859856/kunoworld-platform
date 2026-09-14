@@ -4,7 +4,7 @@
  * live pages replace it with /v1/models, which adds availability and worker counts.
  */
 
-import type { Limits, ModelProfile } from "@kunoworld/sdk";
+import type { Limits, ModelProfile, PrivacyMode } from "@kunoworld/sdk";
 
 import raw from "./profiles.json";
 
@@ -84,13 +84,20 @@ export function variantLabel(profile: Pick<ModelProfile, "id" | "name">): string
   return VARIANT_LABELS[profile.id] ?? profile.name;
 }
 
-/** Resolutions with their per-second rates, cheapest first. */
-export function ratesOf(profile: ModelProfile): Array<[string, number]> {
-  return Object.entries(profile.pricing.usd_per_second).sort((a, b) => a[1] - b[1]);
+/** Resolutions with their per-second rates in a privacy mode, cheapest first. Empty where the profile isn't sold in it. */
+export function ratesOf(profile: ModelProfile, privacy: PrivacyMode = "private"): Array<[string, number]> {
+  const table = privacy === "private" ? profile.pricing.usd_per_second : profile.pricing.standard_usd_per_second;
+  return Object.entries(table ?? {}).sort((a, b) => a[1] - b[1]);
 }
 
-export function minRate(profile: ModelProfile): number {
-  return Math.min(...Object.values(profile.pricing.usd_per_second));
+/** The lowest per-second rate in a privacy mode, or null where the profile isn't sold in it. */
+export function minRate(profile: ModelProfile, privacy: PrivacyMode = "private"): number | null {
+  return ratesOf(profile, privacy)[0]?.[1] ?? null;
+}
+
+/** Standard is sold only where a profile has a Standard price; full MiniMax H3 and H3 Director are Private-only. */
+export function offersStandard(profile: ModelProfile): boolean {
+  return profile.privacy_modes ? profile.privacy_modes.includes("standard") : profile.pricing.standard_usd_per_second != null;
 }
 
 export function durationRange(profile: ModelProfile): string {

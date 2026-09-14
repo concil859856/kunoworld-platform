@@ -1,6 +1,15 @@
 /** Composer vocabulary: tabs, edit operations, shot settings and routing predictions. */
 
-import { fitParams, priceUsd, type InputRole, type Mode, type ModelProfile, type ModelsResponse } from "@kunoworld/sdk";
+import {
+  fitParams,
+  priceQuote,
+  type InputRole,
+  type Mode,
+  type ModelProfile,
+  type ModelsResponse,
+  type PriceQuote,
+  type PrivacyMode,
+} from "@kunoworld/sdk";
 
 import { isH3, variantLabel } from "./catalog";
 import { MODE_LABEL } from "./validation";
@@ -101,25 +110,34 @@ export function clampSettings(profile: ModelProfile, s: ShotSettings): ShotSetti
   const sizes = lim.sizes[resolution] ?? {};
   const aspects = Object.keys(sizes);
   const aspectRatio = aspects.includes(s.aspectRatio) ? s.aspectRatio : aspects.includes("16:9") ? "16:9" : aspects[0];
+  const fps = lim.fps.includes(s.fps) ? s.fps : lim.default_fps;
+  const maxDuration = maxDurationAt(profile, fps);
   const step = lim.duration_step_s || 1;
-  const bounded = Math.min(Math.max(s.durationS, lim.min_duration_s), lim.max_duration_s);
-  const durationS = Math.min(lim.max_duration_s, lim.min_duration_s + Math.round((bounded - lim.min_duration_s) / step) * step);
+  const bounded = Math.min(Math.max(s.durationS, lim.min_duration_s), maxDuration);
+  const durationS = Math.min(maxDuration, lim.min_duration_s + Math.round((bounded - lim.min_duration_s) / step) * step);
   return {
     ...s,
     resolution,
     aspectRatio,
     durationS,
-    fps: lim.fps.includes(s.fps) ? s.fps : lim.default_fps,
+    fps,
     audio: s.audio && lim.audio,
     enhance: s.enhance && lim.prompt_enhancer,
   };
 }
 
-export function durationOptions(profile: ModelProfile): number[] {
+/** The longest take a profile renders at a frame rate: LTX-2.5 Fast goes past 10 s only at 24 or 25 fps. */
+export function maxDurationAt(profile: ModelProfile, fps: number): number {
+  const lim = profile.limits;
+  return Math.min(lim.max_duration_s, lim.max_duration_s_by_fps?.[String(fps)] ?? lim.max_duration_s);
+}
+
+export function durationOptions(profile: ModelProfile, fps: number = profile.limits.default_fps): number[] {
   const lim = profile.limits;
   const step = lim.duration_step_s || 1;
+  const max = maxDurationAt(profile, fps);
   const out: number[] = [];
-  for (let d = lim.min_duration_s; d <= lim.max_duration_s + 1e-9; d += step) out.push(Math.round(d * 100) / 100);
+  for (let d = lim.min_duration_s; d <= max + 1e-9; d += step) out.push(Math.round(d * 100) / 100);
   return out;
 }
 
@@ -211,14 +229,18 @@ export function fallbackNotice(reason: string | null, requested: ModelProfile | 
   return `${verb[0].toUpperCase()}${verb.slice(1)} ${actual.name}.`;
 }
 
-/** The price the gateway will charge, including the parameter adaptation the SDK applies after a fallback. */
+/**
+ * The price the gateway will charge in `privacy` mode, including the parameter adaptation the SDK applies after a
+ * fallback. Null where the profile has no such price (Standard on a Private-only profile).
+ */
 export function estimatePrice(
   profile: ModelProfile,
   mode: Mode,
   roles: InputRole[],
   settings: ShotSettings,
   fallbackReason: string | null,
-): number | null {
+  privacy: PrivacyMode = "private",
+): PriceQuote | null {
   const params = fitParams(
     profile,
     mode,
@@ -232,5 +254,5 @@ export function estimatePrice(
     },
     fallbackReason,
   );
-  return priceUsd(profile, params.resolution, params.duration_s);
+  return priceQuote(profile, params, privacy);
 }

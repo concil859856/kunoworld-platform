@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import func, select
 
 from kuno_protocol.canonical import b64d
-from kuno_protocol.profiles import Mode, ModelProfile, ParamError, validate_params
+from kuno_protocol.profiles import Mode, ModelProfile, ParamError, PrivacyModeUnavailable, validate_params
 from kuno_protocol.receipts import Receipt, verify_receipt
 from kuno_protocol.schemas import GenerationParams, JobCreate, JobState, JobStatus, PrivacyMode, RouteResponse
 from kuno_protocol.switch import RouteError, resolve_route
@@ -47,7 +47,10 @@ async def list_models(request: Request):
         "pricing_placeholder": True,
         "models": [
             {
+                # `pricing.usd_per_second` is the Private price; `pricing.standard_usd_per_second` is null where the
+                # profile is Private-only, and `privacy_modes` says the same in words.
                 **profile.model_dump(mode="json"),
+                "privacy_modes": profile.privacy_modes,
                 "enabled": switch.profile_enabled(profile),
                 "available_in_region": switch.region_allows(profile, country),
                 "workers": workers.get(profile.id, 0),
@@ -93,9 +96,21 @@ async def route(
         with state.session() as s:
             return bool(standard_jobs.enclaves_for(state, s, profile.id, privacy))
 
+    # Only profiles sold in this mode can serve it, as the request or as a fallback: full H3 and H3 Director are Private-only.
+    offered = {pid: p for pid, p in state.profiles.items() if p.offers(privacy)}
+    requested = state.profiles.get(profile_id) if profile_id is not None else None
+    if requested is not None and profile_id not in offered:
+        raise _error(
+            422, "privacy_mode_unavailable",
+            f"{requested.name} is offered in Private mode only. Use Private mode, or a model that offers Standard.",
+        )
     try:
-        chosen = resolve_route(state.profiles, state.switch.config, mode, state.country(request), profile_id, family, has_capacity)
+        chosen = resolve_route(offered, state.switch.config, mode, state.country(request), profile_id, family, has_capacity)
     except RouteError as exc:
+        if exc.code == "mode_unavailable" and not any(mode in p.modes for p in offered.values()) and any(
+            mode in p.modes for p in state.profiles.values()
+        ):
+            raise _error(422, "privacy_mode_unavailable", f"No model offers {mode.value} in {privacy.capitalize()} mode. Use Private mode.") from None
         raise _error(exc.status, exc.code, exc.message) from None
     with state.session() as s:
         candidates = standard_jobs.enclaves_for(state, s, chosen.profile.id, privacy)
@@ -211,7 +226,12 @@ def admit_job(
             raise _error(429, "too_many_active_jobs", f"You already have {active} videos in progress. Wait for one to finish.")
     if webhook_url:
         webhooks.ensure_secret(s.get(Account, account.id))
-    price = profile.price_usd(params)
+    try:
+        price = profile.price_usd(params, privacy)
+    except PrivacyModeUnavailable as exc:
+        raise _error(422, "privacy_mode_unavailable", f"{exc}. Use Private mode, or a model that offers Standard.") from None
+    except ParamError as exc:
+        raise _error(422, "invalid_params", str(exc)) from None
     try:
         ledger.post(
             s, account.id, -ledger.to_micros(price), kind=ledger.CHARGE, source="job",
@@ -220,6 +240,11 @@ def admit_job(
     except ledger.InsufficientBalance as exc:
         balance = ledger.to_usd(exc.balance_micros)
         raise _error(402, "insufficient_balance", f"This video costs ${price:.2f}; your balance is ${balance:.2f}.") from None
+    # What real customer money this job earns the network, fixed now: none for a validator's own jobs, else the part of
+    # the price the account's paid credit covers. Validators read it in the ledger feed; a refund zeroes it.
+    # A dev network's seeded balance counts as paid there (never in production), so dev runs exercise that rule too.
+    paid = ledger.paid_share(s, account.id, dev_balances_paid=not state.settings.production)
+    billable = 0.0 if account.is_validator else round(price * paid, 6)
     job = Job(
         id=job_id,
         account_id=account.id,
@@ -233,6 +258,7 @@ def admit_job(
         stage="queued",
         progress=0.0,
         price_usd=price,
+        billable_usd=billable,
         webhook_url=webhook_url,
         created_at=now,
         updated_at=now,

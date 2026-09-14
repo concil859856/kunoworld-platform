@@ -7,6 +7,7 @@ import { useId, useRef, useState } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { offersStandard } from "@/lib/catalog";
 import { collectInputs, type ComposerApi } from "@/lib/composerState";
 import { usd } from "@/lib/format";
 import type { InputSummary } from "@/lib/library";
@@ -114,7 +115,12 @@ export function Composer({
   const prediction = predictRoute(models, profile, mode);
   const target = prediction.ok ? prediction.profile : profile;
   const reason = prediction.ok ? prediction.reason : null;
-  const estimate = prediction.ok ? estimatePrice(target, mode, collected.roles, state.settings, reason) : null;
+  // Full MiniMax H3 and H3 Director are sold in Private mode only: there a remembered Standard choice runs as Private,
+  // and the choice itself is kept for the next model that offers Standard.
+  const privateOnly = !offersStandard(profile) ? profile : !offersStandard(target) ? target : null;
+  const takePrivacy: PrivacyMode = privateOnly ? "private" : privacy;
+  const quote = prediction.ok ? estimatePrice(target, mode, collected.roles, state.settings, reason, takePrivacy) : null;
+  const estimate = quote?.usd ?? null;
 
   const problems: Problem[] = (() => {
     const s = state.settings;
@@ -178,7 +184,7 @@ export function Composer({
       predicted: target,
       fallbackReason: reason,
       estimate,
-      privacy,
+      privacy: takePrivacy,
     });
   }
 
@@ -266,7 +272,7 @@ export function Composer({
           label="Duration"
           value={String(state.settings.durationS)}
           onChange={(v) => actions.patchSettings({ durationS: Number(v) })}
-          options={durationOptions(profile).map((d) => ({ value: String(d), label: `${d} seconds` }))}
+          options={durationOptions(profile, state.settings.fps).map((d) => ({ value: String(d), label: `${d} seconds` }))}
         />
         {Object.keys(limits.sizes).length > 1 && (
           <Picker
@@ -292,7 +298,7 @@ export function Composer({
           <ChevronRight size={12} />
         </button>
         <span className="text-[12px] text-[#a4af95] flex items-center gap-1.5">
-          {privacy === "standard" ? <Eye size={12} /> : <LockKeyhole size={12} />} {PRIVACY_COPY[privacy].short}
+          {takePrivacy === "standard" ? <Eye size={12} /> : <LockKeyhole size={12} />} {PRIVACY_COPY[takePrivacy].short}
         </span>
       </div>
 
@@ -344,26 +350,32 @@ export function Composer({
       <fieldset className="privacy-choice">
         <legend className="field-label">Who can see this take</legend>
         <div className="privacy-options">
-          {PRIVACY_MODES.map((m) => (
-            <label key={m} className="privacy-option" data-checked={privacy === m}>
-              <input
-                type="radio"
-                name={`${ids}-privacy`}
-                value={m}
-                checked={privacy === m}
-                onChange={() => setPrivacyChoice(m)}
-                aria-labelledby={`${ids}-privacy-${m}`}
-                aria-describedby={`${ids}-privacy-${m}-note`}
-              />
-              <span>
-                <strong id={`${ids}-privacy-${m}`}>
-                  {m === "standard" ? <Eye size={13} aria-hidden /> : <LockKeyhole size={13} aria-hidden />}
-                  {PRIVACY_COPY[m].label}
-                </strong>
-                <small id={`${ids}-privacy-${m}-note`}>{PRIVACY_COPY[m].sentence}</small>
-              </span>
-            </label>
-          ))}
+          {PRIVACY_MODES.map((m) => {
+            const unavailable = m === "standard" && privateOnly !== null;
+            return (
+              <label key={m} className="privacy-option" data-checked={takePrivacy === m} data-disabled={unavailable || undefined}>
+                <input
+                  type="radio"
+                  name={`${ids}-privacy`}
+                  value={m}
+                  checked={takePrivacy === m}
+                  disabled={unavailable}
+                  onChange={() => setPrivacyChoice(m)}
+                  aria-labelledby={`${ids}-privacy-${m}`}
+                  aria-describedby={`${ids}-privacy-${m}-note`}
+                />
+                <span>
+                  <strong id={`${ids}-privacy-${m}`}>
+                    {m === "standard" ? <Eye size={13} aria-hidden /> : <LockKeyhole size={13} aria-hidden />}
+                    {PRIVACY_COPY[m].label}
+                  </strong>
+                  <small id={`${ids}-privacy-${m}-note`}>
+                    {unavailable ? `Not available: ${privateOnly.name} is offered in Private mode only.` : PRIVACY_COPY[m].sentence}
+                  </small>
+                </span>
+              </label>
+            );
+          })}
         </div>
         <small className="privacy-policy-note">{NSFW_SENTENCE}</small>
       </fieldset>
@@ -390,7 +402,11 @@ export function Composer({
           Cancel generation
         </button>
       )}
-      <p className="estimate">{estimate === null ? "Price unavailable" : "Placeholder price — not final"}</p>
+      <p className="estimate">
+        {quote === null
+          ? "Price unavailable"
+          : `${PRIVACY_COPY[takePrivacy].label} price${quote.minimumApplied ? ` (the ${usd(target.pricing.min_job_usd)} minimum charge)` : ""} — placeholder, not final`}
+      </p>
       {routeNotice && <p className="status-message">{routeNotice}</p>}
       {(generalProblems.length > 0 || trayProblems.length > 0) && (
         <ul className="problem-list" aria-label="Problems to fix">

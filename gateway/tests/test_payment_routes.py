@@ -66,6 +66,18 @@ def test_config_is_public_and_says_which_methods_are_on(world):
     assert body["card"]["enabled"] and body["usdt"]["enabled"] and not body["tao"]["enabled"]
 
 
+def test_card_top_ups_start_at_ten_dollars_by_default(world):
+    """Stripe keeps 8.9% of a $5 top-up, so the default minimum is $10 (USDT keeps its own, higher one)."""
+    assert Settings.from_env({"KUNO_DATA_DIR": str(world.settings.data_dir)}).topup_min_usd == 10.0
+    body = world.client.get("/v1/payments/config").json()
+    assert (body["min_usd"], body["usdt"]["min_usd"]) == (10.0, 20.0)
+    assert body["tao"]["credit_bonus"] == body["alpha"]["credit_bonus"] == 0.05
+    below = world.client.post("/v1/me/topups/card", json={"amount_usd": 9.99}, headers=world.session)
+    assert (below.status_code, below.json()["detail"]["code"]) == (422, "invalid_amount")
+    assert "$10.00" in below.json()["detail"]["message"]
+    assert world.client.post("/v1/me/topups/card", json={"amount_usd": 10}, headers=world.session).status_code == 201
+
+
 def test_top_ups_need_a_signed_in_user(world):
     assert world.client.post("/v1/me/topups/card", json={"amount_usd": 25}).status_code == 401
     dev_key = {"authorization": f"Bearer {world.settings.dev_api_key}"}

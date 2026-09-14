@@ -306,7 +306,8 @@ async def create_benchmark(body: BenchmarkJobCreate, request: Request, validator
             if blob is None or blob.owner_kind != "account" or blob.owner_id != validator.id or blob.job_id is not None:
                 raise _error(422, "invalid_inputs", f"Blob {blob_id} is unknown, not yours, or already used.")
             blob.job_id = body.job_id
-        price = profile.price_usd(params)
+        # Benchmarks are sealed by the validator like private jobs, and priced like them.
+        price = profile.price_usd(params, "private")
         try:
             ledger.post(
                 s, validator.id, -ledger.to_micros(price), kind=ledger.CHARGE, source="job",

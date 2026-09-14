@@ -324,6 +324,12 @@
   cursor: pointer;
 }
 
+/* Standard on a Private-only model: shown, with the reason, but not choosable. */
+.studio-shell .privacy-option[data-disabled] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .studio-shell .privacy-option[data-checked="true"] {
   border-color: #a6edda;
   background: #173a3f;

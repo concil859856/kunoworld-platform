@@ -11,9 +11,9 @@ from kuno_protocol import devkit
 from scalecodec.utils.ss58 import ss58_encode
 from sqlalchemy import select
 
-from kuno_gateway import chainwatch
+from kuno_gateway import chainwatch, ledger, payments
 from kuno_gateway.chainwatch import ChainEvent, ChainWatcher, Pool
-from kuno_gateway.db import Account, ChainCursor, Payment, WalletLink
+from kuno_gateway.db import Account, ChainCursor, LedgerEntry, Payment, WalletLink
 from kuno_gateway.prices import PriceUnavailable
 from kuno_gateway.settings import Settings
 from kuno_gateway.state import GatewayState
@@ -84,6 +84,8 @@ def world(tmp_path):
     settings = Settings.from_env({"KUNO_DATA_DIR": str(tmp_path / "data")})
     settings.tao_treasury_address = TREASURY
     settings.alpha_netuids = [51]
+    # Crediting is checked on its own; the bonus on top of it has its own tests below.
+    settings.chain_credit_bonus = 0.0
     state = GatewayState(settings)
     with state.session() as s, s.begin():
         s.add(WalletLink(id="w1", account_id="dev", address=CUSTOMER, created_at=time.time()))
@@ -235,6 +237,49 @@ def test_alpha_too_old_to_value_at_its_own_block_is_held_for_review(world):
     [payment] = topups(state, "alpha")
     assert payment.status == "needs_review" and "too far behind" in payment.detail
     assert balance(state) == before
+
+
+def test_a_credited_tao_deposit_earns_the_bonus_as_its_own_entry_exactly_once(world):
+    state, chain, _, watcher = world
+    state.settings.chain_credit_bonus = Settings.from_env({"KUNO_DATA_DIR": str(state.settings.data_dir)}).chain_credit_bonus
+    assert state.settings.chain_credit_bonus == 0.05
+    before = balance(state)
+    chain.blocks[101] = [transfer(40, 3, CUSTOMER, TREASURY, 2), success(41, 3)]
+    chain.head = 101
+    watcher.run_once()
+    assert balance(state) == before + 525_000_000  # 2 TAO at $250, plus 5%
+    [payment] = topups(state, "tao")
+    ref = payment.provider_ref
+    with state.session() as s:
+        entries = s.scalars(select(LedgerEntry).where(LedgerEntry.kind.in_((ledger.TOPUP, ledger.BONUS)))).all()
+    assert {(e.kind, e.source, e.amount_micros, e.idempotency_key, e.account_id) for e in entries} == {
+        (ledger.TOPUP, "tao", 500_000_000, f"topup:tao:{ref}", "dev"),
+        (ledger.BONUS, "tao", 25_000_000, f"bonus:tao:{ref}", "dev"),
+    }
+
+    # Reprocessing the block, or posting the bonus again under its key, adds nothing.
+    watcher.process_block(101, chain.block_hash(101))
+    with state.session() as s, s.begin():
+        assert payments.credit_bonus(s, s.get(Payment, payment.id), 500_000_000, 0.05, "again") is False
+    assert balance(state) == before + 525_000_000
+
+
+def test_alpha_earns_the_bonus_on_its_value_after_the_haircut_and_a_held_deposit_earns_none(world):
+    state, chain, _, watcher = world
+    state.settings.chain_credit_bonus = 0.05
+    before = balance(state)
+    chain.pools[(51, chain.block_hash(101))] = Pool(tao_rao=1_000 * RAO, alpha_rao=100_000 * RAO, moving_price_tao=Decimal("0.008"))
+    chain.blocks[101] = [
+        stake_transferred(7, 3, CUSTOMER, TREASURY, 51, 1 * RAO), success(8, 3),
+        stake_transferred(9, 5, CUSTOMER, TREASURY, 51, 10_000 * RAO), success(10, 5),  # above the cap: held for review
+    ]
+    chain.head = 101
+    watcher.run_once()
+    assert balance(state) == before + 189_000_000  # $180 after the haircut, plus 5%
+    assert sorted(p.status for p in topups(state, "alpha")) == ["credited", "needs_review"]
+    with state.session() as s:
+        bonuses = s.scalars(select(LedgerEntry).where(LedgerEntry.kind == ledger.BONUS)).all()
+    assert [(b.source, b.amount_micros) for b in bonuses] == [("alpha", 9_000_000)]
 
 
 def test_no_treasury_means_no_watching(world):
