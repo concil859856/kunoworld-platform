@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 import { ArrowDown, ArrowUpRight, Aperture, Clapperboard, Layers3, MoveUpRight, Smartphone, Sparkles } from "lucide-react";
 import { AmbientVideo, Reveal } from "@/components/site/motion";
@@ -133,7 +134,7 @@ export default function UseCasesPage() {
       <section className="cases-workflow" aria-labelledby="workflow-heading">
         <Reveal className="cases-workflow-heading"><span className="section-kicker">FROM CREATIVE DIRECTION TO FIRST TAKE</span><h2 id="workflow-heading">A little intention.<br /><em>A better starting point.</em></h2><p>Whatever you’re making, give each shot one clear job.</p></Reveal>
         <div className="cases-workflow-grid">
-          <Reveal><span className="cases-step">01 / FRAME THE IDEA</span><h3>Start with a single shot.</h3><p>Choose your subject, action, camera move, and light. Keep the first experiment simple enough to learn from.</p><a href="/blog/directing-the-impossible" className="text-link">Find your direction <ArrowUpRight size={15} /></a></Reveal>
+          <Reveal><span className="cases-step">01 / FRAME THE IDEA</span><h3>Start with a single shot.</h3><p>Choose your subject, action, camera move, and light. Keep the first experiment simple enough to learn from.</p><Link href="/blog/directing-the-impossible" className="text-link">Find your direction <ArrowUpRight size={15} /></Link></Reveal>
           <Reveal><span className="cases-step">02 / CHOOSE YOUR TOOLS</span><h3>Match the model to the moment.</h3><p>Compare durations, aspect ratios, and creation modes. Select the controls that matter to your scene.</p><a href="/models" className="text-link">Explore the model catalog <ArrowUpRight size={15} /></a></Reveal>
           <Reveal><span className="cases-step">03 / SIGN IN AND CREATE</span><h3>Sign in with your email.</h3><p>Open the studio signed in, choose Private or Standard, and generate. Building your own app instead? Create an API key on your account page.</p><a href="/docs#studio" className="text-link">Get your workflow ready <ArrowUpRight size={15} /></a></Reveal>
         </div>

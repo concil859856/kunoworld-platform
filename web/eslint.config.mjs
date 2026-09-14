@@ -9,6 +9,8 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    // Other dist dirs (KUNO_DIST_DIR): .next-ci in CI, one per locale dev server locally.
+    ".next-*/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
@@ -22,6 +24,11 @@ const eslintConfig = defineConfig([
       "react-hooks/purity": "off",
       "react-hooks/set-state-in-effect": "off",
     },
+  },
+  {
+    // Standalone Node scripts in CommonJS, run with plain `node` against a built site.
+    files: ["tests/**/*.cjs"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
   },
 ]);
 

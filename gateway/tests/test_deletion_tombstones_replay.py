@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 import shutil
 import sqlite3
 import time
@@ -35,6 +36,11 @@ from kuno_gateway.state import GatewayState
 from kuno_gateway.vault import vault
 
 PROMPT = "a lantern on a jetty"
+# These tests restore a database by copying the SQLite file, which a Postgres schema (scripts/pytest_postgres.py) can't
+# do; the replay they check runs the same SQL on both, and the Postgres leg still runs every other test here.
+sqlite_file_restore = pytest.mark.skipif(
+    bool(os.environ.get("KUNO_TEST_DATABASE_URL")), reason="simulates a database restore by copying the SQLite file"
+)
 
 
 def tombstoned(state, since: float = 0.0) -> dict[str, set[str]]:
@@ -220,6 +226,7 @@ def test_replay_after_a_bucket_restore_deletes_what_came_back_and_is_idempotent(
     assert tombstones.reapply(gw.state, time.time() + 60).considered == 0  # nothing that recent
 
 
+@sqlite_file_restore
 def test_replay_after_a_database_and_bucket_restore_uses_the_exported_tombstones(gw, media, tmp_path):
     account_id, key = new_account(gw)
     video = standard_video(gw, media, key)
@@ -255,6 +262,7 @@ def test_replay_after_a_database_and_bucket_restore_uses_the_exported_tombstones
     restored.engine.dispose()
 
 
+@sqlite_file_restore
 def test_replay_leaves_content_a_hold_in_the_restored_database_covers(gw, media, tmp_path):
     account_id, key = new_account(gw)
     video = standard_video(gw, media, key)
