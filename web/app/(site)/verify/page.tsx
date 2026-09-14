@@ -42,6 +42,14 @@ export default function Verify() {
           the hash. Hardware attestation is still simulated in this development preview.
         </div>
 
+        <p className="notice">
+          <strong>Seen a KunoWorld film that breaks the rules?</strong>{" "}
+          <a className="text-link" href="/report">
+            Report it
+          </a>
+          . Include the digest from its certificate so we can find it.
+        </p>
+
         <div className="about-copy">
           <h2>
             Looking one up

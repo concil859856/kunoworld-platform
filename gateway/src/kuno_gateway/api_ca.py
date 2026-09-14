@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, ValidationError
 from kuno_protocol.attestation import AttestationEvidence
 from kuno_protocol.c2pa_certs import EnclaveBinding
 from kuno_protocol.canonical import b64d
+from kuno_protocol.tiers import CONFIDENTIAL, tier_for_tee
 
 from .auth import gw, require_enclave
 from .ca import MAX_CSR_PEM_BYTES, CAUnavailable, CSRRejected, IssuingCA, check_csr
@@ -51,6 +52,9 @@ def _attested_binding(state, enclave) -> EnclaveBinding:
     # The row is written from verified evidence; refuse anything that no longer lines up with it.
     if evidence.enclave_id != enclave.id or evidence.signing_public_key != enclave.signing_public_key:
         raise not_attested
+    if tier_for_tee(evidence.tee) != CONFIDENTIAL:
+        # The certificate asserts an attested enclave signed the video; an open-tier worker attests nothing.
+        raise _error(403, "tier_not_eligible", "Open-tier enclaves are not issued C2PA certificates; run with KUNO_PROVENANCE=off.")
     return EnclaveBinding(enclave_id=enclave.id, evidence_digest=evidence.digest(), image_digest=enclave.image_digest, profiles=profiles)
 
 

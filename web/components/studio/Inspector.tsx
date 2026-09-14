@@ -1,6 +1,6 @@
 "use client";
 
-import { RotateCcw, Scissors, X } from "lucide-react";
+import { Flag, RotateCcw, Scissors, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ModelProfile } from "@kunoworld/sdk";
 
@@ -13,6 +13,7 @@ import { extractLastFrame } from "@/lib/media";
 import { fallbackNotice } from "@/lib/shot";
 import type { FilmState } from "@/lib/useLibrary";
 import { MODE_LABEL } from "@/lib/validation";
+import { PRIVACY_COPY } from "@/lib/privacy-copy";
 
 /*
  * The inspector: everything about one take, and the things you can do to it.
@@ -136,6 +137,16 @@ export function Inspector({ entry, film, profiles, composer, onCancel, onRemove,
         <>
           <dl className="inspector-rows">
             <div>
+              <dt>Privacy</dt>
+              <dd>{PRIVACY_COPY[entry.privacy ?? "private"].label}</dd>
+            </div>
+            {entry.expiresAt && (
+              <div>
+                <dt>Kept until</dt>
+                <dd>{new Date(entry.expiresAt * 1000).toLocaleDateString("en-US", { dateStyle: "medium" })}</dd>
+              </div>
+            )}
+            <div>
               <dt>Mode</dt>
               <dd>{MODE_LABEL[entry.mode]}</dd>
             </div>
@@ -187,6 +198,8 @@ export function Inspector({ entry, film, profiles, composer, onCancel, onRemove,
             </ul>
           )}
 
+          {entry.privacy === "standard" && <p className="inspector-note">{PRIVACY_COPY.standard.sentence}</p>}
+
           {fallback && <p className="inspector-note">{fallback}</p>}
 
           {canceled && (
@@ -229,8 +242,13 @@ export function Inspector({ entry, film, profiles, composer, onCancel, onRemove,
         <button onClick={reuseSettings}>
           <RotateCcw size={16} /> Reuse settings
         </button>
+        {entry.handle && (
+          <a href={`/report?job_id=${encodeURIComponent(entry.handle.jobId)}${digest ? `&digest=${digest}` : ""}`}>
+            <Flag size={16} /> Report
+          </a>
+        )}
         <button onClick={() => onRemove(entry)}>
-          <X size={16} /> Remove
+          <X size={16} /> {entry.privacy === "standard" ? "Delete" : "Remove"}
         </button>
       </div>
     </aside>

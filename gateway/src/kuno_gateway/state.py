@@ -31,7 +31,6 @@ from . import identity, ledger, webhooks
 from .blobstore_s3 import select_blob_store
 from .db import (
     Account,
-    Blob,
     Challenge,
     Enclave,
     HardwareBinding,
@@ -176,7 +175,9 @@ class GatewayState:
             and now - enclave.last_seen < self.settings.enclave_heartbeat_s
         )
 
-    def fresh_enclaves(self, s: Session, profile_id: str | None = None) -> list[Enclave]:
+    def fresh_enclaves(self, s: Session, profile_id: str | None = None, privacy: str | None = None) -> list[Enclave]:
+        """Fresh enclaves, least loaded first. `privacy` ("private" or "standard") keeps only enclaves whose tier
+        may run that mode (kuno_protocol.tiers.tier_serves); None keeps every tier."""
         now = time.time()
         rows = s.scalars(select(Enclave).where(Enclave.status == "active")).all()
         fresh = [
@@ -184,16 +185,23 @@ class GatewayState:
             if self.is_fresh(e, now)
             # Turbo candidates serve only validator benchmarks, never customer routes or capacity counts.
             and (profile_id in json.loads(e.profiles) if profile_id is not None else not is_candidate_profile_list(json.loads(e.profiles)))
+            and (privacy is None or enclave_serves(e, privacy))
         ]
         return sorted(fresh, key=lambda e: (e.inflight / max(e.capacity, 1), -e.last_seen))
 
-    def has_capacity(self, profile: ModelProfile) -> bool:
-        with self.session() as s:
-            return bool(self.fresh_enclaves(s, profile.id))
+    def routable_enclaves(self, s: Session, profile_id: str, privacy: str) -> list[Enclave]:
+        """Where a job of `profile_id` in `privacy` mode may go: fresh enclaves whose tier serves the mode.
+        Private jobs get confidential-tier enclaves only; an unknown mode gets nothing."""
+        return self.fresh_enclaves(s, profile_id, privacy=privacy)
 
-    def capacity_counts(self, s: Session) -> dict[str, int]:
+    def has_capacity(self, profile: ModelProfile, privacy: str | None = None) -> bool:
+        """Takes `privacy` by keyword, so a route resolver can use `functools.partial(state.has_capacity, privacy=...)`."""
+        with self.session() as s:
+            return bool(self.fresh_enclaves(s, profile.id, privacy=privacy))
+
+    def capacity_counts(self, s: Session, privacy: str | None = None) -> dict[str, int]:
         counts: dict[str, int] = {}
-        for enclave in self.fresh_enclaves(s):
+        for enclave in self.fresh_enclaves(s, privacy=privacy):
             for profile_id in json.loads(enclave.profiles):
                 counts[profile_id] = counts.get(profile_id, 0) + 1
         return counts
@@ -320,9 +328,19 @@ class GatewayState:
             )
 
     def finish_job(self, s: Session, job: Job, status: JobState, error_code: str | None = None, error: str | None = None) -> None:
-        """Moves a job to a terminal state, releasing the enclave slot and refunding failures."""
+        """Moves a job to a terminal state, releasing the enclave slot and refunding failures.
+
+        A standard job's output is verified against its receipt and stored as it succeeds (standard_jobs.ingest_output);
+        an output that doesn't verify fails the job instead. Every safety_blocked failure is a strike on the account.
+        """
         was_running = job.status == JobState.RUNNING.value
         now = time.time()
+        if status is JobState.SUCCEEDED and job.privacy == "standard":
+            from .standard_jobs import ingest_output
+
+            problem = ingest_output(self, s, job, now)
+            if problem is not None:
+                status, error_code, error = JobState.FAILED, "bad_output", f"The worker's output failed verification: {problem}."
         job.status = status.value
         job.updated_at = job.finished_at = now
         job.error_code, job.error = error_code, error
@@ -336,6 +354,10 @@ class GatewayState:
             enclave = s.get(Enclave, job.enclave_id)
             if enclave is not None and enclave.inflight > 0:
                 enclave.inflight -= 1
+        if status is JobState.FAILED and error_code == "safety_blocked":
+            from .moderation import record_strike
+
+            record_strike(s, self.settings, job.account_id, "safety_blocked", job_id=job.id, now=now)
         # Queued in the same transaction, so a terminal job and its webhook can't disagree.
         webhooks.enqueue(s, job, job_status(job).model_dump(mode="json"), now)
 
@@ -364,9 +386,11 @@ class GatewayState:
             for challenge in s.scalars(select(Challenge).where(Challenge.status.in_(["pending", "sent"]))).all():
                 if now - challenge.created_at > CHALLENGE_TTL_S:
                     challenge.status = "expired"
-            for blob in s.scalars(select(Blob).where(Blob.expires_at < now)).all():
-                self.blobs.delete(blob.id)
-                s.delete(blob)
+            # Expired blobs, except those a preservation hold keeps; also ends expired holds and finishes the
+            # deletions holds deferred (holds.sweep_blobs).
+            from .holds import sweep_blobs
+
+            sweep_blobs(self, s, now)
             # A day past expiry, sign-in links and sessions have nothing left to protect.
             s.execute(delete(LoginToken).where(LoginToken.expires_at < now - 86400))
             s.execute(delete(UserSession).where(UserSession.expires_at < now - 86400))
@@ -389,15 +413,33 @@ def job_status(job: Job) -> JobStatus:
         receipt=Receipt.model_validate_json(job.receipt) if job.receipt else None,
         error_code=job.error_code,
         error=job.error,
+        privacy=job.privacy or "private",
     )
 
 
+def enclave_tier(enclave: Enclave) -> str:
+    """"confidential" or "open" (kuno_protocol.tiers), from the verified evidence kind stored at registration."""
+    from kuno_protocol.tiers import tier_for_tee
+
+    return tier_for_tee(enclave.tee)
+
+
+def enclave_serves(enclave: Enclave, privacy: str) -> bool:
+    """Whether this enclave's tier may run a job in `privacy` mode. Check it for any enclave a client names:
+    a private job must never be created for, or handed to, an open-tier enclave."""
+    from kuno_protocol.tiers import tier_serves
+
+    return tier_serves(enclave_tier(enclave), privacy)
+
+
 def enclave_public(enclave: Enclave, hardware: list[HardwareBinding] | None = None) -> dict:
-    """`hardware` is self-reported and unverified; `hardware_ids` and `gpu_count` come from verified evidence."""
+    """`hardware` is self-reported and unverified; `hardware_ids` and `gpu_count` come from verified evidence.
+    An open-tier enclave (`tier: "open"`) never has `hardware_ids`: nothing about its hardware is attested."""
     return {
         "enclave_id": enclave.id,
         "miner_hotkey": enclave.miner_hotkey,
         "tee": enclave.tee,
+        "tier": enclave_tier(enclave),
         "image_digest": enclave.image_digest,
         "hpke_public_key": enclave.hpke_public_key,
         "signing_public_key": enclave.signing_public_key,

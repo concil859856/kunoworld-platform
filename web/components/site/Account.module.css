@@ -48,8 +48,13 @@
   font-size: 14px;
 }
 
+.account .field textarea {
+  resize: vertical;
+}
+
 .account .field input,
-.account .field select {
+.account .field select,
+.account .field textarea {
   width: 100%;
   min-width: 0;
   padding: 11px 12px;

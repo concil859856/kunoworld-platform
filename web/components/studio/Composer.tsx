@@ -1,7 +1,7 @@
 "use client";
 
-import type { GenerateInput, Mode, ModelProfile, ModelsResponse } from "@kunoworld/sdk";
-import { AudioLines, ChevronRight, LoaderCircle, LockKeyhole, Sparkles, ArrowRight, SlidersHorizontal, Wand2 } from "lucide-react";
+import type { GenerateInput, Mode, ModelProfile, ModelsResponse, PrivacyMode } from "@kunoworld/sdk";
+import { AudioLines, ChevronRight, Eye, LoaderCircle, LockKeyhole, Sparkles, ArrowRight, SlidersHorizontal, Wand2 } from "lucide-react";
 import { useId, useRef, useState } from "react";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -20,6 +20,8 @@ import {
   TABS,
 } from "@/lib/shot";
 import { MODE_LABEL, validateParams, validatePrompt, type Problem } from "@/lib/validation";
+import { PRIVACY_COPY } from "@/lib/privacy-copy";
+import { setPrivacyChoice, usePrivacyChoice } from "@/lib/usePrivacyChoice";
 
 import { EditTray, FramesTray, KeyframesTray, ReferencesTray } from "./Trays";
 
@@ -45,7 +47,10 @@ export interface Submission {
   predicted: ModelProfile;
   fallbackReason: string | null;
   estimate: number | null;
+  privacy: PrivacyMode;
 }
+
+const PRIVACY_MODES: PrivacyMode[] = ["private", "standard"];
 
 function Picker({
   label,
@@ -101,6 +106,8 @@ export function Composer({
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const [attempted, setAttempted] = useState(false);
   const [advanced, setAdvanced] = useState(false);
+  // Chosen per take and remembered per browser; Private until someone picks otherwise.
+  const privacy = usePrivacyChoice();
 
   const collected = collectInputs(state);
   const mode = modeFor(state.tab, state.editOp, collected.roles);
@@ -171,6 +178,7 @@ export function Composer({
       predicted: target,
       fallbackReason: reason,
       estimate,
+      privacy,
     });
   }
 
@@ -284,7 +292,7 @@ export function Composer({
           <ChevronRight size={12} />
         </button>
         <span className="text-[12px] text-[#a4af95] flex items-center gap-1.5">
-          <LockKeyhole size={12} /> Encrypted by the SDK
+          {privacy === "standard" ? <Eye size={12} /> : <LockKeyhole size={12} />} {PRIVACY_COPY[privacy].short}
         </span>
       </div>
 
@@ -332,6 +340,32 @@ export function Composer({
           {size && <p className="modal-copy">{size.join(" × ")} pixels</p>}
         </div>
       )}
+
+      <fieldset className="privacy-choice">
+        <legend className="field-label">Who can see this take</legend>
+        <div className="privacy-options">
+          {PRIVACY_MODES.map((m) => (
+            <label key={m} className="privacy-option" data-checked={privacy === m}>
+              <input
+                type="radio"
+                name={`${ids}-privacy`}
+                value={m}
+                checked={privacy === m}
+                onChange={() => setPrivacyChoice(m)}
+                aria-labelledby={`${ids}-privacy-${m}`}
+                aria-describedby={`${ids}-privacy-${m}-note`}
+              />
+              <span>
+                <strong id={`${ids}-privacy-${m}`}>
+                  {m === "standard" ? <Eye size={13} aria-hidden /> : <LockKeyhole size={13} aria-hidden />}
+                  {PRIVACY_COPY[m].label}
+                </strong>
+                <small id={`${ids}-privacy-${m}-note`}>{PRIVACY_COPY[m].sentence}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
 
       <div className="composer-footer">
         <label className="audio-switch">

@@ -1,20 +1,40 @@
 "use client";
 
-import type { GenerateRequest, JobStatus, KunoClient } from "@kunoworld/sdk";
+import {
+  KunoError,
+  type AnyJobHandle,
+  type GenerateRequest,
+  type JobStatus,
+  type KunoClient,
+  type PrivacyMode,
+  type StandardVideoSummary,
+} from "@kunoworld/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { friendlyError, type FriendlyError } from "./errors";
 import { keyFingerprint } from "./kuno";
-import { exportEntries, isActive, loadLibrary, parseBackup, saveLibrary, type LibraryEntry } from "./library";
+import {
+  exportEntries,
+  isActive,
+  isStandard,
+  loadLibrary,
+  parseBackup,
+  saveLibrary,
+  type LibraryEntry,
+  type Step,
+} from "./library";
 import type { ComposerTab, EditOp, ShotSettings } from "./shot";
 
 /*
  * The studio library.
  *
- * Every take is persisted in this browser with its JobHandle, and the handle carries the
+ * Every private take is persisted in this browser with its JobHandle, and the handle carries the
  * output key — the only key that opens the finished film. So a take survives a reload:
  * the ciphertext is re-downloaded from the relay and decrypted here, rather than the
- * video being held in memory. Nothing here is ever sent to the server.
+ * video being held in memory. Nothing about private takes is ever sent to the server.
+ *
+ * Standard takes are the gateway's to keep: they are listed from GET /v1/standard/videos when
+ * the studio connects, shown with a preview frame, and downloaded when opened.
  *
  * Libraries are kept per API key, so connecting with a different key shows a different
  * shelf rather than mixing them.
@@ -22,6 +42,8 @@ import type { ComposerTab, EditOp, ShotSettings } from "./shot";
 
 export interface FilmState {
   url?: string;
+  /** A preview frame (standard takes), shown until the video is opened. */
+  poster?: string;
   opening?: boolean;
   error?: FriendlyError;
 }
@@ -43,15 +65,61 @@ export interface SubmitInput {
 }
 
 /** Maps a gateway status onto the entry fields the shelf renders. */
-function statusPatch(s: JobStatus): Partial<LibraryEntry> {
+function statusPatch(s: JobStatus, standard: boolean): Partial<LibraryEntry> {
   const base: Partial<LibraryEntry> = { price: s.price_usd };
   if (s.status === "queued") return { ...base, step: "queued", progress: 0 };
   if (s.status === "running") {
-    if (s.stage === "sealing" || s.progress >= 0.92) return { ...base, step: "sealing", progress: 1 };
+    if (!standard && (s.stage === "sealing" || s.progress >= 0.92)) return { ...base, step: "sealing", progress: 1 };
     return { ...base, step: "generating", progress: Math.min(1, Math.max(0, (s.progress - 0.05) / 0.85)) };
   }
-  if (s.status === "succeeded") return { ...base, step: "decrypting", progress: 1, receipt: s.receipt ?? undefined };
+  if (s.status === "succeeded") {
+    return { ...base, step: standard ? "downloading" : "decrypting", progress: 1, receipt: s.receipt ?? undefined };
+  }
   return base;
+}
+
+const STEP_FOR_STATE: Record<JobStatus["status"], Step> = {
+  queued: "queued",
+  running: "generating",
+  succeeded: "ready",
+  failed: "failed",
+  canceled: "canceled",
+};
+
+/** A standard take as the gateway lists it. Its receipt arrives when it's opened. */
+function standardEntry(client: KunoClient, row: StandardVideoSummary): LibraryEntry {
+  const p = row.params;
+  const step = STEP_FOR_STATE[row.status] ?? "queued";
+  return {
+    id: row.job_id,
+    handle: client.standardHandle(row),
+    privacy: "standard",
+    expiresAt: row.expires_at ?? null,
+    createdAt: row.created_at * 1000,
+    prompt: row.prompt ?? "",
+    tab: "text",
+    editOp: "edit",
+    mode: p.mode,
+    requestedProfileId: row.profile_id,
+    profileId: row.profile_id,
+    fallbackReason: null,
+    settings: {
+      resolution: p.resolution,
+      aspectRatio: p.aspect_ratio,
+      durationS: p.duration_s,
+      fps: p.fps,
+      audio: p.audio,
+      seed: "",
+      negativePrompt: "",
+      enhance: false,
+    },
+    inputs: p.input_roles.map((role) => ({ role, name: "" })),
+    step,
+    progress: step === "ready" ? 1 : 0,
+    price: null,
+    error:
+      step === "failed" ? friendlyError(new KunoError(0, row.error_code ?? "internal_error", ""), "render", "standard") : undefined,
+  };
 }
 
 export function useLibrary(client: KunoClient | null, apiKey: string | null) {
@@ -64,6 +132,7 @@ export function useLibrary(client: KunoClient | null, apiKey: string | null) {
   const entriesRef = useRef(entries);
   const filmsRef = useRef(films);
   const controllers = useRef(new Map<string, AbortController>());
+  const thumbnails = useRef(new Set<string>());
   const loadedFor = useRef<string | null>(null);
   // Two decryptions at a time: enough to feel instant, not enough to stall the tab.
   const slots = useRef({ free: 2, queue: [] as Array<() => void> });
@@ -88,15 +157,20 @@ export function useLibrary(client: KunoClient | null, apiKey: string | null) {
 
   useEffect(() => {
     const urls = filmsRef.current;
-    return () => Object.values(urls).forEach((f) => f.url && URL.revokeObjectURL(f.url));
+    return () =>
+      Object.values(urls).forEach((f) => {
+        if (f.url) URL.revokeObjectURL(f.url);
+        if (f.poster) URL.revokeObjectURL(f.poster);
+      });
   }, []);
 
   const update = useCallback((id: string, patch: Partial<LibraryEntry>) => {
     setEntries((list) => list.map((e) => (e.id === id ? { ...e, ...patch } : e)));
   }, []);
 
+  /** Replaces a take's film state, keeping its preview frame. */
   const setFilm = useCallback((id: string, film: FilmState) => {
-    setFilms((f) => ({ ...f, [id]: film }));
+    setFilms((f) => ({ ...f, [id]: { poster: f[id]?.poster, ...film } }));
   }, []);
 
   const acquire = useCallback(async () => {
@@ -115,11 +189,12 @@ export function useLibrary(client: KunoClient | null, apiKey: string | null) {
     else s.free += 1;
   }, []);
 
-  /** Polls a job to completion, then downloads, verifies and decrypts it here. */
+  /** Polls a job to completion, then fetches it: decrypted here if private, downloaded if standard. */
   const watch = useCallback(
     async (entry: LibraryEntry) => {
       if (!entry.handle || !client) return;
       const id = entry.id;
+      const standard = isStandard(entry);
       controllers.current.get(id)?.abort();
       const ctrl = new AbortController();
       controllers.current.set(id, ctrl);
@@ -130,7 +205,7 @@ export function useLibrary(client: KunoClient | null, apiKey: string | null) {
           pollMs: 1000,
           onProgress: (s) => {
             last = s;
-            update(id, statusPatch(s));
+            update(id, statusPatch(s, standard));
           },
         });
         const url = URL.createObjectURL(new Blob([new Uint8Array(result.video)], { type: "video/mp4" }));
@@ -141,10 +216,10 @@ export function useLibrary(client: KunoClient | null, apiKey: string | null) {
         const lastStatus = last as JobStatus | null;
         if (lastStatus?.status === "succeeded") {
           // It rendered; only opening it here failed, so keep the take openable.
-          setFilm(id, { error: friendlyError(err, "open") });
+          setFilm(id, { error: friendlyError(err, "open", entry.privacy) });
           update(id, { step: "ready", progress: 1, receipt: lastStatus.receipt ?? undefined });
         } else {
-          const error = friendlyError(err, "render");
+          const error = friendlyError(err, "render", entry.privacy);
           const canceled = error.code === "canceled" || error.code === "job_canceled";
           update(id, { step: canceled ? "canceled" : "failed", error });
         }
@@ -166,7 +241,52 @@ export function useLibrary(client: KunoClient | null, apiKey: string | null) {
     };
   }, [client, watch]);
 
-  /** Re-downloads a finished film's ciphertext and decrypts it locally. */
+  // Standard takes come from the gateway. A gateway without standard mode, or credentials that
+  // can't list, leave the shelf showing this browser's private takes only.
+  useEffect(() => {
+    if (!client) return;
+    let alive = true;
+    client.listStandard(100).then(
+      (rows) => {
+        if (!alive) return;
+        // Deleted rows stay in the gateway's list for billing; they're gone from the shelf.
+        const listed = rows.filter((row) => !row.deleted).map((row) => standardEntry(client, row));
+        const known = new Set(entriesRef.current.map((e) => e.id));
+        const fresh = listed.filter((e) => !known.has(e.id));
+        if (!fresh.length) return;
+        setEntries((list) => {
+          const ids = new Set(list.map((e) => e.id));
+          return [...list, ...fresh.filter((e) => !ids.has(e.id))].sort((a, b) => a.createdAt - b.createdAt);
+        });
+        for (const e of fresh) if (isActive(e) && !controllers.current.has(e.id)) void watch(e);
+      },
+      () => {},
+    );
+    return () => {
+      alive = false;
+    };
+  }, [client, watch]);
+
+  // A preview frame for each finished standard take, fetched once.
+  useEffect(() => {
+    if (!client) return;
+    for (const e of entries) {
+      if (!isStandard(e) || e.step !== "ready" || !e.handle || thumbnails.current.has(e.id)) continue;
+      thumbnails.current.add(e.id);
+      const id = e.id;
+      client.standardThumbnail(e.handle.jobId).then(
+        (bytes) => {
+          const poster = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: "image/jpeg" }));
+          setFilms((f) => ({ ...f, [id]: { ...f[id], poster } }));
+        },
+        () => {
+          /* no preview: the card still opens the video */
+        },
+      );
+    }
+  }, [client, entries]);
+
+  /** Fetches a finished film: re-downloads and decrypts a private one, downloads a standard one. */
   const openFilm = useCallback(
     async (entry: LibraryEntry) => {
       const current = filmsRef.current[entry.id];
@@ -179,7 +299,7 @@ export function useLibrary(client: KunoClient | null, apiKey: string | null) {
         setFilm(entry.id, { url });
         if (!entry.receipt) update(entry.id, { receipt: result.receipt });
       } catch (err) {
-        setFilm(entry.id, { error: friendlyError(err, "open") });
+        setFilm(entry.id, { error: friendlyError(err, "open", entry.privacy) });
       } finally {
         release();
       }
@@ -190,10 +310,13 @@ export function useLibrary(client: KunoClient | null, apiKey: string | null) {
   const submit = useCallback(
     async (input: SubmitInput, snapshot: Snapshot) => {
       if (!client) return;
+      const privacy: PrivacyMode = input.request.privacy ?? "private";
+      const standard = privacy === "standard";
       const localId = `local-${crypto.randomUUID()}`;
       const draft: LibraryEntry = {
         id: localId,
         handle: null,
+        privacy,
         createdAt: Date.now(),
         prompt: input.request.prompt ?? "",
         tab: snapshot.tab,
@@ -204,19 +327,19 @@ export function useLibrary(client: KunoClient | null, apiKey: string | null) {
         fallbackReason: input.fallbackReason,
         settings: snapshot.settings,
         inputs: input.inputs,
-        step: "encrypting",
+        step: standard ? "uploading" : "encrypting",
         progress: 0,
         price: input.estimate,
       };
       setEntries((list) => [...list, draft]);
 
-      let handle;
+      let handle: AnyJobHandle;
       try {
         handle = await client.submit(input.request, (stage) =>
-          update(localId, { step: stage === "uploading" || stage === "submitting" ? "uploading" : "encrypting" }),
+          update(localId, { step: standard || stage === "uploading" || stage === "submitting" ? "uploading" : "encrypting" }),
         );
       } catch (err) {
-        update(localId, { step: "failed", error: friendlyError(err, "submit") });
+        update(localId, { step: "failed", error: friendlyError(err, "submit", privacy) });
         return;
       }
       const next: LibraryEntry = {
@@ -247,35 +370,62 @@ export function useLibrary(client: KunoClient | null, apiKey: string | null) {
     [client, update],
   );
 
-  const remove = useCallback((entry: LibraryEntry) => {
-    const ok = window.confirm(
-      "Remove this take from the library? This deletes the only key to the film from this browser — download it first if you want to keep it.",
-    );
-    if (!ok) return;
-    controllers.current.get(entry.id)?.abort();
-    const film = filmsRef.current[entry.id];
+  const dropFilm = useCallback((id: string) => {
+    const film = filmsRef.current[id];
     if (film?.url) URL.revokeObjectURL(film.url);
+    if (film?.poster) URL.revokeObjectURL(film.poster);
     setFilms((f) => {
       const next = { ...f };
-      delete next[entry.id];
+      delete next[id];
       return next;
     });
-    setEntries((list) => list.filter((e) => e.id !== entry.id));
   }, []);
 
+  /** Private: forgets the take and its key here. Standard: deletes it from the gateway. */
+  const remove = useCallback(
+    async (entry: LibraryEntry) => {
+      const standard = isStandard(entry);
+      const ok = window.confirm(
+        standard
+          ? "Delete this video from KunoWorld? Its stored video, prompt and inputs are deleted for good. If it's still rendering, it's canceled and refunded first. The charge record stays in your account activity."
+          : "Remove this take from the library? This deletes the only key to the film from this browser — download it first if you want to keep it.",
+      );
+      if (!ok) return;
+      if (standard && entry.handle && client) {
+        try {
+          await client.deleteStandard(entry.handle.jobId);
+        } catch (err) {
+          const error = friendlyError(err, "open", "standard");
+          if (!["not_found", "expired", "deleted", "removed"].includes(error.code)) {
+            setNotice(`Couldn't delete that video — ${error.title}.`);
+            return;
+          }
+        }
+      }
+      controllers.current.get(entry.id)?.abort();
+      dropFilm(entry.id);
+      setEntries((list) => list.filter((e) => e.id !== entry.id));
+    },
+    [client, dropFilm],
+  );
+
   const forgetAll = useCallback(() => {
+    const keepsStandard = entriesRef.current.some(isStandard);
     const ok = window.confirm(
-      "Forget the whole library? This deletes every film key stored in this browser. Films you haven't downloaded can't be opened afterwards.",
+      "Forget the whole library? This deletes every film key stored in this browser. Films you haven't downloaded can't be opened afterwards." +
+        (keepsStandard ? " Standard takes stay in your KunoWorld library." : ""),
     );
     if (!ok) return;
-    controllers.current.forEach((c) => c.abort());
-    controllers.current.clear();
+    const forgotten = entriesRef.current.filter((e) => !isStandard(e)).map((e) => e.id);
     // The decrypted films go too: their object URLs would otherwise leak, and a later
     // restore of the same take would show the old film instead of re-opening its key.
-    Object.values(filmsRef.current).forEach((f) => f.url && URL.revokeObjectURL(f.url));
-    setFilms({});
-    setEntries([]);
-  }, []);
+    for (const id of forgotten) {
+      controllers.current.get(id)?.abort();
+      controllers.current.delete(id);
+      dropFilm(id);
+    }
+    setEntries((list) => list.filter(isStandard));
+  }, [dropFilm]);
 
   /** Reads a film-key backup and adds back anything this browser has forgotten. */
   const restore = useCallback(async (file: File) => {
@@ -297,7 +447,7 @@ export function useLibrary(client: KunoClient | null, apiKey: string | null) {
   }, []);
 
   /**
-   * Downloads every film key in this library. The file opens these films anywhere, so it
+   * Downloads every private film key in this library. The file opens these films anywhere, so it
    * is exactly as sensitive as the films themselves.
    */
   const exportBackup = useCallback(() => {

@@ -271,6 +271,8 @@ class Job(Base):
     updated_at: Mapped[float] = mapped_column(Float)
     started_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     finished_at: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
+    # private (end to end, confidential miners only) or standard (sealed by the gateway, any miner). Migration 0008.
+    privacy: Mapped[str] = mapped_column(String(16), default="private", server_default="private")
 
 
 class Blob(Base):

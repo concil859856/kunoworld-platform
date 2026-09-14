@@ -24,10 +24,12 @@ const SECTIONS = [
   { id: "acceptance", title: "Acceptance of these Terms" },
   { id: "preview", title: "The Service and its preview status" },
   { id: "accounts", title: "Eligibility and accounts" },
+  { id: "modes", title: "Private and Standard modes" },
   { id: "keys", title: "API keys and saved film keys" },
   { id: "credit", title: "Credit, pricing and refunds" },
   { id: "crypto-payments", title: "Cryptocurrency payments", review: true },
   { id: "acceptable-use", title: "Acceptable use and prohibited content" },
+  { id: "enforcement", title: "Content checks, strikes and reports", review: true },
   { id: "regions", title: "Regional availability of models" },
   { id: "content", title: "Your inputs, outputs and model licenses", review: true },
   { id: "receipts", title: "Provenance receipts" },
@@ -49,6 +51,10 @@ const PH = {
   effectiveDate: { label: "[EFFECTIVE DATE]", note: "date these Terms take effect." },
   legalEmail: { label: "[LEGAL CONTACT EMAIL]", note: "address for questions about these Terms and account closure." },
   abuseEmail: { label: "[ABUSE REPORT EMAIL]", note: "where to report prohibited content or misuse." },
+  appeals: {
+    label: "[APPEAL PROCESS FOR RESTRICTIONS AND REMOVALS]",
+    note: "how a customer asks for a restriction, content removal or account closure to be reviewed, and how quickly.",
+  },
   minimumAge: { label: "[MINIMUM AGE]", note: "minimum age to use the Service." },
   tax: { label: "[TAX TREATMENT OF TOP-UPS]", note: "whether prices and top-ups include or exclude taxes." },
   refund: {
@@ -104,14 +110,19 @@ export default function Terms() {
       }
       intro="The agreement that will govern using KunoWorld to generate video: accounts, credit, acceptable use, and what the development preview does and does not promise."
       effectiveDate={<Ph k="effectiveDate" />}
-      drafted="13 September 2026"
+      drafted="14 September 2026"
       sections={SECTIONS}
       placeholders={Object.values(PH)}
       summary={
         <>
           <p>
             KunoWorld is a development preview. Outputs may be placeholder video, the service may be unavailable, and
-            the hardware protection meant to stop GPU operators from reading your content is not in place yet.
+            the hardware verification meant to stop GPU operators from reading private content is not in place yet.
+          </p>
+          <p>
+            You choose a mode for every job. Private jobs are encrypted on your device and nobody at KunoWorld can read
+            them. Standard jobs can be read by KunoWorld and the GPU operator. Jobs blocked by the content checks count
+            as strikes, and strikes can restrict your account.
           </p>
           <p>
             You pay with prepaid credit. A job’s price is held when you submit it and refunded automatically if the job
@@ -162,10 +173,11 @@ export default function Terms() {
             of availability.
           </li>
           <li>
-            The Service is designed to run jobs inside Intel TDX and NVIDIA confidential-computing enclaves so that GPU
-            operators cannot read your content. <strong>That protection is not in place yet</strong>: hardware
-            attestation verification has not been implemented. Do not submit prompts or reference media that you are not
-            prepared to have exposed to the operator that processes them.
+            Private mode (see <SectionRef id="modes" />) is designed to run jobs only inside Intel TDX and NVIDIA
+            confidential-computing enclaves so that GPU operators cannot read your content.{" "}
+            <strong>That protection is not in place yet</strong>: hardware attestation verification has not been
+            implemented. Do not submit prompts or reference media that you are not prepared to have exposed to the
+            operator that processes them. Standard mode never offers that protection.
           </li>
         </ul>
       </Section>
@@ -185,6 +197,62 @@ export default function Terms() {
         </p>
       </Section>
 
+      <Section id="modes">
+        <p>
+          You choose a mode for each job: in the studio before you generate, or with the <code>privacy</code> option in
+          the API and SDKs. The mode decides who can read the job’s prompt, reference media and video, and it cannot be
+          changed after the job is submitted.
+        </p>
+
+        <LegalSubheading id="modes-private">Private mode (the default)</LegalSubheading>
+        <ul>
+          <li>
+            Your prompt and reference media are encrypted on your device, by the studio or an SDK, to the GPU enclave
+            that renders the job. The finished video is encrypted to a key that only you hold.
+          </li>
+          <li>
+            <strong>Nobody at KunoWorld can read private content</strong>, and we cannot recover a private video whose
+            key you have lost.
+          </li>
+          <li>
+            Private jobs run only on GPU operators in the confidential tier. While hardware attestation verification is
+            not implemented (see <SectionRef id="preview" />), the operator that renders a private job may be able to
+            access its content.
+          </li>
+          <li>
+            Private mode has stricter account requirements. By default your account needs at least one credited top-up
+            (by card, USDT, TAO or alpha) or a credit added by KunoWorld, no active restriction, and fewer than 2 strikes
+            in the last 30 days. Private jobs also have a lower limit on how many can be started per minute. We may
+            change these requirements.
+          </li>
+        </ul>
+
+        <LegalSubheading id="modes-standard">Standard mode</LegalSubheading>
+        <ul>
+          <li>
+            Your prompt, reference media and video are sent to KunoWorld readable (encrypted only in transit) and stored
+            by KunoWorld. <strong>KunoWorld and the GPU operator that renders the job can see them.</strong>
+          </li>
+          <li>
+            Standard jobs can run on any GPU operator, including operators without confidential-computing hardware.
+          </li>
+          <li>
+            Because KunoWorld can read standard content, it can offer a library on its servers, preview images and
+            longer retention, and it may review standard content as described in <SectionRef id="enforcement" />.
+            Validators may receive a standard job’s prompt, seed and settings to check that GPU operators ran it
+            faithfully.
+          </li>
+          <li>
+            Standard videos, prompts and reference media are kept for 30 days by default and then deleted. You can
+            delete a standard video sooner; the record of its charge stays on your account.
+          </li>
+        </ul>
+        <ReviewNote>
+          Confirm whether Standard and Private jobs will be priced differently, and if so state it in{" "}
+          <SectionRef id="credit" />.
+        </ReviewNote>
+      </Section>
+
       <Section id="keys">
         <p>
           You can create several API keys for your account and revoke any of them. We store only a SHA-256 hash of each
@@ -195,14 +263,15 @@ export default function Terms() {
           them or embed them where others can read them, and revoke any key you think has been exposed.
         </p>
         <p>
-          The studio saves each take in your browser’s local storage: the prompt, its settings and the key that decrypts
-          the finished film. Anyone who can use that browser profile can open those films. Keep your device and browser
-          profile secure, and use <strong>Forget all</strong> in the studio to remove saved takes. The gateway stores
-          only encrypted results and cannot decrypt them for you, so a film whose key is lost cannot be recovered.
+          The studio saves each private take in your browser’s local storage: the prompt, its settings and the key that
+          decrypts the finished film. Anyone who can use that browser profile can open those films. Keep your device and
+          browser profile secure, and use <strong>Forget all</strong> in the studio to remove saved private takes. For
+          private jobs the gateway stores only encrypted results and cannot decrypt them for you, so a film whose key is
+          lost cannot be recovered.
         </p>
         <p>
-          Encrypted results are deleted from the gateway after 7 days by default. Download and decrypt any film you want
-          to keep before then.
+          Encrypted private results are deleted from the gateway after 7 days by default, and standard videos after 30
+          days. Download any film you want to keep before then.
         </p>
         <p>
           If you believe your account or keys have been compromised, revoke the affected keys and contact{" "}
@@ -326,17 +395,72 @@ export default function Terms() {
           <li>interfering with, overloading or disrupting the Service, its GPU operators or its validators.</li>
         </ul>
         <p>
-          Your prompts and reference media are encrypted on your device, so the gateway cannot read them. That does not
-          change your responsibility for what you submit and how you use the results.
+          In Private mode your prompts and reference media are encrypted on your device, so KunoWorld cannot read them;
+          in Standard mode it can. Either way, you remain responsible for what you submit and how you use the results.
         </p>
         <p>
           If you find a security vulnerability, report it to{" "}
-          <a href="mailto:security@kunoworld.com">security@kunoworld.com</a> rather than exploiting it. Report other
-          misuse of the Service to <Ph k="abuseEmail" />.
+          <a href="mailto:security@kunoworld.com">security@kunoworld.com</a> rather than exploiting it. Report a video
+          that breaks these rules on our <a href="/report">report page</a>, and other misuse of the Service to{" "}
+          <Ph k="abuseEmail" />.
         </p>
         <ReviewNote>
           Decide how apparent child sexual abuse material and other unlawful content will be reported to authorities,
-          and what moderation is possible when content is encrypted before it reaches the gateway.
+          including content found when reviewing standard jobs and private videos opened with a key supplied in a
+          report.
+        </ReviewNote>
+      </Section>
+
+      <Section id="enforcement">
+        <LegalSubheading id="enforcement-checks">Content checks</LegalSubheading>
+        <p>
+          In both modes, automated content checks run inside the GPU enclave on your prompt and on the frames it renders.
+          A job they block fails with a content-policy error. The check reports only that it blocked a job, never the
+          content. Files uploaded for standard jobs are also scanned on upload, and a file that matches is refused.
+        </p>
+
+        <LegalSubheading id="enforcement-strikes">Strikes and restrictions</LegalSubheading>
+        <p>
+          Every job blocked by a content check, in either mode, and every standard upload refused by the upload scan, is
+          one strike on your account. By default:
+        </p>
+        <ul>
+          <li>3 strikes in 24 hours restrict your account for 1 hour;</li>
+          <li>5 strikes in 7 days restrict it for 7 days; and</li>
+          <li>10 strikes in 30 days restrict it until we review it.</li>
+        </ul>
+        <p>
+          A restricted account cannot start new jobs in either mode until the restriction ends. Your account page shows
+          your strike counts, whether Private mode is available to you and when any restriction ends. We may change
+          these thresholds, and we may also act on an account under <SectionRef id="termination" />.
+        </p>
+
+        <LegalSubheading id="enforcement-reports">Reports and review</LegalSubheading>
+        <p>
+          Anyone can report a video on our <a href="/report">report page</a>, identifying it by its certificate digest,
+          its job ID or a link. Reports of child sexual abuse material and of sexual content involving minors are handled
+          first.
+        </p>
+        <ul>
+          <li>
+            <strong>Standard content</strong> can be reviewed by authorized KunoWorld staff, both when it is reported and
+            when stored standard videos are sampled for review.
+          </li>
+          <li>
+            <strong>Private content</strong> cannot be reviewed unless someone who holds a private video’s key includes it
+            in a report. That key opens only that one video.
+          </li>
+        </ul>
+        <p>
+          After a review we may dismiss the report, remove content, restrict an account or close it. Each action is
+          recorded with who took it, when and why.
+        </p>
+        <p>
+          To ask for a restriction, removal or closure to be reviewed: <Ph k="appeals" />.
+        </p>
+        <ReviewNote>
+          Confirm whether jobs blocked by a content check are charged or refunded, and whether reporters or account
+          holders are told the outcome of a report.
         </ReviewNote>
       </Section>
 
@@ -359,7 +483,9 @@ export default function Terms() {
         <LegalSubheading id="content-inputs">Your inputs</LegalSubheading>
         <p>
           You keep whatever rights you have in the prompts and reference media you submit. You permit us, and the GPU
-          operators that process your jobs, to store, transmit and process them as needed to provide the Service.
+          operators that process your jobs, to store, transmit and process them as needed to provide the Service,
+          including reviewing standard content, and private content opened with a key supplied in a report, as described
+          in <SectionRef id="enforcement" />.
         </p>
         <p>
           You confirm that you have all the rights and permissions needed to submit your inputs, including the consent
@@ -413,6 +539,11 @@ export default function Terms() {
           or agents, and we do not control their hardware or facilities.
         </p>
         <p>
+          In Standard mode, the GPU operator that renders your job can see its prompt, reference media and video, and may
+          not use confidential-computing hardware. Validators may also receive a standard job’s prompt, seed and
+          settings.
+        </p>
+        <p>
           The Service also relies on third-party providers, including Stripe for card payments,{" "}
           <Ph k="emailProvider" /> for sign-in emails, and Cloudflare for network services. Their own terms may apply
           when you use features they provide.
@@ -425,8 +556,9 @@ export default function Terms() {
           <Ph k="legalEmail" />.
         </p>
         <p>
-          We may suspend or end your access, revoke API keys, or cancel or refuse jobs if we reasonably believe you have
-          breached these Terms, if the law requires it, or if it is needed to protect the Service, its users, GPU
+          We may suspend or end your access, restrict your account, revoke API keys, remove standard content, or cancel
+          or refuse jobs if we reasonably believe you have breached these Terms (including through strikes and reports,
+          see <SectionRef id="enforcement" />), if the law requires it, or if it is needed to protect the Service, its users, GPU
           operators or others. We may also end the preview or discontinue the Service.
         </p>
         <p>
@@ -450,8 +582,8 @@ export default function Terms() {
         <p>
           In particular, we do not warrant that the Service will be available, uninterrupted or error-free; that jobs
           will complete; that outputs will be accurate, lawful, suitable for your purpose or free of third-party rights;
-          or, while hardware attestation is not implemented, that your content will be kept confidential from the GPU
-          operator that processes it.
+          or, while hardware attestation is not implemented, that private content will be kept confidential from the GPU
+          operator that processes it. Standard content is not confidential from KunoWorld or the GPU operator.
         </p>
         <p>
           Some jurisdictions do not allow certain warranties to be excluded, so some of these exclusions may not apply to

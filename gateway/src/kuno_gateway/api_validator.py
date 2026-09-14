@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from kuno_protocol.schemas import GenerationParams, JobState
+from kuno_protocol.schemas import GenerationParams
 
 from .auth import gw, require_validator
 from .db import Account, Challenge, Enclave, Job
@@ -58,6 +58,8 @@ async def ledger(request: Request, since: float = 0.0, limit: int = 1000, _valid
                 "profile_id": job.profile_id,
                 "status": job.status,
                 "error_code": job.error_code,
+                # "private" or "standard": validators audit standard jobs, and a private receipt from an open-tier enclave is fraud.
+                "privacy": getattr(job, "privacy", None) or "private",
                 # The full public params, so validators bind what they pay for to the signed params digest.
                 "params": params.model_dump(mode="json"),
                 "duration_s": params.duration_s,

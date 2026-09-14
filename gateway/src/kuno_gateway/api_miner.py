@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from functools import partial
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, ValidationError
@@ -17,6 +18,7 @@ from kuno_protocol.hardware import capacity_limit
 from kuno_protocol.receipts import Receipt, verify_receipt
 from kuno_protocol.hotkey import verify_hotkey_proof
 from kuno_protocol.schemas import GenerationParams, JobState, MinerRegistration
+from kuno_protocol.tiers import OPEN, hotkey_proof_required, tier_for_tee, tier_serves
 
 from .auth import gw, require_enclave, verify_enclave_signature
 from .db import Blob, Challenge, Enclave, Job
@@ -56,10 +58,16 @@ def _parse(model: type[BaseModel], body: bytes):
 
 
 def _proven_hotkey(state, body: MinerRegistration, enclave_id: str) -> str | None:
-    """The hotkey this enclave earns for: proven by its signature, or on a dev network, as claimed."""
+    """The hotkey this enclave earns for: proven by its signature, or on a dev network, as claimed.
+
+    Open-tier enclaves always need the proof, dev networks included: without a quote it is the
+    only thing binding the worker's keys to a miner.
+    """
     if body.hotkey_proof is None:
-        if state.policy.production:
-            raise _error(403, "hotkey_proof_required", "Production registration needs a proof signed by the miner's hotkey.")
+        tier = tier_for_tee(body.evidence.tee)
+        if hotkey_proof_required(tier, state.policy.production):
+            where = "Open-tier" if tier == OPEN else "Production"
+            raise _error(403, "hotkey_proof_required", f"{where} registration needs a proof signed by the miner's hotkey.")
         return body.miner_hotkey
     if not body.miner_hotkey:
         raise _error(422, "invalid_body", "A hotkey proof needs the miner_hotkey it proves.")
@@ -92,10 +100,14 @@ async def register_enclave(request: Request):
     unknown = [p for p in evidence.profiles if p not in state.profiles]
     if unknown:
         raise _error(422, "unknown_profiles", f"Unknown profiles: {', '.join(unknown)}")
-    # DCAP collateral and NRAS are network calls; keep them off the event loop.
-    verdict = await asyncio.to_thread(state.policy.verify, evidence, state.manifest, bytes.fromhex(evidence.nonce))
+    # DCAP collateral and NRAS are network calls; keep them off the event loop. Open-tier evidence is accepted only
+    # where the owner-signed manifest's open_tier policy allows the image (refused by default, production included).
+    verdict = await asyncio.to_thread(
+        partial(state.policy.verify, evidence, state.manifest, bytes.fromhex(evidence.nonce), allow_open=True)
+    )
     if not verdict.ok:
         raise _error(403, "attestation_failed", "; ".join(verdict.reasons))
+    # Before anything is written: an open-tier registration without a valid hotkey proof never lands.
     miner_hotkey = _proven_hotkey(state, body, verdict.enclave_id)
     if verdict.gpu_count is not None:
         needs = {p: state.profiles[p].gpus_per_worker for p in evidence.profiles}
@@ -118,6 +130,8 @@ async def register_enclave(request: Request):
             s.add(enclave)
         elif enclave.status == "revoked":
             raise _error(403, "revoked", "This enclave has been revoked.")
+        elif enclave.tee and tier_for_tee(enclave.tee) != verdict.tier:
+            raise _error(409, "tier_changed", "These enclave keys registered on another tier; restart the worker for new keys.")
         enclave.miner_hotkey = miner_hotkey
         enclave.tee = evidence.tee
         enclave.image_digest = evidence.image_digest
@@ -167,11 +181,24 @@ async def pull(request: Request, auth=Depends(require_enclave)):
     deadline = time.time() + wait
     while True:
         work = state.next_work(enclave.id)
-        if work is not None:
+        if work is not None and not _refused_private_job(state, enclave, work):
             return work.model_dump(mode="json")
         if time.time() >= deadline or await request.is_disconnected():
             return {"kind": "none"}
         await asyncio.sleep(0.2)
+
+
+def _refused_private_job(state, enclave: Enclave, work) -> bool:
+    """Defence in depth behind job creation: a private job that somehow reached an open-tier enclave is failed
+    before its ciphertext leaves the gateway. Returns True when `work` was such a job."""
+    if getattr(work, "kind", None) != "job" or tier_serves(tier_for_tee(enclave.tee), "private"):
+        return False
+    with state.session() as s, s.begin():
+        job = s.get(Job, work.job_id)
+        if job is None or (getattr(job, "privacy", None) or "private") != "private":
+            return False
+        state.finish_job(s, job, JobState.FAILED, "enclave_unavailable", "The assigned worker cannot run private jobs. Submit again.")
+    return True
 
 
 def _assigned_job(s, job_id: str, enclave: Enclave) -> Job:
@@ -201,6 +228,9 @@ async def download_input(blob_id: str, request: Request, auth=Depends(require_en
         blob = s.get(Blob, blob_id)
         job = s.get(Job, blob.job_id) if blob and blob.job_id else None
     if blob is None or job is None or job.enclave_id != enclave.id or job.status != JobState.RUNNING.value:
+        raise _error(404, "not_found", "No such input for a running job on this enclave.")
+    # Removed or held content has its blobs expired at once (holds.hide_job_blobs): stop serving it to miners too.
+    if blob.expires_at is not None and blob.expires_at <= time.time():
         raise _error(404, "not_found", "No such input for a running job on this enclave.")
     return Response(content=state.blobs.get(blob_id), media_type="application/octet-stream")
 
@@ -294,8 +324,11 @@ async def answer_challenge(challenge_id: str, request: Request, auth=Depends(req
     # Verification can take seconds of network calls; no transaction is held open meanwhile.
     from .api_turbo import candidate_manifest  # Turbo candidates are measured against their submission
 
-    manifest = candidate_manifest(state, enclave) or state.manifest
-    verdict = await asyncio.to_thread(state.policy.verify, answer.evidence, manifest, bytes.fromhex(nonce))
+    candidate = candidate_manifest(state, enclave)
+    # Open-tier enclaves answer challenges with open evidence too; Turbo candidates stay confidential-only.
+    verdict = await asyncio.to_thread(
+        partial(state.policy.verify, answer.evidence, candidate or state.manifest, bytes.fromhex(nonce), allow_open=candidate is None)
+    )
     conflict: HardwareInUse | None = None
     reasons = list(verdict.reasons)
     with state.hardware_lock, state.session() as s, s.begin():
@@ -306,7 +339,11 @@ async def answer_challenge(challenge_id: str, request: Request, auth=Depends(req
         challenge.evidence = answer.evidence.model_dump_json()
         challenge.answered_at = now = time.time()
         row = s.get(Enclave, enclave.id)
-        if verdict.ok and verdict.enclave_id == enclave.id:
+        if verdict.ok and verdict.enclave_id == enclave.id and verdict.tier != tier_for_tee(row.tee):
+            # A running worker can't change tier; different evidence kind means different keys' owner or a relay.
+            row.status = "stale"
+            reasons.append("evidence tier changed since registration")
+        elif verdict.ok and verdict.enclave_id == enclave.id:
             before = {b.token for b in state.enclave_hardware(s, [enclave.id]).get(enclave.id, [])}
             if before and verdict.hardware and before != verdict.hardware_tokens():
                 # A running VM can't change CPU platform or GPUs; different hardware means a relay.

@@ -10,15 +10,16 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import func, select
 
 from kuno_protocol.canonical import b64d
-from kuno_protocol.profiles import Mode, ParamError, validate_params
+from kuno_protocol.profiles import Mode, ModelProfile, ParamError, validate_params
 from kuno_protocol.receipts import Receipt, verify_receipt
-from kuno_protocol.schemas import JobCreate, JobState, JobStatus, RouteResponse
+from kuno_protocol.schemas import GenerationParams, JobCreate, JobState, JobStatus, PrivacyMode, RouteResponse
 from kuno_protocol.switch import RouteError, resolve_route
+from sqlalchemy.orm import Session
 
-from . import identity, ledger, webhooks
+from . import identity, ledger, moderation, standard_jobs, webhooks
 from .auth import SignedIn, gw, require_account, require_user
 from .db import Account, Blob, Enclave, Job, LedgerEntry
-from .state import enclave_public, job_status
+from .state import GatewayState, enclave_public, job_status
 
 router = APIRouter(prefix="/v1", tags=["public"])
 
@@ -64,17 +65,38 @@ async def switch(request: Request):
     return gw(request).switch.model_dump(mode="json")
 
 
-@router.get("/route", response_model=RouteResponse)
-async def route(request: Request, mode: Mode, profile_id: str | None = None, family: str | None = None):
-    state = gw(request)
+async def optional_account(request: Request) -> Account | None:
+    """The account behind the request's credential, if it carries one that works. Routing stays public."""
+    if not request.headers.get("authorization", "").lower().startswith("bearer "):
+        return None
     try:
-        chosen = resolve_route(
-            state.profiles, state.switch.config, mode, state.country(request), profile_id, family, state.has_capacity
-        )
+        return await require_account(request)
+    except HTTPException:
+        return None
+
+
+@router.get("/route", response_model=RouteResponse)
+async def route(
+    request: Request, mode: Mode, profile_id: str | None = None, family: str | None = None, privacy: PrivacyMode = "private"
+):
+    """Candidate enclaves whose tier may run a job in `privacy` mode. With a credential, the account's standing is
+    checked too (an anonymous route can't be, and job creation checks it again either way)."""
+    state = gw(request)
+    account = await optional_account(request)
+    if account is not None:
+        with state.session() as s:
+            moderation.enforce(s, state.settings, account, privacy)
+
+    def has_capacity(profile: ModelProfile) -> bool:
+        with state.session() as s:
+            return bool(standard_jobs.enclaves_for(state, s, profile.id, privacy))
+
+    try:
+        chosen = resolve_route(state.profiles, state.switch.config, mode, state.country(request), profile_id, family, has_capacity)
     except RouteError as exc:
         raise _error(exc.status, exc.code, exc.message) from None
     with state.session() as s:
-        enclaves = [enclave_public(e) for e in state.fresh_enclaves(s, chosen.profile.id)[:5]]
+        enclaves = [enclave_public(e) for e in standard_jobs.enclaves_for(state, s, chosen.profile.id, privacy)[:5]]
     return RouteResponse(
         profile_id=chosen.profile.id,
         requested_profile_id=chosen.requested_profile_id,
@@ -119,6 +141,8 @@ async def download_blob(blob_id: str, request: Request, account: Account = Depen
             (blob.owner_kind == "account" and blob.owner_id == account.id)
             or (blob.job_id is not None and (job := s.get(Job, blob.job_id)) is not None and job.account_id == account.id)
         )
+        # An expired blob is gone for its owner even while a preservation hold stops the sweep deleting it.
+        allowed = allowed and blob.expires_at > time.time()
     if not allowed:
         raise _error(404, "not_found", "No such blob.")
     try:
@@ -128,18 +152,24 @@ async def download_blob(blob_id: str, request: Request, account: Account = Depen
     return Response(content=data, media_type="application/octet-stream")
 
 
-@router.post("/videos", status_code=201, response_model=JobStatus)
-async def create_video(body: JobCreate, request: Request, account: Account = Depends(require_account)):
-    state = gw(request)
-    if not account.is_validator and not state.limiter.allow(f"jobs:{account.id}", state.settings.jobs_per_minute, 60):
+def check_job_rate(state: GatewayState, account: Account, privacy: str) -> None:
+    """Per-account job limits; private jobs also have their own, tighter one. Validators are exempt."""
+    if account.is_validator:
+        return
+    if not state.limiter.allow(f"jobs:{account.id}", state.settings.jobs_per_minute, 60):
         raise _error(429, "rate_limited", "Too many videos started in the last minute. Wait a moment and try again.")
-    if body.webhook_url:
+    if privacy == "private" and not state.limiter.allow(f"private-jobs:{account.id}", state.settings.private_jobs_per_minute, 60):
+        raise _error(429, "rate_limited", "Too many private videos started in the last minute. Wait a moment and try again.")
+
+
+async def validate_request(state: GatewayState, request: Request, params: GenerationParams, webhook_url: str | None) -> ModelProfile:
+    """The checks every job gets before it is sealed or accepted: webhook, model, params, switch and region."""
+    if webhook_url:
         try:
             # Resolves the host, so it runs off the event loop.
-            await asyncio.to_thread(webhooks.check_url, body.webhook_url, state.settings.allow_private_webhooks)
+            await asyncio.to_thread(webhooks.check_url, webhook_url, state.settings.allow_private_webhooks)
         except webhooks.InvalidWebhookUrl as exc:
             raise _error(422, "invalid_webhook_url", str(exc)) from None
-    params = body.params
     profile = state.profiles.get(params.profile_id)
     if profile is None:
         raise _error(404, "unknown_model", f"Unknown model profile {params.profile_id!r}.")
@@ -152,6 +182,66 @@ async def create_video(body: JobCreate, request: Request, account: Account = Dep
         raise _error(409, "model_disabled", f"{profile.name} is currently switched off. Ask /v1/route for an alternative.")
     if not switch.region_allows(profile, state.country(request)):
         raise _error(451, "region_restricted", f"{profile.name} is not licensed in your region.")
+    return profile
+
+
+def admit_job(
+    s: Session, state: GatewayState, account: Account, *, job_id: str, profile: ModelProfile, params: GenerationParams,
+    enclave: Enclave, enc: str, ciphertext: str, input_blob_ids: list[str], webhook_url: str | None, privacy: str, now: float,
+) -> Job:
+    """Charges for and records a job, inside the caller's transaction. Shared by private and standard jobs."""
+    if s.get(Job, job_id) is not None:
+        raise _error(409, "duplicate_job", "A job with this id already exists.")
+    if not account.is_validator:
+        active = s.scalar(
+            select(func.count())
+            .select_from(Job)
+            .where(Job.account_id == account.id, Job.status.in_([JobState.QUEUED.value, JobState.RUNNING.value]))
+        )
+        if active >= state.settings.max_active_jobs:
+            raise _error(429, "too_many_active_jobs", f"You already have {active} videos in progress. Wait for one to finish.")
+    if webhook_url:
+        webhooks.ensure_secret(s.get(Account, account.id))
+    price = profile.price_usd(params)
+    try:
+        ledger.post(
+            s, account.id, -ledger.to_micros(price), kind=ledger.CHARGE, source="job",
+            idempotency_key=f"charge:{job_id}", job_id=job_id, description=profile.name,
+        )
+    except ledger.InsufficientBalance as exc:
+        balance = ledger.to_usd(exc.balance_micros)
+        raise _error(402, "insufficient_balance", f"This video costs ${price:.2f}; your balance is ${balance:.2f}.") from None
+    job = Job(
+        id=job_id,
+        account_id=account.id,
+        profile_id=profile.id,
+        enclave_id=enclave.id,
+        params=params.model_dump_json(),
+        enc=enc,
+        ciphertext=ciphertext,
+        input_blob_ids=json.dumps(input_blob_ids),
+        status=JobState.QUEUED.value,
+        stage="queued",
+        progress=0.0,
+        price_usd=price,
+        webhook_url=webhook_url,
+        created_at=now,
+        updated_at=now,
+        privacy=privacy,
+    )
+    s.add(job)
+    return job
+
+
+@router.post("/videos", status_code=201, response_model=JobStatus)
+async def create_video(body: JobCreate, request: Request, account: Account = Depends(require_account)):
+    """A private job, sealed by the client. Needs an eligible account and a confidential-tier enclave."""
+    state = gw(request)
+    with state.session() as s:
+        moderation.enforce(s, state.settings, account, "private")
+    check_job_rate(state, account, "private")
+    params = body.params
+    profile = await validate_request(state, request, params, body.webhook_url)
     if len(body.input_blob_ids) != len(params.input_roles) or len(set(body.input_blob_ids)) != len(body.input_blob_ids):
         raise _error(422, "invalid_inputs", "Each input role needs exactly one distinct uploaded blob.")
     try:
@@ -166,48 +256,21 @@ async def create_video(body: JobCreate, request: Request, account: Account = Dep
         enclave = s.get(Enclave, body.enclave_id)
         if enclave is None or not state.is_fresh(enclave) or profile.id not in json.loads(enclave.profiles):
             raise _error(409, "enclave_unavailable", "That worker is not available for this model. Ask /v1/route again.")
+        if not standard_jobs.serves(enclave, "private"):
+            raise _error(
+                409, "enclave_unavailable",
+                "That worker is not a confidential worker, and private jobs run only on confidential workers. Ask /v1/route again.",
+            )
         for blob_id in body.input_blob_ids:
             blob = s.get(Blob, blob_id)
             if blob is None or blob.owner_kind != "account" or blob.owner_id != account.id or blob.job_id is not None:
                 raise _error(422, "invalid_inputs", f"Blob {blob_id} is unknown, not yours, or already used.")
             blob.job_id = body.job_id
-        if not account.is_validator:
-            active = s.scalar(
-                select(func.count())
-                .select_from(Job)
-                .where(Job.account_id == account.id, Job.status.in_([JobState.QUEUED.value, JobState.RUNNING.value]))
-            )
-            if active >= state.settings.max_active_jobs:
-                raise _error(429, "too_many_active_jobs", f"You already have {active} videos in progress. Wait for one to finish.")
-        if body.webhook_url:
-            webhooks.ensure_secret(s.get(Account, account.id))
-        price = profile.price_usd(params)
-        try:
-            ledger.post(
-                s, account.id, -ledger.to_micros(price), kind=ledger.CHARGE, source="job",
-                idempotency_key=f"charge:{body.job_id}", job_id=body.job_id, description=profile.name,
-            )
-        except ledger.InsufficientBalance as exc:
-            balance = ledger.to_usd(exc.balance_micros)
-            raise _error(402, "insufficient_balance", f"This video costs ${price:.2f}; your balance is ${balance:.2f}.") from None
-        job = Job(
-            id=body.job_id,
-            account_id=account.id,
-            profile_id=profile.id,
-            enclave_id=enclave.id,
-            params=params.model_dump_json(),
-            enc=body.enc,
-            ciphertext=body.ciphertext,
-            input_blob_ids=json.dumps(body.input_blob_ids),
-            status=JobState.QUEUED.value,
-            stage="queued",
-            progress=0.0,
-            price_usd=price,
-            webhook_url=body.webhook_url,
-            created_at=now,
-            updated_at=now,
+        job = admit_job(
+            s, state, account, job_id=body.job_id, profile=profile, params=params, enclave=enclave, enc=body.enc,
+            ciphertext=body.ciphertext, input_blob_ids=body.input_blob_ids, webhook_url=body.webhook_url,
+            privacy="private", now=now,
         )
-        s.add(job)
     return job_status(job)
 
 
@@ -246,6 +309,20 @@ async def get_account(request: Request, account: Account = Depends(require_accou
     with gw(request).session() as s:
         current = s.get(Account, account.id)
     return {"account_id": current.id, "name": current.name, "balance_usd": ledger.to_usd(current.balance_micros)}
+
+
+@router.get("/account/eligibility")
+async def get_eligibility(request: Request, account: Account = Depends(require_account)):
+    state = gw(request)
+    with state.session() as s:
+        return moderation.eligibility_json(s, state.settings, s.get(Account, account.id))
+
+
+@router.get("/me/eligibility")
+async def get_my_eligibility(request: Request, who: SignedIn = Depends(require_user)):
+    state = gw(request)
+    with state.session() as s:
+        return moderation.eligibility_json(s, state.settings, s.get(Account, _user_account_id(s, who)))
 
 
 @router.get("/account/webhook-secret")

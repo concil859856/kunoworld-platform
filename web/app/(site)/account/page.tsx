@@ -6,6 +6,8 @@ import { TopUp, type PaymentConfig } from "@/components/site/TopUp";
 import { TopUpNotice } from "@/components/site/TopUpNotice";
 import { WalletLinker, type WalletRow } from "@/components/site/WalletLinker";
 import { WebhookSecret } from "@/components/site/WebhookSecret";
+import { PrivateModeStatus } from "@/components/site/PrivateModeStatus";
+import type { Eligibility } from "@kunoworld/sdk";
 import styles from "@/components/site/Account.module.css";
 import { gateway, sessionToken } from "@/lib/gateway.server";
 
@@ -97,13 +99,14 @@ export default async function Account({ searchParams }: { searchParams: Promise<
   if (!token) redirect("/signin?next=/account");
   const { topup } = await searchParams;
 
-  const [me, keys, entries, config, payments, wallets] = await Promise.all([
+  const [me, keys, entries, config, payments, wallets, eligibility] = await Promise.all([
     gateway<Me>("/v1/me", { token }),
     gateway<KeyRow[]>("/v1/me/keys", { token }),
     gateway<Entry[]>("/v1/me/ledger?limit=50", { token }),
     gateway<PaymentConfig>("/v1/payments/config"),
     gateway<Payment[]>("/v1/me/topups?limit=50", { token }),
     gateway<WalletRow[]>("/v1/me/wallets", { token }),
+    gateway<Eligibility>("/v1/me/eligibility", { token }),
   ]);
   if (!me.ok) {
     if (me.error.status === 401) redirect("/signin?next=/account");
@@ -170,6 +173,13 @@ export default async function Account({ searchParams }: { searchParams: Promise<
               </button>
             </form>
           </div>
+        </section>
+
+        <section id="private-mode" className={styles.section} aria-labelledby="private-mode-title">
+          <h2 id="private-mode-title" className={styles.sectionTitle}>
+            Private mode
+          </h2>
+          <PrivateModeStatus eligibility={eligibility.ok ? eligibility.data : null} />
         </section>
 
         <section id="add-credit" className={styles.section} aria-labelledby="add-credit-title">

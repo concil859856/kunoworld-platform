@@ -56,6 +56,15 @@ or `KUNO_DEV_API_KEY`).
   already on another account, unlink), the webhook secret's reveal / copy / rotate, and
   no sideways scroll at 320 / 375 / 768 px.
 
+- **privacy-modes** — the per-take Private / Standard choice and that it persists, refused
+  private takes (not eligible, restricted until when) and a blocked standard upload (those
+  errors are stood in with `page.route`), the report page (links, prefill, validation), and no
+  sideways scroll at 320 / 375 / 768 px. Tests tagged `@needs-standard-gateway` need the
+  endpoints in `platform/gateway/STANDARD_MODE.md`: a report reaching the gateway, a standard
+  take that renders, plays, lists beside private takes and deletes, and the account page's
+  private-mode block for a new account before and after credit. Run the rest with
+  `--grep-invert @needs-standard-gateway` on a gateway that predates them.
+
 ## Notes
 
 - Input clips are VP8/WebM and audio is WAV so Chromium can decode them: the studio

@@ -292,3 +292,116 @@
   outline: 2px solid var(--c-amber);
   outline-offset: 2px;
 }
+
+/* A take's actions wrap on a phone rather than pushing the page sideways. */
+.studio-shell .result-actions {
+  flex-wrap: wrap;
+}
+
+/* Private or Standard, chosen per take in the composer. */
+.studio-shell .privacy-choice {
+  min-width: 0;
+  margin: 17px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.studio-shell .privacy-options {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+}
+
+.studio-shell .privacy-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #385157;
+  border-radius: 9px;
+  background: #0e2026;
+  cursor: pointer;
+}
+
+.studio-shell .privacy-option[data-checked="true"] {
+  border-color: #a6edda;
+  background: #173a3f;
+}
+
+.studio-shell .privacy-option:focus-within {
+  outline: 2px solid #a6edda;
+  outline-offset: 2px;
+}
+
+.studio-shell .privacy-option input {
+  flex: none;
+  margin-top: 3px;
+  accent-color: #a6edda;
+}
+
+.studio-shell .privacy-option > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.studio-shell .privacy-option strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e1e6d9;
+}
+
+.studio-shell .privacy-option small {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #a2aa98;
+  overflow-wrap: anywhere;
+}
+
+/* Which kind of take a card is. */
+.studio-shell .privacy-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 10px 0 0;
+  padding: 2px 9px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  color: #a6edda;
+}
+
+.studio-shell .privacy-badge[data-privacy="standard"] {
+  color: #f0d38a;
+}
+
+.studio-shell .take-poster {
+  display: block;
+  margin-bottom: 12px;
+  object-fit: cover;
+}
+
+.studio-shell .take-error {
+  flex-direction: column;
+  gap: 6px;
+}
+
+.studio-shell .take-error p,
+.studio-shell .take-error ul {
+  margin: 0;
+}
+
+.studio-shell .take-error ul {
+  padding-left: 18px;
+  list-style: disc;
+}
+
+.studio-shell .take-error a {
+  color: #a6edda;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

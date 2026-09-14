@@ -1,11 +1,15 @@
 /**
- * The studio library: one entry per take, persisted in this browser's localStorage.
- * Each entry holds the SDK JobHandle — including the output key, the only key that
- * opens the finished film. Nothing here is ever sent to the server; films are
- * re-downloaded as ciphertext and decrypted locally when opened.
+ * The studio library: one entry per take.
+ *
+ * Private takes are persisted in this browser's localStorage. Each holds the SDK JobHandle,
+ * including the output key, the only key that opens the finished film. Nothing about them is
+ * sent to the server; films are re-downloaded as ciphertext and decrypted locally when opened.
+ *
+ * Standard takes live on the gateway and are listed from there, so they are never persisted
+ * here and never go into a key backup.
  */
 
-import type { InputRole, JobHandle, Mode, Receipt } from "@kunoworld/sdk";
+import type { AnyJobHandle, InputRole, JobHandle, Mode, PrivacyMode, Receipt } from "@kunoworld/sdk";
 
 import type { FriendlyError } from "./errors";
 import type { ComposerTab, EditOp, ShotSettings } from "./shot";
@@ -17,6 +21,7 @@ export type Step =
   | "generating"
   | "sealing"
   | "decrypting"
+  | "downloading"
   | "ready"
   | "failed"
   | "canceled";
@@ -32,7 +37,11 @@ export interface InputSummary {
 export interface LibraryEntry {
   /** Job id once submitted; a local id before that. */
   id: string;
-  handle: JobHandle | null;
+  handle: AnyJobHandle | null;
+  /** Absent on entries saved before standard mode existed: those are private. */
+  privacy?: PrivacyMode;
+  /** Standard takes: when the gateway deletes the stored video (Unix seconds). */
+  expiresAt?: number | null;
   createdAt: number;
   prompt: string;
   tab: ComposerTab;
@@ -55,12 +64,19 @@ export interface LibraryEntry {
 const PREFIX = "kuno.library.v1:";
 const MAX_ENTRIES = 300;
 
+export function isStandard(entry: Pick<LibraryEntry, "privacy">): boolean {
+  return entry.privacy === "standard";
+}
+
+/** Only private takes with a handle belong in this browser's storage and backups. */
+const persistable = (e: LibraryEntry | null | undefined): e is LibraryEntry => Boolean(e && e.handle && !isStandard(e));
+
 export function loadLibrary(fingerprint: string): LibraryEntry[] {
   try {
     const raw = window.localStorage.getItem(PREFIX + fingerprint);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as LibraryEntry[];
-    return Array.isArray(parsed) ? parsed.filter((e) => e && typeof e.id === "string" && e.handle) : [];
+    return Array.isArray(parsed) ? parsed.filter((e) => persistable(e) && typeof e.id === "string") : [];
   } catch {
     return [];
   }
@@ -68,8 +84,8 @@ export function loadLibrary(fingerprint: string): LibraryEntry[] {
 
 export function saveLibrary(fingerprint: string, entries: LibraryEntry[]): boolean {
   try {
-    const persistable = entries.filter((e) => e.handle).slice(-MAX_ENTRIES);
-    window.localStorage.setItem(PREFIX + fingerprint, JSON.stringify(persistable));
+    const persistable_ = entries.filter(persistable).slice(-MAX_ENTRIES);
+    window.localStorage.setItem(PREFIX + fingerprint, JSON.stringify(persistable_));
     return true;
   } catch {
     return false;
@@ -104,13 +120,14 @@ const FALLBACK_SETTINGS: ShotSettings = {
 
 export function exportEntries(entries: LibraryEntry[]): string {
   // `error` is transient UI state; JSON.stringify drops the undefined.
-  const films = entries.filter((e) => e.handle).map((e) => ({ ...e, error: undefined }));
+  const films = entries.filter(persistable).map((e) => ({ ...e, error: undefined }));
   return JSON.stringify({ kind: BACKUP_KIND, version: BACKUP_VERSION, exportedAt: new Date().toISOString(), films }, null, 2);
 }
 
 function restorable(entry: unknown): entry is LibraryEntry {
   const e = entry as LibraryEntry | null;
-  const h = e?.handle;
+  if (e && isStandard(e)) return false;
+  const h = e?.handle as JobHandle | null | undefined;
   return Boolean(h && typeof h.jobId === "string" && typeof h.outputKey === "string" && typeof h.signingPublicKey === "string");
 }
 

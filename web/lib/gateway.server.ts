@@ -28,13 +28,14 @@ export async function sessionToken(): Promise<string | null> {
 
 export async function gateway<T>(
   path: string,
-  init: { method?: string; token?: string | null; body?: unknown } = {},
+  init: { method?: string; token?: string | null; body?: unknown; headers?: Record<string, string> } = {},
 ): Promise<GatewayResult<T>> {
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
       method: init.method ?? "GET",
       headers: {
+        ...init.headers,
         ...(init.token ? { authorization: `Bearer ${init.token}` } : {}),
         ...(init.body !== undefined ? { "content-type": "application/json" } : {}),
       },

@@ -4,8 +4,9 @@ Validators ask to open one denoising step of a job; the enclave that ran it answ
 opening sealed to the validator's key and signed by the enclave key. The gateway only routes
 and stores ciphertext, but it enforces the privacy rule every audit depends on:
 
-    Latents reveal content. An audit may only open a job created by the requesting
-    validator's own account (its canaries). Every other job is refused.
+    Latents reveal content. A private job may only be opened for the validator whose own
+    account created it (its canaries). A standard job is readable by the platform and the
+    GPU provider anyway (PRIVACY_MODES.md), so any registered validator may audit it.
 
 Miners cannot tell canaries from customer jobs, so every verified-mode job is committed and
 retained; only openings are restricted.
@@ -45,6 +46,8 @@ AUDIT_RETENTION_S = 3600.0
 # Sealed openings (and the audit rows) are kept this long for the validator to fetch.
 OPENING_TTL_S = 86400.0
 MAX_AUDITS_PER_JOB = 3
+# Standard jobs may be audited by every validator: each gets MAX_AUDITS_PER_JOB, and all of them together this many.
+MAX_STANDARD_AUDITS_PER_JOB = 12
 CLAIM_BATCH = 4
 
 OPEN_STATUSES = ("pending", "sent")
@@ -57,6 +60,11 @@ class AuditFailBody(BaseModel):
 
 def _error(status: int, code: str, message: str) -> HTTPException:
     return HTTPException(status, {"code": code, "message": message})
+
+
+def job_privacy(job: Job) -> str:
+    """"private" or "standard". Jobs from before privacy modes (no `privacy` column yet) are private."""
+    return getattr(job, "privacy", None) or "private"
 
 
 def _setting(request_or_state, name: str, default: float) -> float:
@@ -96,9 +104,10 @@ async def request_audit(body: AuditRequest, request: Request, validator: Account
     now = time.time()
     with state.session() as s, s.begin():
         job = s.get(Job, body.job_id)
-        # The privacy rule. Unknown and foreign jobs get the same answer, so it is not a job-id oracle either.
-        if job is None or job.account_id != validator.id:
-            raise _error(403, "not_audit_owner", "Audits can only open jobs created by this validator's own account.")
+        standard = job is not None and job_privacy(job) == "standard"
+        # The privacy rule. Unknown and foreign private jobs get the same answer, so it is not a job-id oracle either.
+        if job is None or (not standard and job.account_id != validator.id):
+            raise _error(403, "not_audit_owner", "Audits can only open standard jobs, or private jobs created by this validator's own account.")
         if job.status != JobState.SUCCEEDED.value or not job.receipt:
             raise _error(409, "not_auditable", "Only succeeded jobs with a receipt can be audited.")
         commitment = Receipt.model_validate_json(job.receipt).body.step_commitment
@@ -109,8 +118,12 @@ async def request_audit(body: AuditRequest, request: Request, validator: Account
         if now - (job.finished_at or 0.0) > _setting(state, "audit_retention_s", AUDIT_RETENTION_S):
             raise _error(410, "retention_expired", "The miner's retention window for this job has passed.")
         count = s.scalar(select(func.count()).select_from(Audit).where(Audit.job_id == job.id)) or 0
-        if count >= MAX_AUDITS_PER_JOB:
-            raise _error(429, "too_many_audits", f"A job can be audited at most {MAX_AUDITS_PER_JOB} times.")
+        mine = count if not standard else (
+            s.scalar(select(func.count()).select_from(Audit).where(Audit.job_id == job.id, Audit.requested_by == validator.id)) or 0
+        )
+        if mine >= MAX_AUDITS_PER_JOB or (standard and count >= MAX_STANDARD_AUDITS_PER_JOB):
+            limit = MAX_AUDITS_PER_JOB if mine >= MAX_AUDITS_PER_JOB else MAX_STANDARD_AUDITS_PER_JOB
+            raise _error(429, "too_many_audits", f"A job can be audited at most {limit} times.")
         audit = Audit(
             id=secrets.token_hex(16),
             job_id=job.id,

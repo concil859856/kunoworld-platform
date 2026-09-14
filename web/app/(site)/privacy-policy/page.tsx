@@ -23,11 +23,14 @@ export const metadata: Metadata = {
 
 const SECTIONS = [
   { id: "who", title: "Who is responsible", review: true },
+  { id: "modes", title: "Private and Standard modes" },
   { id: "collect", title: "What we collect" },
   { id: "not-collected", title: "What we do not collect" },
   { id: "use", title: "How we use it" },
+  { id: "moderation", title: "Content checks, strikes and reports" },
   { id: "legal-bases", title: "Legal bases", review: true },
   { id: "sharing", title: "Who receives your data" },
+  { id: "legal-requests", title: "Legal requests", review: true },
   { id: "retention", title: "How long we keep it" },
   { id: "security", title: "Security and its current limits" },
   { id: "rights", title: "Your rights and choices", review: true },
@@ -71,6 +74,10 @@ const PH = {
     note: "a period for each category where it appears: job records, account data, sign-in tokens and sessions, payment records.",
   },
   responsePeriod: { label: "[RESPONSE PERIOD]", note: "target time to respond to rights requests." },
+  legalRequests: {
+    label: "[LEGAL REQUEST POLICY]",
+    note: "how legal requests are verified and answered, whether affected users are notified, and any transparency reporting.",
+  },
   authority: { label: "[SUPERVISORY AUTHORITY]", note: "the data protection authority users can complain to." },
   transferSafeguards: {
     label: "[TRANSFER SAFEGUARDS]",
@@ -115,20 +122,23 @@ export default function PrivacyPolicy() {
       }
       intro="What KunoWorld collects when you generate video, who receives it, how long it is kept, and where the preview’s protections stop today."
       effectiveDate={<Ph k="effectiveDate" />}
-      drafted="13 September 2026"
+      drafted="14 September 2026"
       sections={SECTIONS}
       placeholders={Object.values(PH)}
       summary={
         <>
           <p>
-            Your prompts and reference media are encrypted on your device. The gateway stores that ciphertext for 7
-            days by default, and keeps job metadata and receipts after that. The website has no analytics, advertising
-            or third-party tracking scripts.
+            You choose a mode for every job. In Private mode (the default) your prompts and reference media are
+            encrypted on your device, nobody at KunoWorld can read them, and the gateway keeps that ciphertext for 7 days
+            by default. In Standard mode KunoWorld and the GPU operator can read your prompt, inputs and video, and
+            KunoWorld keeps them for 30 days by default. Job metadata and receipts are kept after that. The website has
+            no analytics, advertising or third-party tracking scripts.
           </p>
           <p>
             A video’s receipt is public to anyone with its hash, and receipts are shared with network validators. GPU
             operators decrypt content to render it, and hardware attestation is not implemented yet, so during the
-            preview they may be able to see it.
+            preview they may be able to see private content too. Blocked jobs count as strikes on your account. Reports
+            can lead to review of standard content, or of a private video only when the reporter supplies its key.
           </p>
         </>
       }
@@ -151,6 +161,43 @@ export default function PrivacyPolicy() {
           Confirm KunoWorld’s role (for example, controller or processor) for each category of data, and the roles of
           GPU operators and validators.
         </ReviewNote>
+      </Section>
+
+      <Section id="modes">
+        <p>Each job is Private or Standard, and the mode changes what we can see.</p>
+
+        <LegalSubheading id="modes-private">Private (the default)</LegalSubheading>
+        <ul>
+          <li>
+            <strong>Who can read the prompt, reference media and video:</strong> you, and the GPU enclave that renders
+            the job. KunoWorld receives only ciphertext and cannot decrypt it.
+          </li>
+          <li>
+            <strong>What KunoWorld sees:</strong> the job metadata described in <SectionRef id="collect" />, your account
+            and payment records, and whether a job was blocked by a content check.
+          </li>
+          <li>
+            <strong>Where it runs:</strong> only on GPU operators in the confidential tier. See{" "}
+            <SectionRef id="security" /> for the current limits of that protection.
+          </li>
+        </ul>
+
+        <LegalSubheading id="modes-standard">Standard</LegalSubheading>
+        <ul>
+          <li>
+            <strong>Who can read the prompt, reference media and video:</strong> you, KunoWorld, and the GPU operator that
+            renders the job, which may not use confidential-computing hardware.
+          </li>
+          <li>
+            <strong>What KunoWorld keeps:</strong> the prompt, negative prompt, seed, options, reference media, the video
+            and a preview image from it, in addition to everything kept for private jobs.
+          </li>
+          <li>
+            <strong>Who else may see it:</strong> authorized KunoWorld reviewers (see <SectionRef id="moderation" />),
+            and validators, who may receive the prompt, seed, settings and the hashes and file types of reference media
+            to check that GPU operators ran the job faithfully.
+          </li>
+        </ul>
       </Section>
 
       <Section id="collect">
@@ -179,12 +226,17 @@ export default function PrivacyPolicy() {
         <LegalSubheading id="collect-jobs">Generation jobs</LegalSubheading>
         <ul>
           <li>
-            <strong>Encrypted content.</strong> Your prompts and reference media are encrypted on your device (using
-            HPKE) before they are uploaded, and results come back encrypted. The gateway stores this ciphertext and
-            cannot read it.
+            <strong>Private jobs: encrypted content.</strong> Your prompts and reference media are encrypted on your
+            device (using HPKE) before they are uploaded, and results come back encrypted. The gateway stores this
+            ciphertext and cannot read it.
           </li>
           <li>
-            <strong>Job metadata</strong>, which is not encrypted: the model, generation mode, duration, resolution,
+            <strong>Standard jobs: readable content.</strong> Your prompt, negative prompt, seed, options and reference
+            media are received and stored readable, and so are the finished video and a preview image from it. Files are
+            scanned when you upload them.
+          </li>
+          <li>
+            <strong>Job metadata</strong>, in both modes, which is not encrypted: the job’s privacy mode, the model, generation mode, duration, resolution,
             aspect ratio, frame rate and the roles of your inputs; the price; the job’s status and timings; any error
             codes; the signed receipt; and the SHA-256 hash of the output file.
           </li>
@@ -201,6 +253,23 @@ export default function PrivacyPolicy() {
           Confirm whether receipts, or the job metadata made available to validators, include an account identifier or
           any other data that could link a video to a person.
         </ReviewNote>
+
+        <LegalSubheading id="collect-safety">Account safety and reports</LegalSubheading>
+        <ul>
+          <li>
+            <strong>Strikes</strong>: which of your jobs were blocked by a content check, or standard uploads refused by
+            the upload scan, and when, and any restriction on your account with when it ends. For a blocked job only the
+            fact that it was blocked is recorded, not its content; for a refused upload we keep its hash and details such
+            as its size and type, not the file.
+          </li>
+          <li>Whether your account is eligible for Private mode, and the reasons if it is not.</li>
+          <li>
+            <strong>Reports you send</strong>: which video (its digest, job ID or link), the reason and details you give,
+            an output key if you include one, your email address if you give it, and your IP address, which is used to
+            limit how many reports can be sent.
+          </li>
+          <li>A record of each review action KunoWorld staff take: who took it, when and why.</li>
+        </ul>
 
         <LegalSubheading id="collect-country">Your country</LegalSubheading>
         <p>
@@ -221,10 +290,15 @@ export default function PrivacyPolicy() {
             you signed in. Its lifetime: <Ph k="sessionLifetime" />.
           </li>
           <li>
-            <strong>Studio library.</strong> The studio saves each take in your browser’s local storage: the prompt, its
-            settings and the key that decrypts the film, so your library survives a reload. We do not receive this
-            library; your prompt reaches the gateway only in encrypted form when you submit a job. Anyone who can use
-            that browser profile can open those films. <strong>Forget all</strong> in the studio removes them.
+            <strong>Studio library.</strong> The studio saves each private take in your browser’s local storage: the
+            prompt, its settings and the key that decrypts the film, so your library survives a reload. We do not receive
+            this part of the library; a private prompt reaches the gateway only in encrypted form. Anyone who can use that
+            browser profile can open those films. <strong>Forget all</strong> in the studio removes them. Standard takes
+            are listed from your account on our servers instead.
+          </li>
+          <li>
+            <strong>Mode choice.</strong> The studio remembers whether you last chose Private or Standard in this
+            browser’s local storage.
           </li>
           <li>
             <strong>API key.</strong> The studio holds the API key you use in memory for the session.
@@ -243,9 +317,10 @@ export default function PrivacyPolicy() {
       <Section id="not-collected">
         <ul>
           <li>
-            <strong>Plaintext prompts, reference media or videos.</strong> The gateway receives and stores only encrypted
-            versions. They are decrypted by the GPU operator that processes your job; see{" "}
-            <SectionRef id="security" /> for the current limits of that protection.
+            <strong>Plaintext prompts, reference media or videos of private jobs.</strong> For private jobs the gateway
+            receives and stores only encrypted versions. They are decrypted by the GPU operator that processes your job;
+            see <SectionRef id="security" /> for the current limits of that protection. Standard jobs are different: we
+            receive and store their content readable (see <SectionRef id="modes" />).
           </li>
           <li>
             <strong>Card numbers.</strong> Card details are processed by Stripe, and we do not store them.
@@ -271,8 +346,17 @@ export default function PrivacyPolicy() {
             automatically refund jobs that fail, are canceled or time out, and keep financial records.
           </li>
           <li>
-            <strong>Encrypted content</strong>: to deliver your job to a GPU operator and return the encrypted result to
-            you.
+            <strong>Encrypted content</strong> of private jobs: to deliver your job to a GPU operator and return the
+            encrypted result to you.
+          </li>
+          <li>
+            <strong>Standard content</strong>: to seal the job to a GPU operator, return the video to you, keep it in your
+            library with a preview image, let validators check the operator’s work, and review it for safety and to
+            enforce our <a href="/terms">Terms of Service</a>.
+          </li>
+          <li>
+            <strong>Strike, eligibility and report records</strong>: to restrict accounts after repeated blocked jobs,
+            decide whether Private mode is available, and handle reports.
           </li>
           <li>
             <strong>Job metadata</strong>: to route, price and run jobs, report their status and errors, and operate the
@@ -294,6 +378,35 @@ export default function PrivacyPolicy() {
           State KunoWorld’s position on using customer content or metadata to train or improve models, and what GPU
           operators are permitted to do with content they process.
         </ReviewNote>
+      </Section>
+
+      <Section id="moderation">
+        <p>
+          Automated content checks run inside the GPU enclave in both modes, on the prompt and on the rendered frames.
+          When a check blocks a job, the job fails with a content-policy error and your account receives a strike. The
+          check reports only that it blocked the job, so nobody at KunoWorld sees the content of a blocked private job.
+          Files uploaded for standard jobs are scanned first; a refused upload is also a strike, and we keep only its
+          hash and details such as its size and type, not the file.
+        </p>
+        <p>
+          Repeated strikes restrict your account for a time (by default 1 hour after 3 strikes in 24 hours, 7 days after
+          5 in 7 days, and until review after 10 in 30 days) and can make Private mode unavailable. Your account page
+          shows your strike counts and any restriction.
+        </p>
+        <p>When a video is reported, or stored standard videos are sampled for review, authorized KunoWorld staff can view:</p>
+        <ul>
+          <li>
+            <strong>Standard content</strong>: the video, its prompt and its settings, while we still keep them.
+          </li>
+          <li>
+            <strong>Private content</strong>: nothing, unless a reporter includes that video’s output key. The key opens
+            only that one video, and only while its encrypted copy is still kept.
+          </li>
+        </ul>
+        <p>
+          Review actions (dismissing a report, removing content, restricting or closing an account) are logged with who
+          took them, when and why.
+        </p>
       </Section>
 
       <Section id="legal-bases">
@@ -338,13 +451,20 @@ export default function PrivacyPolicy() {
             address. Other hosting and infrastructure providers: <Ph k="hosting" />.
           </li>
           <li>
-            <strong>GPU operators (“miners”)</strong> receive your encrypted prompts and reference media, together with
-            the job parameters. The worker decrypts the content to generate your video and returns the result encrypted.
-            Operators are independent third parties on a Bittensor subnet.
+            <strong>GPU operators (“miners”)</strong> receive your prompts and reference media sealed to their worker,
+            together with the job parameters. The worker decrypts the content to generate your video and returns the
+            result encrypted. Private jobs go only to operators in the confidential tier, sealed on your device. Standard
+            jobs can go to any operator, including ones without confidential-computing hardware, and are sealed by
+            KunoWorld. Operators are independent third parties on a Bittensor subnet.
           </li>
           <li>
             <strong>Validators</strong> on the network receive metadata about finished jobs and their receipts, which
-            they use to score GPU operators.
+            they use to score GPU operators. For standard jobs they may also receive the prompt, seed, settings and the
+            hashes and file types of reference media, to check the operators’ work.
+          </li>
+          <li>
+            <strong>KunoWorld reviewers</strong>: authorized staff who handle reports and review standard content (see{" "}
+            <SectionRef id="moderation" />).
           </li>
           <li>
             <strong>The public.</strong> Anyone who has a video file or its hash can look up its receipt: the model,
@@ -352,7 +472,7 @@ export default function PrivacyPolicy() {
           </li>
           <li>
             <strong>Authorities and others</strong>, where the law requires it or where it is needed to protect rights,
-            safety or the Service.
+            safety or the Service. See <SectionRef id="legal-requests" />.
           </li>
         </ul>
         <ReviewNote>
@@ -361,10 +481,52 @@ export default function PrivacyPolicy() {
         </ReviewNote>
       </Section>
 
+      <Section id="legal-requests">
+        <p>
+          When we receive a legal request for information about an account, what we are able to produce depends on the
+          mode of its jobs and on what we still hold.
+        </p>
+        <LegalSubheading id="legal-requests-all">For every account</LegalSubheading>
+        <p>
+          Account and sign-in records, payment and ledger records, job metadata and receipts, strike and restriction
+          records, and reports, for as long as we keep them (see <SectionRef id="retention" />).
+        </p>
+        <LegalSubheading id="legal-requests-standard">Standard jobs</LegalSubheading>
+        <p>
+          In addition, the prompt, reference media and video, while we still keep them: 30 days by default, or less if
+          you deleted the video.
+        </p>
+        <LegalSubheading id="legal-requests-private">Private jobs</LegalSubheading>
+        <p>
+          We cannot produce the prompt, reference media or video of a private job, because we do not hold the keys. We
+          can produce its encrypted copy while it is kept (7 days by default), which cannot be read without your key. The
+          only exception is a private video whose key was given to us in a report: we can view that one video while its
+          encrypted copy is kept.
+        </p>
+        <p>
+          How we assess and respond to requests, and whether we notify affected users: <Ph k="legalRequests" />.
+        </p>
+        <ReviewNote>
+          Confirm the obligations that apply in each jurisdiction where KunoWorld operates, including preservation
+          requests and any duty to report unlawful content found during review.
+        </ReviewNote>
+      </Section>
+
       <Section id="retention">
         <ul>
           <li>
-            <strong>Encrypted uploads and results</strong>: kept for 7 days by default, then deleted.
+            <strong>Private jobs’ encrypted uploads and results</strong>: kept for 7 days by default, then deleted.
+          </li>
+          <li>
+            <strong>Standard jobs’ prompts, reference media, videos and preview images</strong>: kept for 30 days by
+            default, then deleted, or sooner if you delete the video. Standard uploads that are never used in a job are
+            deleted after 24 hours. The record of the charge stays.
+          </li>
+          <li>
+            <strong>Strike and restriction records</strong>: <Ph k="retention" />.
+          </li>
+          <li>
+            <strong>Reports and review records</strong>: <Ph k="retention" />.
           </li>
           <li>
             <strong>Job records</strong> (the metadata and receipt described above): kept after the encrypted content is
@@ -396,7 +558,10 @@ export default function PrivacyPolicy() {
       <Section id="security">
         <p>Protections in the Service include:</p>
         <ul>
-          <li>encrypting prompts and reference media on your device before upload, so the gateway stores only ciphertext;</li>
+          <li>
+            in Private mode, encrypting prompts and reference media on your device before upload, so the gateway stores
+            only ciphertext;
+          </li>
           <li>storing API keys and sign-in tokens only as hashes;</li>
           <li>an HttpOnly session cookie, which scripts on the page cannot read; and</li>
           <li>signed receipts that let you check a result against the file you received.</li>
@@ -410,6 +575,10 @@ export default function PrivacyPolicy() {
             and NVIDIA confidential-computing enclaves so that GPU operators cannot read your content. Verification of
             that hardware has not been implemented, so this protection is not in place: the operator processing your job
             may be able to access your prompt, reference media and output.
+          </li>
+          <li>
+            <strong>Standard mode is not end-to-end encrypted.</strong> KunoWorld and the GPU operator can read standard
+            content. Choose Private mode for anything you don’t want them to see.
           </li>
           <li>
             <strong>Metadata is visible.</strong> Encryption does not hide job parameters, the sizes of encrypted data or
@@ -441,12 +610,13 @@ export default function PrivacyPolicy() {
           verify your identity. We aim to respond within <Ph k="responsePeriod" />.
         </p>
         <p>
-          Some limits apply. We cannot decrypt your encrypted content, so we cannot provide it in readable form. We
+          Some limits apply. We cannot decrypt the content of private jobs, so we cannot provide it in readable form; the
+          content of standard jobs that we still hold can be provided or deleted. We
           cannot delete blockchain records, or recall receipts and metadata that have already been looked up or supplied
           to validators. We may need to keep some records to meet legal obligations.
         </p>
         <p>
-          You can also act directly: revoke API keys, use Forget all in the studio, or clear this site’s cookies and
+          You can also act directly: revoke API keys, delete standard videos in the studio, use Forget all in the studio, or clear this site’s cookies and
           storage in your browser.
         </p>
       </Section>
@@ -454,8 +624,8 @@ export default function PrivacyPolicy() {
       <Section id="transfers">
         <p>
           GPU operators and validators take part in a decentralized network and may be located in any country. Our
-          service providers process data in <Ph k="hosting" />. Your data, including encrypted content and job
-          metadata, may therefore be transferred to and processed in countries other than your own, which may have
+          service providers process data in <Ph k="hosting" />. Your data, including encrypted content, standard-mode
+          content and job metadata, may therefore be transferred to and processed in countries other than your own, which may have
           different data protection laws.
         </p>
         <p>

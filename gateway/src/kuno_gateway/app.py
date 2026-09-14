@@ -15,12 +15,17 @@ from . import (
     api_audits,
     api_auth,
     api_ca,
-    api_turbo,
     api_miner,
+    api_moderation,
     api_payments,
     api_public,
+    api_reports,
+    api_standard,
+    api_turbo,
     api_validator,
+    api_validator_standard,
     observability,
+    standard_jobs,
     webhooks,
 )
 from .ca import IssuingCA
@@ -29,6 +34,7 @@ from .nowpayments import NowPayments
 from .settings import Settings
 from .state import GatewayState
 from .stripe_payments import StripeTopups
+from .upload_scan import build_scanner
 
 log = logging.getLogger("kuno.gateway")
 
@@ -49,6 +55,16 @@ async def _webhook_loop(state: GatewayState) -> None:
         except Exception:  # keep delivering; surface the error in logs
             log.exception("webhook delivery pass failed")
         await asyncio.sleep(state.settings.webhook_interval_s)
+
+
+async def _standard_retention_loop(state: GatewayState) -> None:
+    """Deletes standard content past KUNO_STANDARD_RETENTION_DAYS and uploads nobody used."""
+    while True:
+        try:
+            await asyncio.to_thread(standard_jobs.expire, state)
+        except Exception:  # keep the loop alive; surface the error in logs
+            log.exception("standard retention pass failed")
+        await asyncio.sleep(max(state.settings.janitor_interval_s, 60.0))
 
 
 async def _chain_loop(state: GatewayState) -> None:
@@ -74,7 +90,7 @@ async def _chain_loop(state: GatewayState) -> None:
 
 def _body_limit(settings: Settings, path: str) -> int:
     # Ciphertext blobs are the only large bodies the gateway accepts.
-    if path in ("/v1/blobs", "/miner/v1/blobs"):
+    if path in ("/v1/blobs", "/miner/v1/blobs", "/v1/standard/uploads", "/v1/me/standard/uploads"):
         return settings.max_blob_bytes
     # Step-audit openings carry encrypted latents: tens of MB for H3.
     if path.startswith("/miner/v1/audits/") and path.endswith("/opening"):
@@ -88,7 +104,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        tasks = [asyncio.create_task(_janitor_loop(state)), asyncio.create_task(_webhook_loop(state))]
+        tasks = [
+            asyncio.create_task(_janitor_loop(state)),
+            asyncio.create_task(_webhook_loop(state)),
+            asyncio.create_task(_standard_retention_loop(state)),
+        ]
         if settings.tao_treasury_address:
             tasks.append(asyncio.create_task(_chain_loop(state)))
         try:
@@ -101,6 +121,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.gw = state
     app.state.stripe_topups = StripeTopups(settings)
     app.state.nowpayments = NowPayments(settings)
+    app.state.upload_scanner = build_scanner(settings)
     # A misconfigured CA stops start-up; an unconfigured one just answers 503.
     app.state.c2pa_ca = IssuingCA.from_settings(settings)
     if app.state.c2pa_ca is not None and not settings.c2pa_tsa_url and state.policy.production:
@@ -112,7 +133,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(BodyLimitMiddleware, limit_for=lambda path: _body_limit(settings, path))
-    for module in (api_public, api_auth, api_payments, api_miner, api_ca, api_validator, api_admin, api_turbo, api_audits):
+    for module in (
+        api_public, api_auth, api_payments, api_miner, api_ca, api_validator, api_admin, api_turbo, api_audits,
+        api_standard, api_reports, api_moderation, api_validator_standard,
+    ):
         app.include_router(module.router)
 
     @app.get("/healthz")

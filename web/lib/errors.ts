@@ -1,8 +1,9 @@
 /** Maps KunoError codes (and a few browser failures) to plain-language copy. */
 
-import { KunoError } from "@kunoworld/sdk";
+import { KunoError, type PrivacyMode } from "@kunoworld/sdk";
 
 import { API_BASE, RELAY_RETENTION_DAYS } from "./config";
+import { STANDARD_RETENTION_DAYS, isIndefiniteRestriction, restrictionUntil } from "./privacy-copy";
 
 /** submit: before the job exists (nothing charged). render: after submission (failures are refunded). open: fetching a finished film. */
 export type Phase = "submit" | "render" | "open" | "lookup";
@@ -13,6 +14,12 @@ export interface FriendlyError {
   detail: string;
   /** What happened to the money, when that's knowable. */
   charge: "none" | "refunded" | "kept" | null;
+  /** private_mode_not_eligible: why, as the gateway gave it. */
+  reasons?: string[];
+  /** account_restricted: Unix seconds, or null when it lasts until a review. */
+  restrictedUntil?: number | null;
+  /** Where to go to fix it. */
+  link?: { href: string; label: string };
 }
 
 interface Copy {
@@ -44,6 +51,42 @@ const COPY: Record<string, Copy | ((phase: Phase) => Copy)> = {
     detail: "It's already linked to a different KunoWorld account. Unlink it there first.",
   },
   signed_out: { title: "You've been signed out", detail: "Sign in again to continue." },
+  private_mode_not_eligible: {
+    title: "Private mode isn't available on this account yet",
+    detail:
+      "Nothing was sent or charged. Add credit to unlock Private mode, or make this take in Standard mode, where KunoWorld and the GPU provider can see it.",
+  },
+  account_restricted: {
+    title: "Your account is paused",
+    detail:
+      "Too many recent takes were blocked by the content policy, so no new videos can be made in either mode for now. Nothing was sent or charged.",
+  },
+  upload_blocked: {
+    title: "This file can't be used",
+    detail: "One of your inputs can't be used on KunoWorld. Nothing was charged.",
+  },
+  not_ready: { title: "This video isn't ready yet", detail: "Try again once the take has finished." },
+  scan_unavailable: {
+    title: "Uploads can't be checked right now",
+    detail: "Standard uploads are scanned before use, and the scanner isn't answering. Nothing was charged; try again in a minute.",
+  },
+  bad_output: {
+    title: "The video didn't match its receipt",
+    detail: "The stage returned a video that didn't match its signed receipt, so the take failed and was refunded.",
+  },
+  standard_unavailable: {
+    title: "Standard mode isn't available here",
+    detail: "This gateway isn't set up to store standard takes. Nothing was charged; make this take in Private mode.",
+  },
+  invalid_output_key: {
+    title: "That output key isn't valid",
+    detail: "An output key is 43 characters of letters, numbers, - and _. Copy it exactly, or leave it out.",
+  },
+  deleted: { title: "This video was deleted", detail: "It was deleted from your KunoWorld library." },
+  removed: {
+    title: "This video was removed",
+    detail: "KunoWorld removed it after a review under the content policy.",
+  },
   rate_limited: {
     title: "Too many takes at once",
     detail: "You've started a lot of videos in the last minute. Wait a moment and try again; nothing was charged.",
@@ -132,7 +175,30 @@ function splitJobError(message: string): { code: string | null; message: string 
   return match ? { code: match[1], message: match[2] } : { code: null, message };
 }
 
-export function friendlyError(err: unknown, phase: Phase): FriendlyError {
+/** Copy that depends on who could read the take. */
+function privacyCopy(code: string, privacy: PrivacyMode): Copy | null {
+  if (code === "expired" && privacy === "standard") {
+    return {
+      title: "This video has expired",
+      detail: `KunoWorld keeps standard videos for ${STANDARD_RETENTION_DAYS} days, then deletes them. Download videos you want to keep.`,
+    };
+  }
+  if (code === "safety_blocked") {
+    return privacy === "standard"
+      ? {
+          title: "Blocked by the content policy",
+          detail: "The content check stopped this request before rendering. Blocked takes count as strikes on your account.",
+        }
+      : {
+          title: "Blocked by the content policy",
+          detail:
+            "The content check inside the sealed stage stopped this request before rendering. It runs inside the stage, so no person read your prompt. Blocked takes count as strikes on your account.",
+        };
+  }
+  return null;
+}
+
+export function friendlyError(err: unknown, phase: Phase, privacy: PrivacyMode = "private"): FriendlyError {
   let code = "error";
   let message = err instanceof Error ? err.message : String(err);
   if (err instanceof KunoError) {
@@ -149,12 +215,26 @@ export function friendlyError(err: unknown, phase: Phase): FriendlyError {
     code = "network";
   }
   const entry = COPY[code];
-  const copy = typeof entry === "function" ? entry(phase) : entry;
+  const copy = privacyCopy(code, privacy) ?? (typeof entry === "function" ? entry(phase) : entry);
   const title = copy?.title ?? "Something went wrong";
-  const detail = copy?.detail || message || "";
   const charge: FriendlyError["charge"] =
     phase === "submit" ? "none" : phase === "render" ? "refunded" : phase === "open" ? "kept" : null;
-  return { code, title, detail: copy?.detail ? detail : message, charge };
+  const friendly: FriendlyError = { code, title, detail: copy?.detail || message || "", charge };
+
+  if (err instanceof KunoError && code === "private_mode_not_eligible") {
+    friendly.reasons = err.reasons;
+    friendly.link = { href: "/account#add-credit", label: "Add credit" };
+  }
+  if (err instanceof KunoError && code === "account_restricted") {
+    friendly.restrictedUntil = err.restrictedUntil;
+    const until = err.restrictedUntil;
+    friendly.detail +=
+      until === null || isIndefiniteRestriction(until)
+        ? " It stays paused until an operator reviews the account."
+        : ` You can make videos again after ${restrictionUntil(until).replace(/^until /, "")}.`;
+    friendly.link = { href: "/account#private-mode", label: "See your account" };
+  }
+  return friendly;
 }
 
 /** One line for a failed request on the account page, from a route handler's { code, message } body. */
