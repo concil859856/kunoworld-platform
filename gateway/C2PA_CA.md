@@ -30,8 +30,9 @@ For a dev data directory created before this feature, generate the two files the
 | `KUNO_C2PA_CA_KEY` | unset | the intermediate's private key: PEM, unencrypted PKCS#8, `chmod 600` |
 | `KUNO_C2PA_CA_CHAIN` | unset | PEM: the intermediate certificate, then the root |
 | `KUNO_C2PA_CERT_VALIDITY_S` | `86400` | leaf lifetime; must be between `enclave_ttl_s` (1800) and 604800 |
-| `KUNO_C2PA_TSA_URL` | unset | RFC 3161 timestamp authority handed to workers; **required in production** while the CA is on |
-| `KUNO_C2PA_TSA_PROBE` | `off` | `warn` or `require`: send the TSA one timestamp request at start-up |
+| `KUNO_C2PA_TSA_URLS` | unset | RFC 3161 timestamp authorities handed to workers, in order of preference, separated by commas or spaces; workers fail over down the list. **At least one is required in production** while the CA is on |
+| `KUNO_C2PA_TSA_URL` | unset | the one-TSA form. When `KUNO_C2PA_TSA_URLS` is also set, the list wins and must include this URL, or the gateway refuses to start |
+| `KUNO_C2PA_TSA_PROBE` | `off` | `warn` or `require`: send each TSA one timestamp request at start-up |
 | `KUNO_C2PA_ISSUANCE_PER_ENCLAVE` | `12` | certificates one enclave may be issued per window; `0` turns the limit off |
 | `KUNO_C2PA_ISSUANCE_GLOBAL` | `1000` | certificates all enclaves together may be issued per window; `0` turns it off |
 | `KUNO_C2PA_ISSUANCE_WINDOW_S` | `3600` | the window both limits count over |
@@ -42,9 +43,9 @@ How the gateway reacts to these settings:
   - Real-TEE workers with `KUNO_PROVENANCE=c2pa` then refuse to take jobs.
   - Mock-TEE workers fall back to untrusted dev certificates.
 - **Misconfigured** (only one of the two set, a key that doesn't match the intermediate, a chain that isn't exactly intermediate + root, an intermediate not signed by that root, validity out of range, unreadable files): the gateway refuses to start.
-- **Production without a TSA** (`KUNO_ENV=production` or `KUNO_ATTESTATION=production`, the CA on, `KUNO_C2PA_TSA_URL` unset): the gateway refuses to start. Without a trusted timestamp, readers reject each manifest once its certificate expires, so a video made today would stop validating tomorrow. Real-TEE workers also refuse a certificate that comes without a TSA.
+- **Production without a TSA** (`KUNO_ENV=production` or `KUNO_ATTESTATION=production`, the CA on, neither `KUNO_C2PA_TSA_URLS` nor `KUNO_C2PA_TSA_URL` set): the gateway refuses to start. Without a trusted timestamp, readers reject each manifest once its certificate expires, so a video made today would stop validating tomorrow. Real-TEE workers also refuse a certificate that comes without a TSA.
 - **Dev without a TSA:** the gateway starts. Test manifests stop validating when their certificates expire.
-- **Start-up probe:** off by default, so a TSA outage never stops a gateway from restarting. `warn` logs a failed probe; `require` refuses to start on one.
+- **Start-up probe:** off by default, so a TSA outage never stops a gateway from restarting. `warn` logs each failed probe; `require` refuses to start when no TSA passes, and logs a failing fallback as an error.
 
 ## Timestamps
 
@@ -71,7 +72,7 @@ Probed on 2026-09-14 with `kuno-gateway check-tsa --trust-list C2PA-TSA-TRUST-LI
 Roots and TSA intermediates on the list come from Google, DigiCert (C2PA-specific TSA intermediates), SSL.com, Snowball, Encypher, TrustAsia, Trufo, Irdeto, vivo, Tauth, Huawei, Huanyu Trust and Castlabs. Sectigo, GlobalSign, Entrust, Microsoft and FreeTSA are not on it.
 
 Recommended:
-- **Production:** `KUNO_C2PA_TSA_URL=http://ts-c2pa.ssl.com/ecc`. ECDSA keeps tokens small; `/rsa` is the fallback on the same list. SSL.com's free tier is 10,000 timestamps a year [SSLCOM-TSA]. Workers timestamp every signed video, so budget for a paid plan at launch volume; how the quota is counted (per account or per source IP) is not confirmed.
+- **Production:** `KUNO_C2PA_TSA_URLS=http://ts-c2pa.ssl.com/ecc,http://ts-c2pa.ssl.com/rsa`. ECDSA first keeps tokens small; `/rsa`, on the same list, is the fallback. Both are SSL.com endpoints, so add a second provider's listed endpoint when one is confirmed. SSL.com's free tier is 10,000 timestamps a year [SSLCOM-TSA]. Workers timestamp every signed video, so budget for a paid plan at launch volume; how the quota is counted (per account or per source IP) is not confirmed.
 - **Second source:** DigiCert has C2PA TSA intermediates on the list, but its C2PA timestamping endpoint URL was not found. Ask DigiCert before relying on it.
 - **Don't** use the familiar code-signing TSAs (`timestamp.digicert.com`, Sectigo, GlobalSign, Entrust, FreeTSA) for C2PA: their timestamps validate as `untrusted`.
 - **Re-check** after every trust-list update, since membership changes: `kuno-gateway check-tsa --trust-list <C2PA-TSA-TRUST-LIST.pem>`.
@@ -81,21 +82,22 @@ Recommended:
 ### Checking a TSA
 
 ```sh
-kuno-gateway check-tsa                                   # KUNO_C2PA_TSA_URL
+kuno-gateway check-tsa                                   # every TSA in KUNO_C2PA_TSA_URLS, in order
 kuno-gateway check-tsa --url http://ts-c2pa.ssl.com/ecc --trust-list C2PA-TSA-TRUST-LIST.pem
 ```
 
 The probe (`tsa.py`):
 1. Sends a minimal DER `TimeStampReq` (RFC 3161 §2.4.1) [RFC3161]: version 1, a SHA-256 imprint of a random value with the AlgorithmIdentifier parameters omitted (RFC 5754 §2) [RFC5754], a nonce and `certReq` TRUE. It is sent as `application/timestamp-query` (§3.4).
-2. Checks the `PKIStatus` is granted (0) or grantedWithMods (1), and that the token's TSTInfo echoes the imprint and nonce.
-3. Reports genTime skew, the TSA certificate (warning when none carries `id-kp-timeStamping`), where its chain ends and, with `--trust-list`, whether it reaches an anchor.
+2. Checks the `PKIStatus` is granted (0) or grantedWithMods (1), and that the token's TSTInfo carries the imprint and nonce that were sent.
+3. Verifies the token's CMS signature (RFC 5652) with the certificate it carries: the signed `messageDigest` is the TSTInfo's digest, the signed `contentType` is id-ct-TSTInfo, the signature verifies over the signed attributes (RSA PKCS#1 v1.5 or PSS, ECDSA, Ed25519), and an ESS signing-certificate attribute (RFC 5816) names the signer. A token without a certificate, or with an algorithm it doesn't know, is a warning ("signature not checked"). `cryptography` can't verify PKCS#7 and asn1crypto isn't a dependency, so `tsa.py` reads the SignerInfo with its own DER reader and `cryptography` checks the digest and signature.
+4. Reports genTime skew, the TSA certificate (warning when none carries `id-kp-timeStamping`), where its chain ends and, with `--trust-list`, whether it reaches an anchor.
 
-It exits 0 when the TSA passes, 1 when it fails, and 2 when no URL is configured. It does not verify the token's CMS signature: that, and trust, are the reader's job.
+It exits 0 when every TSA probed passes, 1 when any fails, and 2 when none is configured. Certificate validity periods and revocation are still the reader's job.
 
 ## Endpoints
 
 - **`POST /miner/v1/certificate`** (enclave-signed, body `{csr_pem}`).
-  - Returns `{certificate_chain_pem, serial, not_before, not_after, tsa_url}`.
+  - Returns `{certificate_chain_pem, serial, not_before, not_after, tsa_url, tsa_urls}`. `tsa_urls` lists every TSA in order of preference; `tsa_url` is its first, for workers that read a single URL.
   - Issues only to an `active`, freshly attested enclave, for its attested key and enclave id, within the issuance limits.
   - Errors: 403 `enclave_not_attested`, 422 `invalid_csr` or `key_mismatch`, 429 `rate_limited` (with `Retry-After`), 503 `ca_unavailable`.
 - **`GET /v1/c2pa/trust`** (public).
@@ -138,14 +140,15 @@ Refused requests are neither logged nor counted. A refused worker gets 429 with 
 
   There is no CRL or OCSP yet, so the old intermediate can only be distrusted by rotating the root.
 - **Root compromise.** Create a new hierarchy and publish the new fingerprint. Verifiers must replace their anchor.
-- **TSA outage or delisting.** Workers keep signing only while a TSA answers. Switch `KUNO_C2PA_TSA_URL` to the other listed endpoint and restart the gateway. Workers pick up the new URL with their next certificate.
+- **TSA outage or delisting.** Workers try the TSAs in order, each within a short timeout (10 seconds plus time to hash the video), and try one that just failed last for the next two minutes. An outage of one listed TSA therefore doesn't stop signing. If every TSA fails, the job fails (`internal_error`) rather than ship a video whose manifest would stop validating. To drop a delisted TSA, change `KUNO_C2PA_TSA_URLS` and restart the gateway; workers pick up the new list with their next certificate.
 
 ## Known gaps
 
 - **CA key custody.** The CA key lives in a file. The C2PA Certificate Policy requires HSM custody (FIPS 140-2 Level 2+) for listed CAs.
 - **One root.** `GET /v1/c2pa/trust` serves a single root, so there is no overlap window during a root rotation.
-- **One TSA URL.** The gateway hands out a single URL, with no automatic failover to a second TSA.
-- **Probe depth.** `check-tsa` proves liveness, protocol and chain placement, not the token's signature.
+- **One TSA provider.** Failover needs a second listed endpoint, and the recommended pair are both SSL.com's.
+- **Probe depth.** `check-tsa` verifies liveness, protocol, the token's signature and chain placement, but not certificate validity periods or revocation.
+- **Timeouts.** The C2PA SDK sends the timestamp request itself and has no timeout setting, so a worker gives up waiting on a TSA but can't cancel the request: it runs on until the SDK gives up.
 
 ## Sources
 

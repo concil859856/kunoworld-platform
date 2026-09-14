@@ -20,10 +20,11 @@ from kuno_protocol.crypto import DecryptionError
 from kuno_protocol.media import ROLE_TYPES, sniff_mime
 from kuno_protocol.profiles import InputRole
 from kuno_protocol.schemas import JOB_ID_RE, GenerationParams, JobState, JobStatus
+from kuno_protocol.sealed_payload import PayloadTooLarge
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 
-from . import holds, identity, moderation, standard_jobs
+from . import byte_ranges, holds, identity, moderation, standard_jobs
 from .api_public import admit_job, check_job_rate, validate_request
 from .auth import SignedIn, gw, require_account, require_user
 from .db import NEVER_EXPIRES, Account, Blob, Enclave, Job
@@ -229,13 +230,21 @@ async def _create(body: StandardJobCreate, request: Request, account: Account) -
             ):
                 raise _error(422, "invalid_inputs", f"Upload {ref.upload_id} is unknown, not yours, expired, already used, or for another role.")
             uploads.append(up)
-        from .admission import family_profile_ids, order_for_account
+        from kuno_protocol.envelope import EnvelopeQuery
 
+        from .admission import family_profile_ids, order_for_account
+        from .envelopes import no_fit_error
+
+        # Only workers whose serving envelope fits these params (envelopes.py): a consumer card never gets a job it would
+        # have to refuse.
+        fit = EnvelopeQuery.of(params)
+        routable = standard_jobs.enclaves_for(state, s, profile.id, STANDARD, fit=fit)
+        if not routable and (available := standard_jobs.enclaves_for(state, s, profile.id, STANDARD)):
+            raise no_fit_error(profile, fit, available)
         # Open-tier miners get customer jobs only after passing validator probes, and validators' jobs reach
         # confidential miners that haven't served this family lately (admission.py).
         candidates = order_for_account(
-            s, state.settings, standard_jobs.enclaves_for(state, s, profile.id, STANDARD), account,
-            profile_ids=family_profile_ids(state.profiles, profile),
+            s, state.settings, routable, account, profile_ids=family_profile_ids(state.profiles, profile),
         )
     if not candidates:
         raise _error(503, "no_capacity", f"No workers are serving {profile.name} right now. Try again shortly.")
@@ -256,6 +265,8 @@ async def _create(body: StandardJobCreate, request: Request, account: Account) -
         sealed = await asyncio.to_thread(seal)
     except (KeyError, DecryptionError):
         raise _error(422, "invalid_inputs", "An upload is no longer available. Upload it again.") from None
+    except PayloadTooLarge:
+        raise _error(422, "request_too_large", "The prompt, options and inputs are too large to seal into one request.") from None
     try:
         with state.session() as s, s.begin():
             current = s.get(Enclave, enclave.id)
@@ -364,16 +375,20 @@ def _available(job: Job, row: StandardJob) -> None:
 
 
 async def _video(request: Request, account: Account, job_id: str) -> Response:
+    """The stored video. Answers byte ranges (byte_ranges.py), decrypting only the chunks a range covers."""
     state = gw(request)
     _vault(state)
     with state.session() as s:
         job, row = _owned(s, account, job_id)
     _available(job, row)
     try:
-        data = await asyncio.to_thread(standard_jobs.load_video, state, row)
+        body = await asyncio.to_thread(byte_ranges.standard_video, state, row)
     except KeyError:
         raise _error(410, "expired", "This video is no longer stored.") from None
-    return Response(content=data, media_type="video/mp4", headers={"content-disposition": f'inline; filename="{job_id}.mp4"'})
+    return byte_ranges.serve(
+        request, body, media_type="video/mp4", headers={"content-disposition": f'inline; filename="{job_id}.mp4"'},
+        etag=byte_ranges.strong_etag(row.video_sha256),
+    )
 
 
 @router.get("/standard/videos/{job_id}/video")

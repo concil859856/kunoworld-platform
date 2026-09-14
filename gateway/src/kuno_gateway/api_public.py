@@ -82,10 +82,21 @@ async def optional_account(request: Request) -> Account | None:
 
 @router.get("/route", response_model=RouteResponse)
 async def route(
-    request: Request, mode: Mode, profile_id: str | None = None, family: str | None = None, privacy: PrivacyMode = "private"
+    request: Request, mode: Mode, profile_id: str | None = None, family: str | None = None, privacy: PrivacyMode = "private",
+    resolution: str | None = None, aspect_ratio: str | None = None, fps: int | None = None, duration_s: float | None = None,
 ):
     """Candidate enclaves whose tier may run a job in `privacy` mode. With a credential, the account's standing is
-    checked too (an anonymous route can't be, and job creation checks it again either way)."""
+    checked too (an anonymous route can't be, and job creation checks it again either way).
+
+    `resolution`, `aspect_ratio`, `fps` and `duration_s` are each optional: given, only enclaves whose serving envelope
+    has room for such a request are listed (envelopes.py; an omitted field matches any value), and when workers serve the
+    profile but none has room, the answer is 503 no_capacity with the longest duration available. Which profile serves
+    (fallbacks) still follows per-profile capacity."""
+    from kuno_protocol.envelope import EnvelopeQuery
+
+    from .envelopes import no_fit_error
+
+    fit = EnvelopeQuery(resolution, aspect_ratio, fps, duration_s)
     state = gw(request)
     account = await optional_account(request)
     if account is not None:
@@ -113,7 +124,9 @@ async def route(
             raise _error(422, "privacy_mode_unavailable", f"No model offers {mode.value} in {privacy.capitalize()} mode. Use Private mode.") from None
         raise _error(exc.status, exc.code, exc.message) from None
     with state.session() as s:
-        candidates = standard_jobs.enclaves_for(state, s, chosen.profile.id, privacy)
+        candidates = standard_jobs.enclaves_for(state, s, chosen.profile.id, privacy, fit=None if fit.empty else fit)
+        if not candidates and not fit.empty and (available := standard_jobs.enclaves_for(state, s, chosen.profile.id, privacy)):
+            raise no_fit_error(chosen.profile, fit, available)
         if account is not None:
             # A client seals to the first attested enclave listed, so the order is the routing (admission.py).
             candidates = admission.order_for_account(
@@ -169,11 +182,14 @@ async def download_blob(blob_id: str, request: Request, account: Account = Depen
         allowed = allowed and blob.expires_at > time.time()
     if not allowed:
         raise _error(404, "not_found", "No such blob.")
+    from . import byte_ranges
+
+    # Served as stored, with byte ranges (byte_ranges.py): read from the store as it streams, never loaded whole.
     try:
-        data = state.blobs.get(blob_id)
+        body = await asyncio.to_thread(byte_ranges.StoredBlob, state.blobs, blob_id)
     except KeyError:
         raise _error(410, "expired", "This blob has expired.") from None
-    return Response(content=data, media_type="application/octet-stream")
+    return byte_ranges.serve(request, body, media_type="application/octet-stream", etag=byte_ranges.strong_etag(blob.sha256))
 
 
 def check_job_rate(state: GatewayState, account: Account, privacy: str) -> None:
@@ -213,9 +229,22 @@ def admit_job(
     s: Session, state: GatewayState, account: Account, *, job_id: str, profile: ModelProfile, params: GenerationParams,
     enclave: Enclave, enc: str, ciphertext: str, input_blob_ids: list[str], webhook_url: str | None, privacy: str, now: float,
 ) -> Job:
-    """Charges for and records a job, inside the caller's transaction. Shared by private and standard jobs."""
+    """Charges for and records a job, inside the caller's transaction. Shared by private and standard jobs.
+
+    First it locks the account's row and refuses a closed account, in this transaction, so a job can't be admitted
+    while the account is being closed: closure takes the same lock (account_closure.lock_account)."""
+    from .account_closure import lock_account
+
+    current = lock_account(state, s, account.id)
+    if current is None or current.closed_at is not None:
+        raise _error(403, "account_closed", "This account is closed.")
     if s.get(Job, job_id) is not None:
         raise _error(409, "duplicate_job", "A job with this id already exists.")
+    from .envelopes import admission_refusal
+
+    # A private client picks its enclave itself: never admit a job the enclave advertised its hardware can't fit.
+    if (refused := admission_refusal(enclave, profile, params)) is not None:
+        raise refused
     if not account.is_validator:
         active = s.scalar(
             select(func.count())
@@ -286,6 +315,11 @@ async def create_video(body: JobCreate, request: Request, account: Account = Dep
 
     now = time.time()
     with state.session() as s, s.begin():
+        from .account_closure import lock_account
+
+        # The account's lock before the input blobs below are written, the order closure takes them in, so the two never
+        # deadlock on Postgres. admit_job checks the account isn't closed.
+        lock_account(state, s, account.id)
         if s.get(Job, body.job_id) is not None:
             raise _error(409, "duplicate_job", "A job with this id already exists.")
         enclave = s.get(Enclave, body.enclave_id)

@@ -172,6 +172,21 @@ def test_every_issuance_gets_a_fresh_random_serial_and_a_log_line(settings, clie
     assert [r["serial"] for r in issuance_log(settings)] == sorted(serials, key=[r["serial"] for r in issuance_log(settings)].index)
 
 
+def test_the_certificate_answer_lists_the_timestamp_authorities_in_order(settings):
+    enclave = FakeEnclave(settings.data_dir)
+    plain = TestClient(create_app(settings))
+    enclave.register(plain)
+    body = enclave.request_certificate(plain).json()
+    assert (body["tsa_url"], body["tsa_urls"]) == (None, [])
+
+    settings.c2pa_tsa_url, settings.c2pa_tsa_urls = "http://tsa-a.example", ["http://tsa-a.example", "http://tsa-b.example/tsr"]
+    client = TestClient(create_app(settings))
+    enclave.register(client)
+    body = enclave.request_certificate(client).json()
+    # Workers fail over down tsa_urls; tsa_url, its first, is for workers that read one.
+    assert (body["tsa_url"], body["tsa_urls"]) == ("http://tsa-a.example", ["http://tsa-a.example", "http://tsa-b.example/tsr"])
+
+
 def test_validity_is_configurable(settings):
     settings.c2pa_cert_validity_s = 3600
     client = TestClient(create_app(settings))

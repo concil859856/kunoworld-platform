@@ -7,14 +7,22 @@ validating when its short-lived certificate expires (subnet/PROVENANCE.md). This
   message imprint, a nonce and `certReq` TRUE (C2PA §10.3.2.5 says certReq "shall be asserted").
 * `parse_response(der)` reads the `TimeStampResp`: `PKIStatusInfo` and, if present, the token's `TSTInfo`
   (policy, imprint, serial, genTime, nonce) and the certificates the token carries.
+* `verify_token_signature(token)` checks the token's CMS signature (RFC 5652 §5.4 and §5.6) with the certificate the
+  token carries: the signed `messageDigest` is the digest of the TSTInfo, the signed `contentType` is id-ct-TSTInfo,
+  the signature verifies over the DER signed attributes under the signer certificate's key (RSA PKCS#1 v1.5 or PSS,
+  ECDSA, Ed25519), and an ESS signing-certificate attribute (RFC 5816, RFC 2634), when present, names that certificate.
 * `probe(url)` sends a request over HTTP (`application/timestamp-query`, RFC 3161 §3.4) and checks the status is
-  granted, the imprint and nonce come back, and the clock is sane. With a trust list (for example the C2PA TSA Trust
-  List PEM) it also says whether the token's chain reaches one of its anchors.
+  granted, the imprint and nonce that come back are the ones sent, the signature verifies, and the clock is sane. With
+  a trust list (for example the C2PA TSA Trust List PEM) it also says whether the token's chain reaches one of its
+  anchors.
 
-What it does not do: verify the CMS signature on the token. It proves the TSA is live and speaks the protocol; the
-reader that validates a manifest checks the signature and trust.
+No CMS library does this for us: `cryptography` (in the lock) can build and decrypt PKCS#7 but not verify it, and
+asn1crypto isn't a dependency. So the SignerInfo is read with the DER reader below, and `cryptography` checks the
+digest and signature. What it still leaves to the reader that validates a manifest: certificate validity periods,
+revocation, and trust unless a trust list is given.
 
-`kuno-gateway check-tsa` runs the probe; `KUNO_C2PA_TSA_PROBE=warn|require` runs it at start-up.
+`configured_urls(settings)` is the gateway's ordered TSA list (KUNO_C2PA_TSA_URLS). `kuno-gateway check-tsa` probes
+each; `KUNO_C2PA_TSA_PROBE=warn|require` probes them at start-up.
 """
 
 from __future__ import annotations
@@ -23,6 +31,7 @@ import datetime
 import hashlib
 import secrets
 from dataclasses import dataclass, field
+from typing import Any
 
 import httpx
 
@@ -48,6 +57,16 @@ BOOLEAN, SEQUENCE, SET = 0x01, 0x30, 0x31
 
 class DerError(ValueError):
     pass
+
+
+def configured_urls(settings: Any) -> list[str]:
+    """The timestamp authorities a gateway hands to workers, in order of preference: `c2pa_tsa_urls`
+    (KUNO_C2PA_TSA_URLS, or KUNO_C2PA_TSA_URL alone), with `c2pa_tsa_url` first when it names one the list lacks."""
+    urls = [url for url in (getattr(settings, "c2pa_tsa_urls", None) or []) if url]
+    first = getattr(settings, "c2pa_tsa_url", None)
+    if first and first not in urls:
+        urls.insert(0, first)
+    return list(dict.fromkeys(urls))
 
 
 # ------------------------------------------------------------------ DER encoding
@@ -326,6 +345,229 @@ def _read_token(content_info: Tlv, response: TimestampResponse) -> None:
             response.certificates = [c.raw for c in item.children() if c.tag == SEQUENCE]
 
 
+# ------------------------------------------------------------------ the token's signature
+
+CONTENT_TYPE_ATTR_OID = "1.2.840.113549.1.9.3"
+MESSAGE_DIGEST_ATTR_OID = "1.2.840.113549.1.9.4"
+SIGNING_CERTIFICATE_OID = "1.2.840.113549.1.9.16.2.12"
+SIGNING_CERTIFICATE_V2_OID = "1.2.840.113549.1.9.16.2.47"
+SHA1_OID = "1.3.14.3.2.26"
+SHA224_OID = "2.16.840.1.101.3.4.2.4"
+SHA384_OID = "2.16.840.1.101.3.4.2.2"
+SHA512_OID = "2.16.840.1.101.3.4.2.3"
+RSA_ENCRYPTION_OID = "1.2.840.113549.1.1.1"
+RSASSA_PSS_OID = "1.2.840.113549.1.1.10"
+MGF1_OID = "1.2.840.113549.1.1.8"
+EC_PUBLIC_KEY_OID = "1.2.840.10045.2.1"
+ED25519_OID = "1.3.101.112"
+# Signature algorithms that name their hash.
+RSA_WITH_HASH = {
+    "1.2.840.113549.1.1.5": SHA1_OID, "1.2.840.113549.1.1.14": SHA224_OID, "1.2.840.113549.1.1.11": SHA256_OID,
+    "1.2.840.113549.1.1.12": SHA384_OID, "1.2.840.113549.1.1.13": SHA512_OID,
+}
+ECDSA_WITH_HASH = {
+    "1.2.840.10045.4.1": SHA1_OID, "1.2.840.10045.4.3.1": SHA224_OID, "1.2.840.10045.4.3.2": SHA256_OID,
+    "1.2.840.10045.4.3.3": SHA384_OID, "1.2.840.10045.4.3.4": SHA512_OID,
+}
+
+
+class _Unsupported(Exception):
+    pass
+
+
+@dataclass
+class SignatureCheck:
+    # True: verified. False: it doesn't (see problems). None: not checked (see warnings).
+    valid: bool | None = None
+    signer: str | None = None
+    problems: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
+def _hash(oid: str):
+    from cryptography.hazmat.primitives import hashes
+
+    known = {SHA1_OID: hashes.SHA1, SHA224_OID: hashes.SHA224, SHA256_OID: hashes.SHA256, SHA384_OID: hashes.SHA384, SHA512_OID: hashes.SHA512}
+    if oid not in known:
+        raise _Unsupported(f"digest algorithm {oid}")
+    return known[oid]()
+
+
+def _digest(oid: str, data: bytes) -> bytes:
+    from cryptography.hazmat.primitives import hashes
+
+    hasher = hashes.Hash(_hash(oid))
+    hasher.update(data)
+    return hasher.finalize()
+
+
+def _attributes(signed_attrs: Tlv) -> dict[str, Tlv]:
+    """SignedAttributes: OID -> the attribute's first value."""
+    out: dict[str, Tlv] = {}
+    for attribute in signed_attrs.children():
+        oid, values = attribute.children()[:2]
+        members = values.children()
+        if members:
+            out.setdefault(decode_oid(oid), members[0])
+    return out
+
+
+def _find_signer(sid: Tlv, certificates: list):
+    from cryptography import x509
+
+    if sid.tag == SEQUENCE:  # IssuerAndSerialNumber
+        issuer, serial = sid.children()[:2]
+        number = decode_integer(serial)
+        for cert in certificates:
+            if cert.serial_number == number and cert.issuer.public_bytes() == issuer.raw:
+                return cert
+        by_serial = [cert for cert in certificates if cert.serial_number == number]
+        return by_serial[0] if len(by_serial) == 1 else None
+    if sid.tag == 0x80:  # [0] IMPLICIT SubjectKeyIdentifier
+        for cert in certificates:
+            try:
+                if cert.extensions.get_extension_for_class(x509.SubjectKeyIdentifier).value.digest == sid.value:
+                    return cert
+            except x509.ExtensionNotFound:
+                continue
+    return None
+
+
+def _pss_parameters(params: Tlv | None) -> tuple[str, str, int]:
+    """RSASSA-PSS-params (RFC 4055 §3.1): hash, MGF1 hash, salt length, with their defaults."""
+    hash_oid, mgf_hash_oid, salt = SHA1_OID, SHA1_OID, 20
+    if params is not None and params.tag == SEQUENCE:
+        for item in params.children():
+            if item.tag == 0xA0:
+                hash_oid = decode_oid(read_one(item.value, SEQUENCE).children()[0])
+            elif item.tag == 0xA1:
+                mgf = read_one(item.value, SEQUENCE).children()
+                if decode_oid(mgf[0]) != MGF1_OID:
+                    raise _Unsupported("RSASSA-PSS with a mask generation function other than MGF1")
+                mgf_hash_oid = decode_oid(mgf[1].children()[0])
+            elif item.tag == 0xA2:
+                salt = decode_integer(read_one(item.value, INTEGER))
+    return hash_oid, mgf_hash_oid, salt
+
+
+def _verify_with(key, algorithm: Tlv, digest_oid: str, signature: bytes, data: bytes) -> None:
+    """Raises InvalidSignature, or _Unsupported for an algorithm this doesn't check."""
+    from cryptography.hazmat.primitives.asymmetric import ec, ed25519, padding, rsa
+
+    parts = algorithm.children()
+    oid = decode_oid(parts[0])
+    if isinstance(key, rsa.RSAPublicKey):
+        if oid == RSASSA_PSS_OID:
+            hash_oid, mgf_hash_oid, salt = _pss_parameters(parts[1] if len(parts) > 1 else None)
+            key.verify(signature, data, padding.PSS(mgf=padding.MGF1(_hash(mgf_hash_oid)), salt_length=salt), _hash(hash_oid))
+            return
+        if oid not in RSA_WITH_HASH and oid != RSA_ENCRYPTION_OID:
+            raise _Unsupported(f"signature algorithm {oid} with an RSA key")
+        key.verify(signature, data, padding.PKCS1v15(), _hash(RSA_WITH_HASH.get(oid, digest_oid)))
+    elif isinstance(key, ec.EllipticCurvePublicKey):
+        if oid not in ECDSA_WITH_HASH and oid != EC_PUBLIC_KEY_OID:
+            raise _Unsupported(f"signature algorithm {oid} with an EC key")
+        key.verify(signature, data, ec.ECDSA(_hash(ECDSA_WITH_HASH.get(oid, digest_oid))))
+    elif isinstance(key, ed25519.Ed25519PublicKey) and oid == ED25519_OID:
+        key.verify(signature, data)
+    else:
+        raise _Unsupported(f"signature algorithm {oid} with a {type(key).__name__}")
+
+
+def _check_signing_certificate(attributes: dict[str, Tlv], signer, check: SignatureCheck) -> None:
+    """ESS signingCertificateV2 (RFC 5816) or signingCertificate (RFC 2634): the first ESSCertID must be the signer's."""
+    from cryptography.hazmat.primitives import serialization
+
+    der = signer.public_bytes(serialization.Encoding.DER)
+    if SIGNING_CERTIFICATE_V2_OID in attributes:
+        first = attributes[SIGNING_CERTIFICATE_V2_OID].children()[0].children()[0].children()
+        hash_oid = SHA256_OID
+        if first[0].tag == SEQUENCE:  # hashAlgorithm, when it isn't the default SHA-256
+            hash_oid, first = decode_oid(first[0].children()[0]), first[1:]
+        expected = first[0].value
+    elif SIGNING_CERTIFICATE_OID in attributes:
+        hash_oid, expected = SHA1_OID, attributes[SIGNING_CERTIFICATE_OID].children()[0].children()[0].children()[0].value
+    else:
+        return
+    if _digest(hash_oid, der) != expected:
+        check.problems.append("the token's signing-certificate attribute names a different certificate than its signer")
+
+
+def verify_token_signature(token: bytes) -> SignatureCheck:
+    """Checks a timeStampToken's CMS signature with the certificates it carries (see the module docstring). Trust in
+    the signer certificate is separate. Never raises for a malformed or unsupported token: see `valid`, `problems` and
+    `warnings`."""
+    from cryptography import x509
+    from cryptography.exceptions import InvalidSignature
+
+    check = SignatureCheck()
+    try:
+        parts = read_one(token, SEQUENCE).children()
+        if len(parts) != 2 or decode_oid(parts[0]) != SIGNED_DATA_OID or parts[1].tag != 0xA0:
+            raise DerError("the timeStampToken is not a CMS SignedData ContentInfo")
+        signed = read_one(parts[1].value, SEQUENCE).children()
+        encap = signed[2].children()
+        if decode_oid(encap[0]) != TST_INFO_OID or len(encap) < 2 or encap[1].tag != 0xA0:
+            raise DerError("the token does not carry TSTInfo")
+        content = read_one(encap[1].value, OCTET_STRING).value
+        certificates = []
+        for item in signed[3:]:
+            if item.tag == 0xA0:
+                certificates = [x509.load_der_x509_certificate(c.raw) for c in item.children() if c.tag == SEQUENCE]
+        signer_sets = [item for item in signed[3:] if item.tag == SET]
+        infos = signer_sets[-1].children() if signer_sets else []
+        if not infos:
+            check.valid = False
+            check.problems.append("the token carries no SignerInfo")
+            return check
+        if len(infos) > 1:
+            check.warnings.append("the token has several SignerInfos; only the first was checked")
+        fields = infos[0].children()
+        sid, digest_algorithm, rest = fields[1], fields[2], fields[3:]
+        signed_attrs = rest.pop(0) if rest and rest[0].tag == 0xA0 else None
+        algorithm, signature = rest[0], rest[1]
+        if signature.tag != OCTET_STRING:
+            raise DerError("the SignerInfo's signature is not an OCTET STRING")
+        digest_oid = decode_oid(digest_algorithm.children()[0])
+        signer = _find_signer(sid, certificates)
+        if signer is None:
+            if certificates:
+                check.valid = False
+                check.problems.append("no certificate in the token matches its SignerInfo")
+            else:
+                check.warnings.append("signature not checked: the token carries no certificate")
+            return check
+        check.signer = signer.subject.rfc4514_string()
+        if signed_attrs is None:
+            data = content
+        else:
+            attributes = _attributes(signed_attrs)
+            content_type = attributes.get(CONTENT_TYPE_ATTR_OID)
+            if content_type is None or content_type.tag != OID or decode_oid(content_type) != TST_INFO_OID:
+                check.problems.append("the token's signed contentType is not id-ct-TSTInfo")
+            message_digest = attributes.get(MESSAGE_DIGEST_ATTR_OID)
+            if message_digest is None or message_digest.tag != OCTET_STRING or message_digest.value != _digest(digest_oid, content):
+                check.problems.append("the token's signed messageDigest is not the digest of its TSTInfo")
+            _check_signing_certificate(attributes, signer, check)
+            # The signature covers the attributes DER-encoded as a SET, not with their [0] IMPLICIT tag (RFC 5652 §5.4).
+            data = bytes([SET]) + signed_attrs.raw[1:]
+        try:
+            _verify_with(signer.public_key(), algorithm, digest_oid, signature.value, data)
+            verified: bool | None = True
+        except InvalidSignature:
+            check.problems.append("the token's signature does not verify under its signer certificate")
+            verified = False
+    except _Unsupported as exc:
+        check.warnings.append(f"signature not checked: unsupported {exc}")
+        verified = None
+    except (DerError, IndexError, ValueError, TypeError) as exc:
+        check.valid = False
+        check.problems.append(f"the token's signature could not be read: {exc}")
+        return check
+    check.valid = False if check.problems else verified
+    return check
+
+
 # ------------------------------------------------------------------ probing
 
 
@@ -339,6 +581,8 @@ class ProbeResult:
     policy: str | None = None
     gen_time: datetime.datetime | None = None
     clock_skew_s: float | None = None
+    # verify_token_signature's verdict: True, False, or None when it couldn't be checked.
+    signature_valid: bool | None = None
     tsa_certificate: str | None = None
     chain_root: str | None = None
     trusted: bool | None = None
@@ -351,6 +595,7 @@ class ProbeResult:
             ("HTTP status", self.http_status), ("content type", self.content_type), ("PKIStatus", self.status),
             ("policy", self.policy), ("genTime", self.gen_time.isoformat() if self.gen_time else None),
             ("clock skew (s)", None if self.clock_skew_s is None else f"{self.clock_skew_s:.1f}"),
+            ("CMS signature", None if self.signature_valid is None else ("valid" if self.signature_valid else "INVALID")),
             ("TSA certificate", self.tsa_certificate), ("chain ends at", self.chain_root),
             ("chains to the trust list", None if self.trusted is None else ("yes" if self.trusted else "no")),
         ):
@@ -471,6 +716,10 @@ def probe(
         result.problems.append("the token's message imprint is not the digest that was sent")
     if parsed.nonce != nonce:
         result.problems.append("the token's nonce is not the nonce that was sent")
+    signature = verify_token_signature(parsed.token)
+    result.signature_valid = signature.valid
+    result.problems.extend(signature.problems)
+    result.warnings.extend(signature.warnings)
     current = now or datetime.datetime.now(datetime.timezone.utc)
     if parsed.gen_time is not None:
         result.clock_skew_s = (parsed.gen_time - current).total_seconds()

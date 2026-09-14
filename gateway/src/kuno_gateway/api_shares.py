@@ -11,14 +11,14 @@ from __future__ import annotations
 import asyncio
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
-from . import identity, shares, standard_jobs
+from . import byte_ranges, identity, shares
 from .api_auth import _client_ip
 from .auth import SignedIn, gw, require_account, require_user
-from .db import Account, Enclave, Job
+from .db import Account, Blob, Enclave, Job
 from .db_moderation import StandardJob
 from .shares import ShareError
 from .vault import StorageKeyMissing, vault
@@ -160,7 +160,8 @@ async def view_share(token: str, request: Request):
 @router.get("/shares/{token}/video")
 async def share_video(token: str, request: Request):
     """Standard: the video, decrypted from at-rest storage. Private: the sealed output blob, which only the key in the
-    link's fragment opens."""
+    link's fragment opens. Both answer byte ranges, so players (iOS Safari in particular) can seek: byte_ranges.py.
+    A Standard range decrypts only the chunks it covers. One view is counted per playback, not per range request."""
     _limit(request)
     state = gw(request)
     share, job, _, row = _active_share(request, token)
@@ -170,16 +171,19 @@ async def share_video(token: str, request: Request):
                 vault(state)
             except StorageKeyMissing:
                 raise HTTPException(503, {"code": "standard_unavailable", "message": "Standard mode is not configured on this gateway."}, headers=PUBLIC_HEADERS) from None
-            data = await asyncio.to_thread(standard_jobs.load_video, state, row)
-            media_type, filename = "video/mp4", "kunoworld-shared.mp4"
+            body = await asyncio.to_thread(byte_ranges.standard_video, state, row)
+            media_type, filename, digest = "video/mp4", "kunoworld-shared.mp4", row.video_sha256
         else:
-            data = await asyncio.to_thread(state.blobs.get, job.output_blob_id)
-            media_type, filename = "application/octet-stream", "kunoworld-shared.sealed"
+            body = await asyncio.to_thread(byte_ranges.StoredBlob, state.blobs, job.output_blob_id)
+            with state.session() as s:
+                blob = s.get(Blob, job.output_blob_id)
+            media_type, filename, digest = "application/octet-stream", "kunoworld-shared.sealed", blob.sha256 if blob else None
     except KeyError:
         raise _gone() from None
-    with state.session() as s, s.begin():
-        shares.record_view(s, share.id)
-    return Response(
-        content=data, media_type=media_type,
-        headers={**PUBLIC_HEADERS, "content-disposition": f'inline; filename="{filename}"'},
-    )
+    headers = {**PUBLIC_HEADERS, "content-disposition": f'inline; filename="{filename}"'}
+    etag = byte_ranges.strong_etag(digest)
+    wanted = byte_ranges.select(request, body.size, etag, headers)
+    if byte_ranges.counts_as_view(wanted):
+        with state.session() as s, s.begin():
+            shares.record_view(s, share.id)
+    return byte_ranges.response(body, wanted, media_type=media_type, headers=headers, etag=etag)

@@ -147,10 +147,13 @@ class IssuingCA:
         log_path: Path,
         validity_s: int = DEFAULT_VALIDITY_S,
         tsa_url: str | None = None,
+        tsa_urls: list[str] | None = None,
     ):
         self.key, self.intermediate, self.root = key, intermediate, root
         self.validity_s = validity_s
-        self.tsa_url = tsa_url
+        # Every TSA a worker may use, in order of preference; tsa_url, the first, is what older workers read.
+        self.tsa_urls = list(dict.fromkeys(url for url in (tsa_urls or []) if url)) or ([tsa_url] if tsa_url else [])
+        self.tsa_url = self.tsa_urls[0] if self.tsa_urls else None
         self.log = IssuanceLog(log_path)
         self._validate()
 
@@ -185,7 +188,12 @@ class IssuingCA:
             raise CAConfigError("KUNO_C2PA_CA_CHAIN is not a PEM certificate chain") from None
         if len(certs) != 2:
             raise CAConfigError("KUNO_C2PA_CA_CHAIN must hold exactly the intermediate then the root certificate")
-        return cls(key, certs[0], certs[1], settings.c2pa_issuance_log, settings.c2pa_cert_validity_s, settings.c2pa_tsa_url)
+        from .tsa import configured_urls
+
+        return cls(
+            key, certs[0], certs[1], settings.c2pa_issuance_log, settings.c2pa_cert_validity_s, settings.c2pa_tsa_url,
+            tsa_urls=configured_urls(settings),
+        )
 
     def _validate(self) -> None:
         try:

@@ -38,6 +38,8 @@ __all__ = ["ENVELOPE_MAGIC", "DataKeyGone", "StorageKeyMissing", "Vault", "vault
 ENVELOPE_MAGIC = b"KUNOE1"
 ENVELOPE_VERSION = 1
 _HEADER = struct.Struct(">6sB16s")
+# Enough of a sealed object to `locate` it and read its inner blob's header: the envelope header, then the inner header.
+HEAD_BYTES = _HEADER.size + 18
 # The generated legacy key of a dev data directory; read if present, never created any more.
 KEY_FILE = "standard_storage.key"
 
@@ -59,18 +61,25 @@ class Vault:
     def open(self, label: str, sealed: bytes, s: Session | None = None) -> bytes:
         """Raises DataKeyGone (a KeyError) when the object's data key was deleted, DecryptionError when it doesn't
         authenticate."""
-        if sealed[: len(ENVELOPE_MAGIC)] == ENVELOPE_MAGIC:
-            if len(sealed) < _HEADER.size:
+        key, inner_label, offset = self.locate(label, sealed, s)
+        return decrypt_blob(key, inner_label, sealed[offset:])
+
+    def locate(self, label: str, head: bytes, s: Session | None = None) -> tuple[bytes, str, int]:
+        """What opening a sealed object needs, from its first `HEAD_BYTES` (or more): the base key and label of the inner
+        `kuno_protocol.blobs` blob, and the offset where that blob starts. byte_ranges.py uses it to decrypt only the
+        chunks a byte range covers. Raises like `open`."""
+        if head[: len(ENVELOPE_MAGIC)] == ENVELOPE_MAGIC:
+            if len(head) < _HEADER.size:
                 raise DecryptionError("sealed object too short")
-            _, version, raw_id = _HEADER.unpack_from(sealed)
+            _, version, raw_id = _HEADER.unpack_from(head)
             if version != ENVELOPE_VERSION:
                 raise DecryptionError("unknown sealed object version")
             dek_id = raw_id.hex()
-            return decrypt_blob(self.keyring.data_key(dek_id, s), _content_label(dek_id, label), sealed[_HEADER.size :])
+            return self.keyring.data_key(dek_id, s), _content_label(dek_id, label), _HEADER.size
         legacy = self.keyring.legacy_key(s)
         if legacy is None:
             raise DecryptionError("sealed with the legacy storage key (KUNO_STANDARD_STORAGE_KEY), which is not configured")
-        return decrypt_blob(legacy, f"at-rest/{label}", sealed)
+        return legacy, f"at-rest/{label}", 0
 
     def seal_secret(self, label: str, secret: bytes, s: Session | None = None) -> str:
         return b64e(self.seal(label, secret, s))

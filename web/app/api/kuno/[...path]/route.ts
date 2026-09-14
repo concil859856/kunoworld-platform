@@ -64,9 +64,12 @@ const RULES: Rule[] = [
 ];
 
 /** Request headers worth passing on. Authorization and Cookie are never among them. The gateway rate-limits public
- * share links per visitor IP, which Cloudflare puts in cf-connecting-ip. */
-const FORWARD_REQUEST = ["accept", "content-type", "content-length", "x-kuno-country", "cf-connecting-ip"];
-const FORWARD_RESPONSE = ["content-type", "content-length", "content-disposition", "etag", "last-modified", "x-robots-tag"];
+ * share links per visitor IP, which Cloudflare puts in cf-connecting-ip. Range and If-Range (with Content-Range and
+ * Accept-Ranges back, and the 206 status) let a <video> seek: iOS Safari won't play or seek without them. */
+const FORWARD_REQUEST = ["accept", "content-type", "content-length", "x-kuno-country", "cf-connecting-ip", "range", "if-range"];
+const FORWARD_RESPONSE = [
+  "content-type", "content-length", "content-disposition", "etag", "last-modified", "x-robots-tag", "content-range", "accept-ranges",
+];
 
 /** Errors in the gateway's own shape, so the SDK reads them like any other. */
 function problem(status: number, code: string, message: string): Response {

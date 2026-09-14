@@ -24,7 +24,8 @@ from kuno_protocol.canonical import b64d, b64e, canonical_json, sha256_hex
 from kuno_protocol.crypto import RecipientSession, generate_hpke_keypair, generate_signing_key, public_key_bytes
 from kuno_protocol.profiles import InputRole, Mode
 from kuno_protocol.receipts import ReceiptBody, VideoInfo, sign_receipt
-from kuno_protocol.schemas import GenerationParams, JobState, SealedPayload, input_label, job_aad, output_label
+from kuno_protocol.schemas import GenerationParams, JobState, input_label, job_aad, output_label
+from kuno_protocol.sealed_payload import open_payload
 
 from operator_sessions import operator_headers
 
@@ -116,7 +117,7 @@ def render(gw, job_id: str, video: bytes) -> None:
     blob_ids = json.loads(job.input_blob_ids)
     params = GenerationParams.model_validate_json(job.params)
     session = RecipientSession(gw.hpke_private, b64d(job.enc))
-    SealedPayload.model_validate_json(session.open(b64d(job.ciphertext), job_aad(job_id, ENCLAVE, params, blob_ids)))
+    open_payload(session, b64d(job.ciphertext), job_aad(job_id, ENCLAVE, params, blob_ids))
     for i, b in enumerate(blob_ids):
         decrypt_blob(session.input_key, input_label(job_id, i), gw.state.blobs.get(b))
     sealed = encrypt_blob(session.output_key, output_label(job_id), video)
@@ -277,5 +278,5 @@ def use_fake_ncmec(gw, fake: FakeNcmec, env: str = "test") -> None:
     gw.settings.cybertip_username, gw.settings.cybertip_password = FakeNcmec.USERNAME, FakeNcmec.PASSWORD
 
 
-__all__ = ["ADMIN", "ENCLAVE", "IMAGE", "MODERATOR", "TEXT", "FakeNcmec", "b64decode", "create_standard", "ffmpeg", "make_gateway",
+__all__ = ["ADMIN", "ENCLAVE", "IMAGE", "MODERATOR", "TEXT", "FakeNcmec", "create_standard", "ffmpeg", "make_gateway",
            "make_media", "new_account", "render", "use_fake_ncmec"]

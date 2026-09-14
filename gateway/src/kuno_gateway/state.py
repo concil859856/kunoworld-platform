@@ -195,14 +195,20 @@ class GatewayState:
         ]
         return sorted(fresh, key=lambda e: (e.inflight / max(e.capacity, 1), -e.last_seen))
 
-    def routable_enclaves(self, s: Session, profile_id: str, privacy: str) -> list[Enclave]:
+    def routable_enclaves(self, s: Session, profile_id: str, privacy: str, fit=None) -> list[Enclave]:
         """Where a job of `profile_id` in `privacy` mode may go: fresh enclaves whose tier serves the mode.
         Private jobs get confidential-tier enclaves only; an unknown mode, or a mode the profile isn't sold in
-        (Standard for a Private-only profile), gets nothing."""
+        (Standard for a Private-only profile), gets nothing. `fit` (kuno_protocol.envelope.EnvelopeQuery) also keeps
+        only enclaves whose advertised serving envelope has room for such a request (envelopes.py)."""
         profile = self.profiles.get(profile_id)
         if profile is not None and not profile.offers(privacy):
             return []
-        return self.fresh_enclaves(s, profile_id, privacy=privacy)
+        enclaves = self.fresh_enclaves(s, profile_id, privacy=privacy)
+        if fit is None or fit.empty:
+            return enclaves
+        from .envelopes import envelope_serves
+
+        return [e for e in enclaves if envelope_serves(e, profile_id, fit)]
 
     def has_capacity(self, profile: ModelProfile, privacy: str | None = None) -> bool:
         """Takes `privacy` by keyword, so a route resolver can use `functools.partial(state.has_capacity, privacy=...)`.
@@ -464,6 +470,13 @@ def enclave_serves(enclave: Enclave, privacy: str) -> bool:
     return tier_serves(enclave_tier(enclave), privacy)
 
 
+def envelope_json(enclave: Enclave) -> dict | None:
+    """The enclave's advertised serving envelope (envelopes.py), or None when it serves its profiles' full limits."""
+    from .envelopes import stored
+
+    return stored(enclave)
+
+
 def enclave_public(enclave: Enclave, hardware: list[HardwareBinding] | None = None) -> dict:
     """`hardware` is self-reported and unverified; `hardware_ids` and `gpu_count` come from verified evidence.
     An open-tier enclave (`tier: "open"`) never has `hardware_ids`: nothing about its hardware is attested."""
@@ -484,6 +497,8 @@ def enclave_public(enclave: Enclave, hardware: list[HardwareBinding] | None = No
         "verified_at": enclave.verified_at,
         "last_seen": enclave.last_seen,
         "gpu_count": enclave.gpu_count,
+        # The worker's serving envelope (kuno_protocol.envelope), or None: its profiles' full limits.
+        "envelope": envelope_json(enclave),
         "hardware_ids": [
             {"kind": b.kind, "token": b.token, "first_seen": b.first_seen, "last_seen": b.last_seen} for b in hardware or []
         ],

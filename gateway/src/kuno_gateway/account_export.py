@@ -8,6 +8,14 @@ The zip is sealed at rest like Standard content. It is written in parts of `PART
 at-rest key under a label naming the export and the part, so a large account never sits in memory whole and no
 plaintext touches a disk. Downloading opens the parts in order.
 
+A builder holds a claim (`LOCK_S`) that it renews as it works, and lists each part on the export's row as soon as the
+part is stored (`record_parts`). If the builder stops (a crash, a restart) its claim lapses, and the next pass of the
+background loop (`reap_stalled`, from `run_pending`) cleans up: it deletes the listed parts, deletes the data keys of
+every part sealed for the export (so a part stored in the instant before it could be listed can never be opened
+either), and queues the export again, or fails it if it was requested more than `GIVE_UP_AFTER_S` ago. A builder that
+wakes up afterwards finds its claim gone the next time it stores a part or settles, deletes what it stored and stops.
+Reaping is idempotent: it acts only on a running export whose claim has lapsed.
+
 What goes in (README.txt in the zip says the same to the customer):
 
 * account.json: email, account, balance, ledger, payments, linked wallets, API key names and prefixes (never keys),
@@ -36,7 +44,7 @@ from collections.abc import Callable, Iterator
 from datetime import datetime, timezone
 from typing import IO, TYPE_CHECKING, Any
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from . import appeals, identity, ledger, lifecycle_hooks, payments, roles, standard_jobs, wallets
@@ -58,6 +66,9 @@ PART_BYTES = 32 * 1024 * 1024
 # A builder's claim. It renews the claim while it works, so only a stopped builder's claim lapses.
 LOCK_S = 30 * 60
 RENEW_EVERY_S = 60
+# A stopped builder's export is queued again, unless it was requested this long ago: then it fails (the customer can ask
+# again), so an export that crashes its builder every time doesn't retry forever.
+GIVE_UP_AFTER_S = 24 * 3600
 FORMAT_VERSION = 1
 
 QUEUED, RUNNING, READY, FAILED, EXPIRED, DELETED = "queued", "running", "ready", "failed", "expired", "deleted"
@@ -75,7 +86,8 @@ class ExportInProgress(Exception):
 
 
 class _Abandoned(Exception):
-    """The export was deleted (its account was closed) or claimed by another builder while this one worked."""
+    """This builder's claim is gone: the export was deleted (its account was closed), or queued again after the claim
+    lapsed (`reap_stalled`) and perhaps claimed by another builder."""
 
 
 def part_label(export_id: str, index: int) -> str:
@@ -129,19 +141,29 @@ def export_json(row: AccountExport) -> dict:
 class SealedParts(io.RawIOBase):
     """A write-only stream for zipfile: every `part_bytes` written is sealed at rest and stored as its own blob."""
 
-    def __init__(self, state: GatewayState, store: Vault, export_id: str, part_bytes: int = PART_BYTES):
+    def __init__(
+        self, state: GatewayState, store: Vault, export_id: str, part_bytes: int = PART_BYTES,
+        on_part: Callable[[list[str]], None] | None = None,
+    ):
         super().__init__()
         self.state, self.store, self.export_id, self.part_bytes = state, store, export_id, part_bytes
+        # Called with every part id stored so far, right after each part is stored.
+        self.on_part = on_part
         self.blob_ids: list[str] = []
         self.written = 0
         self.hasher = hashlib.sha256()
         self._buffer = bytearray()
+        # Set once the parts are deleted. Later writes are dropped: a zipfile left open writes its end record when it is
+        # garbage-collected, and that must not store a part nothing will delete.
+        self.discarded = False
 
     def writable(self) -> bool:
         return True
 
     def write(self, data) -> int:
         view = memoryview(data).cast("B")
+        if self.discarded:
+            return len(view)
         self._buffer += view
         self.written += len(view)
         self.hasher.update(view)
@@ -159,6 +181,18 @@ class SealedParts(io.RawIOBase):
         sealed = self.store.seal(part_label(self.export_id, len(self.blob_ids)), chunk)
         blob_id, _, _ = self.state.blobs.put(sealed)
         self.blob_ids.append(blob_id)
+        if self.on_part is not None:
+            try:
+                self.on_part(list(self.blob_ids))
+            except BaseException:
+                self.discarded = True  # nothing more is stored; the builder deletes what was
+                raise
+
+    def discard(self) -> None:
+        """Deletes every part stored so far and drops anything written afterwards."""
+        self.discarded = True
+        self._buffer.clear()
+        standard_jobs.discard_blobs(self.state, self.blob_ids)
 
 
 class _Archive:
@@ -443,22 +477,17 @@ def write_export(
 
 
 def claim(state: GatewayState, now: float | None = None) -> tuple[str, float] | None:
-    """Claims the oldest queued export, or one whose builder stopped. Returns (export id, claim time)."""
+    """Claims the oldest queued export. Returns (export id, claim time). An export whose builder stopped is queued again
+    by `reap_stalled` once its parts are deleted, so it is never claimed with a stopped builder's parts still around."""
     now = time.time() if now is None else now
     with state.session() as s, s.begin():
-        query = (
-            select(AccountExport)
-            .where(or_(AccountExport.status == QUEUED, and_(AccountExport.status == RUNNING, AccountExport.locked_until < now)))
-            .order_by(AccountExport.created_at)
-            .limit(1)
-        )
+        query = select(AccountExport).where(AccountExport.status == QUEUED).order_by(AccountExport.created_at).limit(1)
         if state.postgres:
             query = query.with_for_update(skip_locked=True)
         row = s.scalars(query).first()
         if row is None:
             return None
-        # A builder that stopped leaves unlisted part blobs behind: ciphertext under the at-rest key that nothing reads.
-        row.status, row.started_at, row.locked_until = RUNNING, now, now + LOCK_S
+        row.status, row.started_at, row.locked_until, row.part_blob_ids = RUNNING, now, now + LOCK_S, None
         return row.id, now
 
 
@@ -470,6 +499,19 @@ def renew(state: GatewayState, export_id: str, claimed_at: float, now: float | N
             update(AccountExport)
             .where(AccountExport.id == export_id, AccountExport.status == RUNNING, AccountExport.started_at == claimed_at)
             .values(locked_until=now + LOCK_S)
+        )
+    return bool(result.rowcount)
+
+
+def record_parts(state: GatewayState, export_id: str, claimed_at: float, blob_ids: list[str], now: float | None = None) -> bool:
+    """Lists the parts a builder has stored so far on its export and renews its claim. False: the claim is gone (the
+    export was deleted, or queued again after the claim lapsed), and the builder must stop."""
+    now = time.time() if now is None else now
+    with state.session() as s, s.begin():
+        result = s.execute(
+            update(AccountExport)
+            .where(AccountExport.id == export_id, AccountExport.status == RUNNING, AccountExport.started_at == claimed_at)
+            .values(part_blob_ids=json.dumps(blob_ids), locked_until=now + LOCK_S)
         )
     return bool(result.rowcount)
 
@@ -490,7 +532,8 @@ def _settle(
             row.summary = json.dumps(summary, separators=(",", ":"))
             row.expires_at = now + EXPORT_TTL_S
         else:
-            row.error_code = error_code
+            # The builder deleted the parts it had stored before settling.
+            row.error_code, row.part_blob_ids = error_code, None
     return True
 
 
@@ -506,7 +549,6 @@ def build(state: GatewayState, export_id: str, claimed_at: float) -> str:
         account_id = row.account_id if row is not None else None
     if account_id is None:
         return DELETED
-    writer = SealedParts(state, store, export_id, PART_BYTES)
     renewed = [time.monotonic()]
 
     def heartbeat() -> None:
@@ -516,19 +558,27 @@ def build(state: GatewayState, export_id: str, claimed_at: float) -> str:
             raise _Abandoned()
         renewed[0] = time.monotonic()
 
+    def listed(blob_ids: list[str]) -> None:
+        # Each part is on the row before more is written, so a builder that stops leaves nothing unlisted for reap_stalled.
+        if not record_parts(state, export_id, claimed_at, blob_ids):
+            raise _Abandoned()
+        renewed[0] = time.monotonic()
+
+    writer = SealedParts(state, store, export_id, PART_BYTES, on_part=listed)
+
     try:
         summary = write_export(state, account_id, writer, claimed_at, heartbeat)
         writer.finish()
     except _Abandoned:
-        standard_jobs.discard_blobs(state, writer.blob_ids)
+        writer.discard()
         return DELETED
     except Exception:
         log.exception("building data export %s failed", export_id)
-        standard_jobs.discard_blobs(state, writer.blob_ids)
+        writer.discard()
         _settle(state, export_id, claimed_at, FAILED, error_code="export_failed")
         return FAILED
     if not _settle(state, export_id, claimed_at, READY, writer=writer, summary=summary):
-        standard_jobs.discard_blobs(state, writer.blob_ids)
+        writer.discard()
         return DELETED
     return READY
 
@@ -552,9 +602,62 @@ def expire(state: GatewayState, now: float | None = None) -> int:
     return len(rows)
 
 
+def _forget_part_keys(state: GatewayState, s: Session, export_id: str) -> list[str]:
+    """Deletes the data keys of every part sealed for this export, listed on its row or not, in the caller's transaction."""
+    from .db_storage import StorageDataKey
+    from .storage_keys import keyring_for
+
+    labels = sorted(set(s.scalars(select(StorageDataKey.label).where(StorageDataKey.label.like(f"export/{export_id}/part/%"))).all()))
+    return keyring_for(state).forget(s, labels) if labels else []
+
+
+def reap_stalled(state: GatewayState, now: float | None = None) -> int:
+    """Cleans up after builders that stopped: for each running export whose claim lapsed, deletes the parts its builder
+    stored and their data keys, then queues it again (or fails it, `GIVE_UP_AFTER_S` after it was requested). Returns
+    how many it cleaned up. Idempotent, and safe against the builder waking up: see the module docstring."""
+    now = time.time() if now is None else now
+    with state.session() as s:
+        candidates = s.scalars(
+            select(AccountExport.id).where(AccountExport.status == RUNNING, AccountExport.locked_until < now)
+        ).all()
+    reaped = 0
+    for export_id in candidates:
+        with state.session() as s, s.begin():
+            # Takes the row (a row lock on Postgres, the write lock on SQLite) only while its claim is still lapsed, so a
+            # builder that renewed, listed a part or settled meanwhile keeps its export.
+            taken = s.execute(
+                update(AccountExport)
+                .where(AccountExport.id == export_id, AccountExport.status == RUNNING, AccountExport.locked_until < now)
+                .values(locked_until=AccountExport.locked_until)
+                .execution_options(synchronize_session=False)
+            ).rowcount
+            if not taken:
+                continue
+            row = s.get(AccountExport, export_id, populate_existing=True)
+            orphaned = json.loads(row.part_blob_ids) if row.part_blob_ids else []
+            forgotten = _forget_part_keys(state, s, export_id)
+            row.part_blob_ids, row.locked_until = None, None
+            if now - row.created_at >= GIVE_UP_AFTER_S:
+                row.status, row.finished_at, row.error_code, row.active_account_id = FAILED, now, "export_failed", None
+            else:
+                # Keeps active_account_id: the export is still the account's one in progress.
+                row.status, row.started_at = QUEUED, None
+            status = row.status
+        # Only after the commit: had it rolled back, a builder could still be using them.
+        standard_jobs.discard_blobs(state, orphaned)
+        log.warning(
+            "data export %s: its builder stopped; deleted %d stored parts and %d part keys, and marked it %s",
+            export_id, len(orphaned), len(forgotten), status,
+        )
+        reaped += 1
+    return reaped
+
+
 def run_pending(state: GatewayState, limit: int = 1) -> int:
-    """One pass of the background loop: delete expired copies, then build up to `limit` exports."""
+    """One pass of the background loop: delete expired copies, clean up after builders that stopped, then build up to
+    `limit` exports."""
     expire(state)
+    reap_stalled(state)
     built = 0
     while built < limit:
         claimed = claim(state)

@@ -14,6 +14,8 @@ from sqlalchemy import select
 
 from kuno_protocol.attestation import AttestationEvidence
 from kuno_protocol.canonical import b64d, canonical_json, sha256_hex
+from kuno_protocol.envelope import EnvelopeError
+from kuno_protocol.envelope import normalize as normalize_envelope
 from kuno_protocol.hardware import capacity_limit
 from kuno_protocol.receipts import Receipt, verify_receipt
 from kuno_protocol.hotkey import verify_hotkey_proof
@@ -100,6 +102,11 @@ async def register_enclave(request: Request):
     unknown = [p for p in evidence.profiles if p not in state.profiles]
     if unknown:
         raise _error(422, "unknown_profiles", f"Unknown profiles: {', '.join(unknown)}")
+    try:
+        # What this hardware can fit, per profile (kuno_protocol.envelope); routing and admission hold the enclave to it.
+        envelope = normalize_envelope(body.envelope, state.profiles, evidence.profiles)
+    except EnvelopeError as exc:
+        raise _error(422, "invalid_envelope", str(exc)) from None
     # DCAP collateral and NRAS are network calls; keep them off the event loop. Open-tier evidence is accepted only
     # where the owner-signed manifest's open_tier policy allows the image (refused by default, production included).
     verdict = await asyncio.to_thread(
@@ -144,6 +151,8 @@ async def register_enclave(request: Request):
         enclave.status = "active"
         enclave.verified_at = enclave.last_seen = now
         enclave.gpu_count = verdict.gpu_count
+        # Replaced at every registration: one without an envelope serves its profiles' full limits.
+        enclave.envelope = json.dumps(envelope, separators=(",", ":"), sort_keys=True) if envelope else None
         try:
             replaced = state.bind_hardware(s, enclave, verdict.hardware, now)
         except HardwareInUse as exc:
@@ -317,10 +326,14 @@ async def fail(job_id: str, request: Request, auth=Depends(require_enclave)):
     state = gw(request)
     enclave, raw = auth
     body: FailBody = _parse(FailBody, raw)
+    from .envelopes import failure_code
+
     with state.session() as s, s.begin():
         job = _assigned_job(s, job_id, enclave)
         if not JobState(job.status).terminal:
-            state.finish_job(s, job, JobState.FAILED, body.code, body.message)
+            # capacity_refused inside the envelope this enclave advertised is recorded as internal_error, a miner fault.
+            code, message = failure_code(s.get(Enclave, enclave.id) or enclave, job.params, body.code, body.message)
+            state.finish_job(s, job, JobState.FAILED, code, message)
     return {"ok": True}
 
 

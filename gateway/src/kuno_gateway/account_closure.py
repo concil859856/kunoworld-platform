@@ -1,8 +1,10 @@
 """Closing an account (STANDARD_MODE.md, "Closing an account").
 
 The owner closes their own account from a web session that signed in within the last 10 minutes
-(`REAUTH_WINDOW_S`), typing the account's email address to confirm. One transaction does the following, in this order,
-so a failure in another module stops the closure before anything irreversible happens:
+(`REAUTH_WINDOW_S`), typing the account's email address to confirm. One transaction locks the account's row
+(`lock_account`, which job admission takes too, so no job can slip in while the account closes), checks it isn't
+closed, and does the following, in this order, so a failure in another module stops the closure before anything
+irreversible happens:
 
 1. the key vault's wrapped keys are purged and share links ended (when those modules are installed);
 2. every web session and API key is revoked, linked wallets are unlinked, pending sign-in links are deleted, operator
@@ -120,6 +122,27 @@ def closure_for_account(s: Session, account_id: str) -> AccountClosure | None:
 # ------------------------------------------------------------------ closing
 
 
+def lock_account(state: GatewayState, s: Session, account_id: str) -> Account | None:
+    """Locks an account's row until the caller's transaction ends and returns the account as committed now, or None.
+
+    Closing an account (`close`) and admitting a job (`api_public.admit_job`) both take this lock before they look at
+    `closed_at`, so they can't interleave: whichever locks first commits first, and the other then reads what it did. A
+    job admitted just before a closure is canceled and refunded by it; a job asked for during or after one is refused.
+
+    * Postgres: `SELECT ... FOR UPDATE` (refreshing the object if the session already holds it).
+    * SQLite has no row locks, and Python's driver begins the write transaction only at the first write, so a plain
+      read could see the account as it was before a concurrent closure commits. A no-op UPDATE of the row takes
+      SQLite's single write lock first (waiting, up to the busy timeout, for another writer to commit), and the read
+      comes after it.
+    """
+    if state.postgres:
+        return s.get(Account, account_id, with_for_update=True, populate_existing=True)
+    s.execute(
+        update(Account).where(Account.id == account_id).values(closed_at=Account.closed_at).execution_options(synchronize_session=False)
+    )
+    return s.get(Account, account_id, populate_existing=True)
+
+
 @dataclass
 class ClosureResult:
     closure: AccountClosure
@@ -134,9 +157,12 @@ def close(state: GatewayState, s: Session, user_id: str, now: float) -> ClosureR
     found = identity.account_for_user(s, user_id) if user is not None else None
     if user is None or found is None:
         raise LookupError(user_id)
-    if found.closed_at is not None or closure_for_account(s, found.id) is not None:
+    # Lock first, then check, in this transaction: see lock_account.
+    account = lock_account(state, s, found.id)
+    if account is None:
+        raise LookupError(user_id)
+    if account.closed_at is not None or closure_for_account(s, account.id) is not None:
         raise AlreadyClosed()
-    account = s.get(Account, found.id, with_for_update=state.postgres)
     by = appeals.owner_actor(user.id)
     email = user.email
     detail: dict = {}

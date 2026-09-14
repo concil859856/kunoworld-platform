@@ -110,8 +110,10 @@ async def issue_certificate(request: Request, auth=Depends(require_enclave)):
         "serial": issued.serial_hex,
         "not_before": issued.not_before.timestamp(),
         "not_after": issued.not_after.timestamp(),
-        # Without an RFC 3161 timestamp a manifest stops validating when this certificate expires.
+        # Without an RFC 3161 timestamp a manifest stops validating when this certificate expires. `tsa_urls` lists every
+        # TSA in order of preference, and workers fail over down it; `tsa_url` is its first, for workers that read one.
         "tsa_url": ca.tsa_url,
+        "tsa_urls": list(getattr(ca, "tsa_urls", None) or ([ca.tsa_url] if ca.tsa_url else [])),
     }
 
 

@@ -77,6 +77,12 @@ def test_production_starts_with_aws_kms_and_a_timestamp_authority(aws):
     assert TestClient(app).get("/healthz").json()["ok"] is True
 
 
+def test_production_starts_with_a_list_of_timestamp_authorities(aws):
+    backup = "http://backup-tsa.example/tsr"
+    app = create_app(production(aws, KUNO_C2PA_TSA_URLS=f"{TSA}, {backup}", **kms(aws)))
+    assert (app.state.c2pa_ca.tsa_url, app.state.c2pa_ca.tsa_urls) == (TSA, [TSA, backup])
+
+
 def test_production_with_a_c2pa_ca_refuses_to_start_without_a_timestamp_authority(aws):
     with pytest.raises(TimestampAuthorityRequired, match="KUNO_C2PA_TSA_URL"):
         create_app(production(aws, **kms(aws)))

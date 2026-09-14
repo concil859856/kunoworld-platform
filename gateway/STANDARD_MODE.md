@@ -57,7 +57,7 @@ accepting only the web session.
 | `POST /v1/standard/videos` | `{job_id?, params: GenerationParams, prompt, negative_prompt?, seed?, options?, inputs: [{upload_id, index, role, time_s?, strength?, hint?, start_s?, end_s?}], webhook_url?}` | `201 JobStatus` with `privacy: "standard"`. The gateway checks the prompt, picks an enclave of any tier, sets an explicit seed when none is given, seals the payload and inputs to that enclave and charges like `/v1/videos`. |
 | `GET /v1/videos/{job_id}` | | `JobStatus`, including `privacy` for every job |
 | `GET /v1/standard/videos?limit=50` | | `[{job_id, status, profile_id, params, prompt, created_at, finished_at, has_video, error_code, expires_at: null, deleted}]`, newest first |
-| `GET /v1/standard/videos/{job_id}/video` | | `video/mp4`, owner only; `404 not_ready` until succeeded; `410 deleted` or `410 removed` |
+| `GET /v1/standard/videos/{job_id}/video` | | `video/mp4`, owner only; `404 not_ready` until succeeded; `410 deleted` or `410 removed`. Answers byte ranges ([Byte ranges](#byte-ranges)) |
 | `GET /v1/standard/videos/{job_id}/thumbnail` | | `image/jpeg`, owner only |
 | `DELETE /v1/standard/videos/{job_id}` | | `204`, an alias of `DELETE /v1/videos/{job_id}` |
 
@@ -136,6 +136,11 @@ appeal is voided (`strikes.voided_at`) and no longer counts toward the rules or 
 - The gateway's background loop builds it into the blob store, sealed at rest with the platform key in 32 MiB parts;
   the download streams the parts in order. `expires_at` is `finished_at` plus 7 days, when the loop deletes the copy.
   Exports are copies: deleting one deletes nothing else.
+- A builder lists each part on the export as soon as it is stored, and holds a 30-minute claim that it renews as it
+  works. If it stops (a crash, a restart), the next pass of the loop after the claim lapses deletes the parts it stored
+  and the data keys of every part sealed for the export, then queues the export again (`account_export.reap_stalled`).
+  An export requested more than 24 hours earlier fails with `export_failed` instead. A builder that wakes up afterwards
+  finds its claim gone, deletes what it stored and stops.
 - The zip: `README.txt`; `account.json` (email, account, balance, ledger, payments, wallets, API key names and
   prefixes, roles, strikes, restrictions, appeals, and reports filed with the account's address as the contact);
   `jobs.json` (every job's metadata, privacy mode, params, receipt, `content`: `stored`, `deleted`, `removed` or `none`,
@@ -154,7 +159,11 @@ appeal is voided (`strikes.voided_at`) and no longer counts toward the rules or 
 | `POST /v1/me/reauth` | `{next?}` | `202`: emails the signed-in address a sign-in link (default `next`: `/account?closing=1#close-account`); counts toward that address's sign-in link limit (`429 rate_limited`) |
 | `POST /v1/me/close` | `{confirm_email}` | `200 {closed, account_id, closed_at, jobs, jobs_canceled, balance_usd, balance_policy, records_kept, retention_policy}`. `403 reauth_required` unless the session was opened by a sign-in in the last 10 minutes; `422 email_mismatch` |
 
-One transaction, in this order: key sync purged (`key_vault.purge_account`) and share links ended
+One transaction. It first locks the account's row (`account_closure.lock_account`: `SELECT ... FOR UPDATE` on Postgres,
+the database write lock on SQLite) and checks the account isn't closed. Job admission (`POST /v1/videos`,
+`POST /v1/standard/videos`) takes the same lock and checks `closed_at` in its own transaction, answering
+`403 account_closed`. So a job admitted just before a closure is canceled and refunded by it, and one asked for during
+or after is refused. Then, in this order: key sync purged (`key_vault.purge_account`) and share links ended
 (`shares.revoke_account`); sessions and API keys revoked, wallets unlinked, pending sign-in links deleted, operator roles
 revoked, open appeals withdrawn; every job through the path of `DELETE /v1/videos/{job_id}` (unfinished jobs canceled
 and refunded; held content hidden and deleted when its hold ends); unused uploads and exports deleted; the webhook
@@ -353,7 +362,7 @@ revocable, and optionally expiring.
 | `DELETE /v1/me/shares/{share_id}` | web session | | `200` the row; `404 not_found`. Revoking twice is harmless |
 | `POST /v1/videos/{job_id}/shares`, `GET /v1/account/shares`, `DELETE /v1/account/shares/{share_id}` | API key or web session | the same | the same |
 | `GET /v1/shares/{token}` | none | | `{privacy, profile_id, created_at, shared_at, expires_at, content_digest, receipt, signing_public_key}` |
-| `GET /v1/shares/{token}/video` | none | | Standard: `video/mp4`, decrypted from at-rest storage like the owner's download. Private: `application/octet-stream`, the sealed output blob |
+| `GET /v1/shares/{token}/video` | none | | Standard: `video/mp4`, decrypted from at-rest storage like the owner's download. Private: `application/octet-stream`, the sealed output blob. Both answer byte ranges ([Byte ranges](#byte-ranges)) |
 
 - `token`: 32 random bytes, base64url. Only its SHA-256 is stored, so it appears in this one response. `url_path` is
   `/s/{token}`; `url` is `KUNO_SITE_URL` + `url_path`. A private video's key is never in a response: the owner's
@@ -366,11 +375,35 @@ revocable, and optionally expiring.
 - Public routes: `404 not_found` for an unknown token. `410 share_unavailable` ("This link no longer works.") once the
   link was revoked or expired, the video was deleted, removed or is held, or the account closed: the same body every
   time. `429 rate_limited` after `KUNO_SHARE_VIEWS_PER_MINUTE_PER_IP` (60) requests a minute from one IP, counted
-  under a keyed hash of the address. Each `/video` response counts one view; nothing about viewers is stored. Both
+  under a keyed hash of the address. Views are counted per playback, not per request: a `/video` response counts when
+  it is the whole file, or a range from the first byte longer than the 2-byte probe players send first; seeks don't.
+  Nothing about viewers is stored. Both
   carry `cache-control: no-store`, `x-robots-tag: noindex, nofollow` and `referrer-policy: no-referrer`.
 - `DELETE /v1/videos/{job_id}` ends the video's links (`video_deleted`). Account closure calls
   `shares.revoke_account(s, account_id)`. Ending links records tombstones (`share_link`, `share_links_job`,
   `share_links_account`), so a restore can't make a link work again.
+
+## Byte ranges
+
+`GET /v1/shares/{token}/video`, `GET /v1/standard/videos/{job_id}/video` (and `/v1/me/...`) and `GET /v1/blobs/{blob_id}`
+answer HTTP byte ranges (RFC 9110), which iOS Safari needs to seek, and sometimes to play at all (`byte_ranges.py`).
+
+- One range (`bytes=a-b`, `bytes=a-` or `bytes=-n`): `206`, `Content-Range: bytes a-b/size`; an end past the file is
+  clamped. Several ranges, another unit or a malformed header: `200` and the whole file. A start at or past the end, or
+  `bytes=-0`: `416 range_not_satisfiable`, `Content-Range: bytes */size`.
+- Every answer carries `Accept-Ranges: bytes` and `ETag: "<sha256 hex>"`: the content digest for a Standard video, the
+  stored blob's digest for ciphertext. `If-Range` with that ETag honours the range; any other validator, a date
+  included, gets `200` and the whole file.
+- Everything else is unchanged: content type and disposition, share links' `cache-control: no-store`, `x-robots-tag`
+  and `referrer-policy`, and the per-IP limit, which every request counts toward.
+- A Standard video isn't decrypted whole. Its at-rest format seals 1 MiB chunks separately (vault.py,
+  `kuno_protocol.blobs`), so a range reads only the chunks it covers, in one ranged read of the blob store (a ranged GET
+  on R2 or S3), and decrypts them one at a time: no size cap is needed. Before anything is sent, the stored object's
+  size must be exactly what the video's recorded length implies, so a truncated object is refused up front.
+- Ciphertext (`/v1/blobs/{blob_id}`, a private share link's sealed video) streams from the store as stored. A private
+  share page still downloads the whole blob and decrypts it in the browser.
+- The studio's proxy (`/api/kuno/...`) forwards `Range` and `If-Range`, and returns the `206` with `Content-Range` and
+  `Accept-Ranges`.
 
 ## Implementation notes
 

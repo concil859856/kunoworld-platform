@@ -33,6 +33,7 @@ from kuno_protocol.schemas import (
     job_aad,
     output_label,
 )
+from kuno_protocol.sealed_payload import seal_payload
 from kuno_protocol.tiers import tier_for_tee, tier_serves
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -85,12 +86,15 @@ def serves(enclave: Enclave, privacy: str) -> bool:
     return check(enclave, privacy) if check else tier_serves(tier_for_tee(enclave.tee), privacy)
 
 
-def enclaves_for(state: GatewayState, s: Session, profile_id: str, privacy: str) -> list[Enclave]:
-    """Fresh enclaves for a profile that may run a job in this mode, least loaded first."""
+def enclaves_for(state: GatewayState, s: Session, profile_id: str, privacy: str, fit=None) -> list[Enclave]:
+    """Fresh enclaves for a profile that may run a job in this mode, least loaded first. `fit`
+    (kuno_protocol.envelope.EnvelopeQuery) keeps only those whose serving envelope has room for the request."""
     routable = getattr(state, "routable_enclaves", None)
     if routable is not None:
-        return routable(s, profile_id, privacy)
-    return [e for e in state.fresh_enclaves(s, profile_id) if serves(e, privacy)]
+        return routable(s, profile_id, privacy) if fit is None else routable(s, profile_id, privacy, fit=fit)
+    from .envelopes import envelope_serves
+
+    return [e for e in state.fresh_enclaves(s, profile_id) if serves(e, privacy) and envelope_serves(e, profile_id, fit)]
 
 
 # ------------------------------------------------------------------ sealing
@@ -132,7 +136,7 @@ def seal_job(
                 )
             )
         payload = SealedPayload(prompt=prompt, negative_prompt=negative_prompt, seed=seed, inputs=refs, options=options)
-        ciphertext = session.seal(payload.model_dump_json().encode(), job_aad(job_id, enclave_id, params, sealed.blob_ids))
+        ciphertext = seal_payload(session, payload, job_aad(job_id, enclave_id, params, sealed.blob_ids))  # padded, like the SDKs
         sealed.ciphertext = b64e(ciphertext)
     except BaseException:
         discard_blobs(state, sealed.blob_ids)

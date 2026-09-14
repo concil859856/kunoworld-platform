@@ -28,11 +28,11 @@ from kuno_protocol.receipts import ReceiptBody, VideoInfo, sign_receipt
 from kuno_protocol.schemas import (
     GenerationParams,
     JobState,
-    SealedPayload,
     input_label,
     job_aad,
     output_label,
 )
+from kuno_protocol.sealed_payload import open_payload
 
 from operator_sessions import operator_headers
 
@@ -120,7 +120,7 @@ def render(gw, job_id: str, video: bytes, *, tamper: bool = False):
     blob_ids = json.loads(job.input_blob_ids)
     params = GenerationParams.model_validate_json(job.params)
     session = RecipientSession(gw.hpke_private, b64d(job.enc))
-    payload = SealedPayload.model_validate_json(session.open(b64d(job.ciphertext), job_aad(job_id, ENCLAVE, params, blob_ids)))
+    payload = open_payload(session, b64d(job.ciphertext), job_aad(job_id, ENCLAVE, params, blob_ids))
     inputs = [decrypt_blob(session.input_key, input_label(job_id, i), gw.state.blobs.get(b)) for i, b in enumerate(blob_ids)]
     sealed = encrypt_blob(session.output_key, output_label(job_id), video)
     now = time.time()

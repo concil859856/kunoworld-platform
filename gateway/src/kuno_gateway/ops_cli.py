@@ -72,15 +72,19 @@ def check_tsa(args: Any, settings: Settings | None = None, out=print) -> int:
     from . import tsa
 
     settings = settings or Settings.from_env()
-    url = args.url or settings.c2pa_tsa_url
-    if not url:
-        print("check-tsa: no timestamp authority: pass --url or set KUNO_C2PA_TSA_URL", file=sys.stderr)
+    # --url, or every configured TSA in order: a dead fallback is worth knowing about before it is needed.
+    urls = [args.url] if args.url else tsa.configured_urls(settings)
+    if not urls:
+        print("check-tsa: no timestamp authority: pass --url or set KUNO_C2PA_TSA_URLS", file=sys.stderr)
         return 2
     anchors = Path(args.trust_list).read_bytes() if args.trust_list else None
-    result = tsa.probe(url, timeout=args.timeout, trust_anchors_pem=anchors)
-    for line in result.lines():
-        out(line)
-    return 0 if result.ok else 1
+    failed = False
+    for url in urls:
+        result = tsa.probe(url, timeout=args.timeout, trust_anchors_pem=anchors)
+        for line in result.lines():
+            out(line)
+        failed = failed or not result.ok
+    return 1 if failed else 0
 
 
 def reapply_deletions(args: Any, settings: Settings | None = None, out=print) -> int:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 import shutil
 import subprocess
 import threading
@@ -62,23 +63,47 @@ def pki():
     unit = _certificate("Test TSA Unit", unit_key, "Test TSA Root", root_key, ca=False, timestamping=True)
     other_key = ec.generate_private_key(ec.SECP256R1())
     other = _certificate("Unrelated Root", other_key, "Unrelated Root", other_key, ca=True)
-    return SimpleNamespace(root=root, unit=unit, other=other)
+    return SimpleNamespace(root=root, unit=unit, other=other, unit_key=unit_key)
 
 
 def pem(cert: x509.Certificate) -> bytes:
     return cert.public_bytes(serialization.Encoding.PEM)
 
 
-def token(digest: bytes, nonce: int | None, gen_time: datetime.datetime, certificates: list[x509.Certificate]) -> bytes:
-    """A timeStampToken shaped like a real one (ContentInfo / SignedData / TSTInfo). Unsigned: the probe doesn't verify
-    CMS signatures."""
+ECDSA_WITH_SHA256 = "1.2.840.10045.4.3.2"
+
+
+def token(
+    digest: bytes, nonce: int | None, gen_time: datetime.datetime, certificates: list[x509.Certificate], signer=None,
+    *, forge: bool = False,
+) -> bytes:
+    """A timeStampToken shaped like a real one (ContentInfo / SignedData / TSTInfo). With `signer` (pki), a SignerInfo
+    with the signed attributes RFC 3161 and RFC 5816 call for (contentType, messageDigest, signingCertificateV2), signed
+    with ECDSA P-256 by the TSA unit's key. `forge` signs something else."""
     tst = der_sequence(
         der_integer(1), der_oid(POLICY), der_sequence(der_sequence(der_oid(SHA256_OID)), der_octets(digest)), der_integer(4242),
         der_generalized_time(gen_time), der_integer(nonce) if nonce is not None else b"",
     )
     encap = der_sequence(der_oid(TST_INFO_OID), der_explicit(0, der_octets(tst)))
     certs = tlv(0xA0, b"".join(c.public_bytes(serialization.Encoding.DER) for c in certificates)) if certificates else b""
-    signed = der_sequence(der_integer(3), der_set(der_sequence(der_oid(SHA256_OID))), encap, certs, der_set())
+    signer_infos = der_set()
+    if signer is not None:
+        unit_der = signer.unit.public_bytes(serialization.Encoding.DER)
+        attributes = der_set(
+            der_sequence(der_oid(tsa.CONTENT_TYPE_ATTR_OID), der_set(der_oid(TST_INFO_OID))),
+            der_sequence(der_oid(tsa.MESSAGE_DIGEST_ATTR_OID), der_set(der_octets(hashlib.sha256(tst).digest()))),
+            der_sequence(
+                der_oid(tsa.SIGNING_CERTIFICATE_V2_OID),
+                der_set(der_sequence(der_sequence(der_sequence(der_octets(hashlib.sha256(unit_der).digest()))))),
+            ),
+        )
+        signature = signer.unit_key.sign(attributes + (b"forged" if forge else b""), ec.ECDSA(hashes.SHA256()))
+        signer_infos = der_set(der_sequence(
+            der_integer(1), der_sequence(signer.unit.issuer.public_bytes(), der_integer(signer.unit.serial_number)),
+            der_sequence(der_oid(SHA256_OID)), bytes([0xA0]) + attributes[1:], der_sequence(der_oid(ECDSA_WITH_SHA256)),
+            der_octets(signature),
+        ))
+    signed = der_sequence(der_integer(3), der_set(der_sequence(der_oid(SHA256_OID))), encap, certs, signer_infos)
     return der_sequence(der_oid(SIGNED_DATA_OID), der_explicit(0, signed))
 
 
@@ -96,7 +121,7 @@ def response(status: int, token_der: bytes = b"", *, fail_bit: int | None = None
 @pytest.fixture
 def fake_tsa(pki):
     """A TSA on localhost. The path picks the behaviour: /granted, /skewed, /rejection, /wrong-nonce, /no-token,
-    /garbage, /http-500, /no-certificates."""
+    /garbage, /http-500, /no-certificates, /forged, /unsigned."""
     seen: list[tuple[str, str, tsa.TimestampRequestInfo]] = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -114,11 +139,13 @@ def fake_tsa(pki):
                 self.end_headers()
                 return
             payload = {
-                "granted": lambda: response(0, token(info.digest, info.nonce, now, [pki.unit, pki.root])),
-                "no-certificates": lambda: response(0, token(info.digest, info.nonce, now, [])),
-                "skewed": lambda: response(0, token(info.digest, info.nonce, now - datetime.timedelta(hours=1), [pki.unit, pki.root])),
+                "granted": lambda: response(0, token(info.digest, info.nonce, now, [pki.unit, pki.root], pki)),
+                "no-certificates": lambda: response(0, token(info.digest, info.nonce, now, [], pki)),
+                "skewed": lambda: response(0, token(info.digest, info.nonce, now - datetime.timedelta(hours=1), [pki.unit, pki.root], pki)),
                 "rejection": lambda: response(2, fail_bit=0, text="unsupported hash algorithm"),
-                "wrong-nonce": lambda: response(0, token(info.digest, (info.nonce or 0) + 1, now, [pki.unit])),
+                "wrong-nonce": lambda: response(0, token(info.digest, (info.nonce or 0) + 1, now, [pki.unit], pki)),
+                "forged": lambda: response(0, token(info.digest, info.nonce, now, [pki.unit, pki.root], pki, forge=True)),
+                "unsigned": lambda: response(0, token(info.digest, info.nonce, now, [pki.unit, pki.root])),
                 "no-token": lambda: response(0),
                 "garbage": lambda: b"this is not DER",
             }[mode]()
@@ -205,6 +232,8 @@ def test_a_trust_list_says_whether_the_chain_reaches_an_anchor(fake_tsa, pki):
         ("wrong-nonce", "the token's nonce is not the nonce that was sent"),
         ("no-token", "granted, but the reply carries no timeStampToken"),
         ("http-500", "HTTP 500"),
+        ("forged", "the token's signature does not verify under its signer certificate"),
+        ("unsigned", "the token carries no SignerInfo"),
     ],
 )
 def test_a_failing_tsa_is_reported(fake_tsa, mode, problem):
@@ -262,3 +291,68 @@ def test_the_start_up_probe_modes(fake_tsa, tmp_path):
     with pytest.raises(ValueError):
         startup_checks.probe_timestamp_authority(settings)
     assert Settings.from_env({"KUNO_DATA_DIR": str(tmp_path), "KUNO_C2PA_TSA_PROBE": "Require"}).c2pa_tsa_probe == "require"
+
+
+# ------------------------------------------------------------------ the token's signature
+
+
+def test_a_real_tokens_signature_verifies_and_tampering_is_caught():
+    reply = tsa.parse_response((HERE / "tsa_freetsa_reply.der").read_bytes())
+    check = tsa.verify_token_signature(reply.token)
+    assert (check.valid, check.problems) == (True, []) and "freetsa" in (check.signer or "").lower()
+
+    stamped = reply.gen_time.strftime("%Y%m%d%H%M%S").encode()
+    later = (reply.gen_time + datetime.timedelta(seconds=1)).strftime("%Y%m%d%H%M%S").encode()
+    moved = tsa.verify_token_signature(reply.token.replace(stamped, later, 1))
+    assert moved.valid is False and "the token's signed messageDigest is not the digest of its TSTInfo" in moved.problems
+    forged = tsa.verify_token_signature(reply.token[:-1] + bytes([reply.token[-1] ^ 1]))
+    assert forged.valid is False and "the token's signature does not verify under its signer certificate" in forged.problems
+    garbage = tsa.verify_token_signature(b"\x30\x03\x02\x01\x01")
+    assert garbage.valid is False and garbage.problems
+
+
+def test_the_probe_reports_the_signature(fake_tsa):
+    granted = tsa.probe(f"{fake_tsa.url}/granted")
+    assert granted.signature_valid is True and "  CMS signature: valid" in granted.lines()
+    bare = tsa.probe(f"{fake_tsa.url}/no-certificates")
+    assert bare.ok and bare.signature_valid is None and any(w.startswith("signature not checked") for w in bare.warnings)
+    forged = tsa.probe(f"{fake_tsa.url}/forged")
+    assert forged.signature_valid is False and "  CMS signature: INVALID" in forged.lines()
+
+
+# ------------------------------------------------------------------ several timestamp authorities
+
+
+def test_the_tsa_list_settings(tmp_path):
+    base = {"KUNO_DATA_DIR": str(tmp_path)}
+    listed = Settings.from_env({**base, "KUNO_C2PA_TSA_URLS": "http://a.example/tsr,http://b.example  http://a.example/tsr"})
+    assert (listed.c2pa_tsa_url, listed.c2pa_tsa_urls) == ("http://a.example/tsr", ["http://a.example/tsr", "http://b.example"])
+    single = Settings.from_env({**base, "KUNO_C2PA_TSA_URL": "http://a.example"})
+    assert (single.c2pa_tsa_url, single.c2pa_tsa_urls, tsa.configured_urls(single)) == ("http://a.example", ["http://a.example"], ["http://a.example"])
+    both = Settings.from_env({**base, "KUNO_C2PA_TSA_URL": "http://b.example", "KUNO_C2PA_TSA_URLS": "http://a.example,http://b.example"})
+    assert (both.c2pa_tsa_url, tsa.configured_urls(both)) == ("http://a.example", ["http://a.example", "http://b.example"])
+    with pytest.raises(ValueError, match="not in KUNO_C2PA_TSA_URLS"):
+        Settings.from_env({**base, "KUNO_C2PA_TSA_URL": "http://c.example", "KUNO_C2PA_TSA_URLS": "http://a.example"})
+    with pytest.raises(ValueError, match="http:// or https://"):
+        Settings.from_env({**base, "KUNO_C2PA_TSA_URLS": "ftp://a.example"})
+    none = Settings.from_env(base)
+    assert (none.c2pa_tsa_url, none.c2pa_tsa_urls, tsa.configured_urls(none)) == (None, [], [])
+
+
+def test_with_several_tsas_start_up_needs_one_to_pass_and_check_tsa_reports_each(fake_tsa, tmp_path):
+    rejection, granted = f"{fake_tsa.url}/rejection", f"{fake_tsa.url}/granted"
+    settings = Settings.from_env({"KUNO_DATA_DIR": str(tmp_path), "KUNO_C2PA_TSA_URLS": f"{rejection} {granted}", "KUNO_C2PA_TSA_PROBE": "require"})
+    passed = startup_checks.probe_timestamp_authority(settings)
+    assert passed.ok and passed.url == granted
+    lines: list[str] = []
+    assert ops_cli.check_tsa(SimpleNamespace(url=None, timeout=5.0, trust_list=None), settings, out=lines.append) == 1
+    assert [line for line in lines if line.startswith("TSA ")] == [f"TSA {rejection}: FAILED", f"TSA {granted}: OK"]
+
+    settings.c2pa_tsa_url, settings.c2pa_tsa_urls = rejection, [rejection, f"{fake_tsa.url}/forged"]
+    with pytest.raises(TimestampAuthorityRequired, match="every timestamp authority failed its start-up probe"):
+        startup_checks.probe_timestamp_authority(settings)
+
+    # Production with a CA needs at least one, however it is configured.
+    with pytest.raises(TimestampAuthorityRequired, match="needs a timestamp authority"):
+        startup_checks.check_timestamp_authority(Settings.from_env({"KUNO_DATA_DIR": str(tmp_path)}), object(), True)
+    startup_checks.check_timestamp_authority(Settings.from_env({"KUNO_DATA_DIR": str(tmp_path), "KUNO_C2PA_TSA_URLS": granted}), object(), True)

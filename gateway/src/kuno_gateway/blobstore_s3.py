@@ -13,6 +13,8 @@ On top of that, for large ciphertexts:
   so a blob never has to sit in memory whole.
 * `iter_chunks(blob_id)` returns an iterator of bytes suitable for `StreamingResponse`;
   it raises `KeyError` up front, before the first chunk.
+* `size(blob_id)` (a HEAD) and `open_range(blob_id, start, end)` (a ranged GET) read part of a blob, for HTTP byte
+  ranges (byte_ranges.py), so a player seeking in a video never makes the gateway fetch the whole object.
 
 `boto3` is imported lazily and only needed when this backend is selected
 (`pip install 'kuno-gateway[s3]'`). `select_blob_store(settings)` picks the backend from
@@ -34,6 +36,7 @@ Environment (all optional except the bucket):
 from __future__ import annotations
 
 import hashlib
+import io
 import os
 import re
 import secrets
@@ -227,6 +230,31 @@ class S3BlobStore:
                 body.close()
 
         return chunks()
+
+    def size(self, blob_id: str) -> int:
+        key = self._key(blob_id)
+        try:
+            return int(self.client.head_object(Bucket=self.bucket, Key=key)["ContentLength"])
+        except Exception as exc:
+            if _error_code(exc) in _MISSING:
+                raise KeyError(blob_id) from None
+            raise
+
+    def open_range(self, blob_id: str, start: int, end: int | None = None) -> Any:
+        """A readable stream (`read(n)`, `close()`) of bytes `[start, end)`, from one ranged GET."""
+        key = self._key(blob_id)
+        if end is not None and end <= start:
+            return io.BytesIO(b"")
+        wanted = f"bytes={start}-" if end is None else f"bytes={start}-{end - 1}"
+        try:
+            return self.client.get_object(Bucket=self.bucket, Key=key, Range=wanted)["Body"]
+        except Exception as exc:
+            code = _error_code(exc)
+            if code in _MISSING:
+                raise KeyError(blob_id) from None
+            if code == "InvalidRange":  # starts at or past the end
+                return io.BytesIO(b"")
+            raise
 
     def exists(self, blob_id: str) -> bool:
         try:

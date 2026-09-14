@@ -234,6 +234,9 @@ class Enclave(Base):
     last_seen: Mapped[float] = mapped_column(Float)
     # GPUs the last verified evidence attested; None when the verifier did not count them.
     gpu_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The serving envelope from the last registration, as JSON (kuno_protocol.envelope): profile -> resolution -> aspect
+    # ratio -> fps -> longest duration_s. None: the enclave serves its profiles' full limits. Migration 0016.
+    envelope: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class HardwareBinding(Base):

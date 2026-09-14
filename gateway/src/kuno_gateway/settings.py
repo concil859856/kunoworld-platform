@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -10,6 +11,25 @@ def read_env_file(path: Path) -> dict[str, str]:
         return {}
     pairs = (line.split("=", 1) for line in path.read_text().splitlines() if "=" in line and not line.startswith("#"))
     return {k.strip(): v.strip() for k, v in pairs}
+
+
+def parse_tsa_urls(env: dict[str, str]) -> list[str]:
+    """`KUNO_C2PA_TSA_URLS` (separated by commas or spaces, in order of preference), else `KUNO_C2PA_TSA_URL`.
+
+    Refuses a URL that isn't http(s), and a `KUNO_C2PA_TSA_URL` that the list leaves out, since which one was meant to
+    come first is then unclear."""
+    listed = [url for url in re.split(r"[\s,]+", env.get("KUNO_C2PA_TSA_URLS") or "") if url]
+    single = (env.get("KUNO_C2PA_TSA_URL") or "").strip()
+    if listed and single and single not in listed:
+        raise ValueError(
+            "KUNO_C2PA_TSA_URL is not in KUNO_C2PA_TSA_URLS: list every timestamp authority in KUNO_C2PA_TSA_URLS, in order "
+            "of preference, and unset KUNO_C2PA_TSA_URL"
+        )
+    urls = list(dict.fromkeys(listed or ([single] if single else [])))
+    for url in urls:
+        if not url.lower().startswith(("http://", "https://")):
+            raise ValueError(f"a timestamp authority URL must start with http:// or https://, not {url!r}")
+    return urls
 
 
 @dataclass
@@ -100,8 +120,11 @@ class Settings:
     # PEM: the issuing intermediate, then the root.
     c2pa_ca_chain: Path | None = None
     c2pa_cert_validity_s: int = 86400
-    # RFC 3161 timestamp authority handed to workers, so manifests outlive their short certificates.
+    # RFC 3161 timestamp authorities handed to workers, so manifests outlive their short certificates. c2pa_tsa_urls
+    # lists them in order of preference (KUNO_C2PA_TSA_URLS; workers fail over down it); c2pa_tsa_url is the first, which
+    # workers that read a single URL use. tsa.configured_urls combines the two.
     c2pa_tsa_url: str | None = None
+    c2pa_tsa_urls: list[str] = field(default_factory=list)
     c2pa_issuance_log_path: Path | None = None
     # The JSONL log above is only imported now; issuances are recorded in the database and limited per enclave and
     # overall, per window (c2pa_issuance.py, C2PA_CA.md). 0 turns a limit off.
@@ -266,7 +289,8 @@ class Settings:
             c2pa_ca_key=Path(env["KUNO_C2PA_CA_KEY"]) if env.get("KUNO_C2PA_CA_KEY") else None,
             c2pa_ca_chain=Path(env["KUNO_C2PA_CA_CHAIN"]) if env.get("KUNO_C2PA_CA_CHAIN") else None,
             c2pa_cert_validity_s=int(env.get("KUNO_C2PA_CERT_VALIDITY_S", "86400")),
-            c2pa_tsa_url=env.get("KUNO_C2PA_TSA_URL") or None,
+            c2pa_tsa_url=next(iter(parse_tsa_urls(env)), None),
+            c2pa_tsa_urls=parse_tsa_urls(env),
             c2pa_issuance_log_path=Path(env["KUNO_C2PA_ISSUANCE_LOG"]) if env.get("KUNO_C2PA_ISSUANCE_LOG") else None,
             c2pa_issuance_per_enclave=int(env.get("KUNO_C2PA_ISSUANCE_PER_ENCLAVE", "12")),
             c2pa_issuance_global=int(env.get("KUNO_C2PA_ISSUANCE_GLOBAL", "1000")),
