@@ -427,13 +427,35 @@ export function useLibrary(client: KunoClient | null, accountId: string | null) 
     [client, dropFilm],
   );
 
-  const forgetAll = useCallback(() => {
+  /**
+   * Adds takes this library doesn't have (from key sync), newest last, and resumes watching any that hadn't finished.
+   * Returns how many were new.
+   */
+  const importEntries = useCallback(
+    (incoming: LibraryEntry[]) => {
+      const known = new Set(entriesRef.current.map((e) => e.id));
+      const fresh = incoming.filter((e) => !known.has(e.id));
+      if (!fresh.length) return 0;
+      entriesRef.current = [...entriesRef.current, ...fresh];
+      setEntries((list) => {
+        const ids = new Set(list.map((e) => e.id));
+        return [...list, ...fresh.filter((e) => !ids.has(e.id))].sort((a, b) => a.createdAt - b.createdAt);
+      });
+      if (client) for (const e of fresh) if (e.handle && isActive(e) && !controllers.current.has(e.id)) void watch(e);
+      return fresh.length;
+    },
+    [client, watch],
+  );
+
+  /** Returns whether the keys were forgotten. `extra` adds a sentence to the confirmation (key sync uses it). */
+  const forgetAll = useCallback((extra = ""): boolean => {
     const keepsStandard = entriesRef.current.some(isStandard);
     const ok = window.confirm(
       "Forget every private video key in this browser? Their encrypted videos stay on KunoWorld's storage, but nobody can open them without a key — back up your keys first. To remove the videos themselves, delete them instead." +
-        (keepsStandard ? " Standard takes stay in your KunoWorld library." : ""),
+        (keepsStandard ? " Standard takes stay in your KunoWorld library." : "") +
+        extra,
     );
-    if (!ok) return;
+    if (!ok) return false;
     const forgotten = entriesRef.current.filter((e) => !isStandard(e)).map((e) => e.id);
     // The decrypted films go too: their object URLs would otherwise leak, and a later
     // restore of the same take would show the old film instead of re-opening its key.
@@ -443,6 +465,7 @@ export function useLibrary(client: KunoClient | null, accountId: string | null) 
       dropFilm(id);
     }
     setEntries((list) => list.filter(isStandard));
+    return true;
   }, [dropFilm]);
 
   /** Reads a film-key backup and adds back anything this browser has forgotten. */
@@ -478,5 +501,5 @@ export function useLibrary(client: KunoClient | null, accountId: string | null) 
     URL.revokeObjectURL(url);
   }, []);
 
-  return { entries, films, notice, setNotice, submit, cancel, openFilm, remove, forgetAll, restore, exportBackup };
+  return { entries, films, notice, setNotice, submit, cancel, openFilm, remove, forgetAll, restore, exportBackup, importEntries };
 }

@@ -12,6 +12,8 @@ What a hold can keep is only what the gateway still stores when it is placed:
   for the hold, which is the only way that ciphertext can be read.
 * Blocked Standard upload: the file, sealed at rest by the vault; it has no `standard_uploads` row, so it can never
   be used in a job.
+* Refused Standard output (output_scan.py): the finished video, sealed at rest in the `output_match` hold's blob; it
+  was never stored as the owner's video.
 """
 
 from __future__ import annotations
@@ -37,7 +39,7 @@ if TYPE_CHECKING:
 
 DAY = 86400
 SYSTEM = "system"
-REASONS = ("report_csam", "report_sexual_minor", "upload_match", "legal_request", "operator")
+REASONS = ("report_csam", "report_sexual_minor", "upload_match", "output_match", "legal_request", "operator")
 # Resolving a report with one of these reasons by removal or a ban places a hold on the reported job first.
 REPORT_HOLD_REASONS = {"csam": "report_csam", "sexual_minor": "report_sexual_minor"}
 HOLDING_ACTIONS = ("remove_content", "ban_account")
@@ -235,6 +237,10 @@ def release(
         else:
             detail["output_key_deleted"] = True
         hold.output_key = None
+        # The released copy's data key goes too, so a database backup's copy of the sealed key can't be opened.
+        from .standard_jobs import forget_data_keys
+
+        forget_data_keys(state, s, [output_key_label(hold.id)], hold.account_id)
     moderation.log_action(s, by, action, "hold", hold.id, note, detail, now)
 
 
@@ -257,7 +263,8 @@ def _has_content(s: Session, row: StandardJob) -> bool:
 
 def settle(state: GatewayState, s: Session, now: float) -> int:
     """Finishes the deletions holds deferred, for content no active hold covers any more."""
-    from .standard_jobs import delete_content, discard_blobs
+    from . import tombstones
+    from .standard_jobs import delete_content, discard_blobs, forget_data_keys, upload_label
 
     settled = 0
     ever_held_jobs = select(PreservationHold.job_id).where(PreservationHold.job_id.is_not(None))
@@ -275,18 +282,21 @@ def settle(state: GatewayState, s: Session, now: float) -> int:
     ).all():
         if not upload_held(s, upload.id, now) and not job_held(s, upload.job_id, now):
             if upload.blob_id:
-                discard_blobs(state, [upload.blob_id])
+                discard_blobs(state, [upload.blob_id], s, upload.account_id)
+            tombstones.record(s, tombstones.STANDARD_UPLOAD, upload.id, upload.account_id, now)
+            forget_data_keys(state, s, [upload_label(upload.id)], upload.account_id)
             s.delete(upload)
             settled += 1
 
-    # Blocked uploads were stored only because of their hold.
+    # Blocked uploads and refused outputs were stored only because of their hold. Holds sharing a stored copy share
+    # its blob id; a refused output's blob belongs to its job, so any active hold on the job keeps it.
     for hold in s.scalars(select(PreservationHold).where(PreservationHold.blob_id.is_not(None), _inactive(now))).all():
-        if hold.blob_id is None or upload_held(s, hold.upload_id, now):
+        if hold.blob_id is None or upload_held(s, hold.upload_id, now) or job_held(s, hold.job_id, now):
             continue
-        discard_blobs(state, [hold.blob_id])
-        for other in s.scalars(
-            select(PreservationHold).where(PreservationHold.upload_id == hold.upload_id, PreservationHold.blob_id.is_not(None))
-        ).all():
+        discard_blobs(state, [hold.blob_id], s, hold.account_id)
+        if hold.upload_id:
+            forget_data_keys(state, s, [blocked_upload_label(hold.upload_id)], hold.account_id)
+        for other in s.scalars(select(PreservationHold).where(PreservationHold.blob_id == hold.blob_id)).all():
             other.blob_id = None
         settled += 1
     return settled
@@ -298,10 +308,13 @@ def sweep_blobs(state: GatewayState, s: Session, now: float) -> None:
     settle(state, s, now)
     expired = s.scalars(select(Blob).where(Blob.expires_at < now)).all()
     held = held_job_ids(s, (b.job_id for b in expired), now)
+    from . import tombstones
+
     for blob in expired:
         if blob.job_id in held:
             continue
         state.blobs.delete(blob.id)
+        tombstones.record(s, tombstones.BLOB, blob.id, blob.owner_id if blob.owner_kind == "account" else None, now)
         s.delete(blob)
 
 
@@ -326,4 +339,31 @@ def open_blocked_upload(state: GatewayState, hold: PreservationHold, sha256: str
     data = vault(state).open(blocked_upload_label(hold.upload_id), state.blobs.get(hold.blob_id))
     if sha256 and sha256_hex(data) != sha256:
         raise DecryptionError("the stored upload does not match its digest")
+    return data
+
+
+# ------------------------------------------------------------------ refused outputs
+
+
+def blocked_output_label(job_id: str) -> str:
+    return f"standard/blocked-output/{job_id}"
+
+
+def output_hold(s: Session, job_id: str | None, now: float) -> PreservationHold | None:
+    """The `output_match` hold whose blob keeps a refused Standard video, while any active hold still covers the job."""
+    if job_id is None or not job_held(s, job_id, now):
+        return None
+    return s.scalars(
+        select(PreservationHold)
+        .where(PreservationHold.job_id == job_id, PreservationHold.reason == "output_match", PreservationHold.blob_id.is_not(None))
+        .order_by(PreservationHold.created_at.desc())
+    ).first()
+
+
+def open_blocked_output(state: GatewayState, hold: PreservationHold, sha256: str | None) -> bytes:
+    if hold.blob_id is None or hold.job_id is None:
+        raise KeyError(hold.job_id)
+    data = vault(state).open(blocked_output_label(hold.job_id), state.blobs.get(hold.blob_id))
+    if sha256 and sha256_hex(data) != sha256:
+        raise DecryptionError("the stored video does not match its digest")
     return data

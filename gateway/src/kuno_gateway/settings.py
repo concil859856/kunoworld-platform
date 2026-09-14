@@ -101,9 +101,38 @@ class Settings:
     # RFC 3161 timestamp authority handed to workers, so manifests outlive their short certificates.
     c2pa_tsa_url: str | None = None
     c2pa_issuance_log_path: Path | None = None
+    # The JSONL log above is only imported now; issuances are recorded in the database and limited per enclave and
+    # overall, per window (c2pa_issuance.py, C2PA_CA.md). 0 turns a limit off.
+    c2pa_issuance_per_enclave: int = 12
+    c2pa_issuance_global: int = 1000
+    c2pa_issuance_window_s: int = 3600
+    # "off", "warn" or "require": send KUNO_C2PA_TSA_URL one RFC 3161 request at start-up (tsa.py).
+    c2pa_tsa_probe: str = "off"
+    # Envelope encryption at rest (storage_keys.py; deploy/README.md, "Storage keys"): "local", "aws-kms" or
+    # "vault-transit". Unset means local: data_dir/storage_kek.json, created on dev networks. Production refuses a local
+    # key file unless storage_kek_allow_local is set.
+    storage_kek_provider: str | None = None
+    storage_kek_allow_local: bool = False
+    storage_local_kek_file: Path | None = None
+    storage_kms_key_id: str | None = None
+    storage_kms_region: str | None = None
+    storage_kms_endpoint_url: str | None = None
+    storage_vault_addr: str | None = None
+    storage_vault_token: str | None = field(default=None, repr=False)
+    storage_vault_token_file: Path | None = None
+    storage_vault_namespace: str | None = None
+    storage_vault_mount: str = "transit"
+    storage_vault_key: str | None = None
+    storage_vault_ca_cert: Path | None = None
+    # Where deletion tombstones are copied so they survive a database restore (tombstones.py): "auto" (follows the blob
+    # backend), "local" (data_dir/tombstones unless tombstone_export_dir), "s3" or "off".
+    tombstone_export: str = "auto"
+    tombstone_export_dir: Path | None = None
+    tombstone_export_bucket: str | None = None
+    tombstone_export_prefix: str = "tombstones/"
     # Standard mode and account safety (STANDARD_MODE.md, MODERATION.md).
-    # base64url of 32 random bytes. Encrypts standard uploads, videos and held keys at rest. Unset: dev networks
-    # generate data_dir/standard_storage.key; production refuses standard mode until it is configured.
+    # Legacy: base64url of 32 random bytes that encrypted Standard content directly before envelope encryption (KEK v0).
+    # Still read so those objects decrypt, until `kuno-gateway rotate-storage-key` has imported it. Never generated now.
     standard_storage_key: str | None = None
     # Unused standard uploads expire; uploads a job used stay with the job until the owner deletes it.
     standard_upload_ttl_s: int = 86400
@@ -116,11 +145,41 @@ class Settings:
         default_factory=lambda: [(3, 86400, 3600), (5, 7 * 86400, 7 * 86400), (10, 30 * 86400, None)]
     )
     reports_per_hour_per_ip: int = 10
+    # Sign-in links per client address and per email address, per identity.AUTH_LIMIT_WINDOW_S. Local test runs raise them.
+    signin_links_per_ip: int = 20
+    signin_links_per_email: int = 5
+    # Public share-link routes (shares.py), per IP, per minute: the link's details and its video count alike.
+    share_views_per_minute_per_ip: int = 60
     # One lowercase SHA-256 per line, optionally followed by a category; "#" starts a comment.
     blocked_hashes_file: Path | None = None
     ffmpeg_path: str | None = None
     # How long a preservation hold keeps content by default (MODERATION.md, "Preservation holds").
     preservation_days: float = 365.0
+    # Perceptual matching of Standard uploads and outputs (perceptual.py): files of "<pdq hex> <category> <list name>".
+    perceptual_hash_files: list[Path] = field(default_factory=list)
+    # PDQ README: a match is a Hamming distance of 31 or less; hashes below quality 50 are too unreliable to match on.
+    pdq_match_distance: int = 31
+    pdq_min_quality: int = 50
+    # Video: one frame per interval, at most this many, decoded within the timeout.
+    perceptual_frame_interval_s: float = 1.0
+    perceptual_max_frames: int = 300
+    perceptual_timeout_s: float = 300.0
+    # Membership programmes' hash lists (perceptual.PROGRAMMES). Placeholders only: enabling one refuses content.
+    hash_sharing_programmes: list[str] = field(default_factory=list)
+    # CyberTipline reports (cybertip.py): "disabled" (dry runs only), "test" or "production".
+    cybertip_env: str = "disabled"
+    cybertip_username: str | None = None
+    cybertip_password: str | None = None
+    # Honoured only with cybertip_env "test": where test submissions go instead of NCMEC's test host.
+    cybertip_base_url: str | None = None
+    cybertip_timeout_s: float = 60.0
+    # Placeholders until the legal entity exists. A production submission refuses them.
+    cybertip_reporting_entity: str = "[REPORTING ENTITY]"
+    cybertip_reporter_first_name: str = "[POINT OF CONTACT]"
+    cybertip_reporter_last_name: str = "[POINT OF CONTACT]"
+    cybertip_reporter_email: str = "[POINT OF CONTACT EMAIL]"
+    cybertip_reporter_phone: str | None = None
+    cybertip_legal_url: str | None = None
 
     @property
     def production(self) -> bool:
@@ -206,6 +265,27 @@ class Settings:
             c2pa_cert_validity_s=int(env.get("KUNO_C2PA_CERT_VALIDITY_S", "86400")),
             c2pa_tsa_url=env.get("KUNO_C2PA_TSA_URL") or None,
             c2pa_issuance_log_path=Path(env["KUNO_C2PA_ISSUANCE_LOG"]) if env.get("KUNO_C2PA_ISSUANCE_LOG") else None,
+            c2pa_issuance_per_enclave=int(env.get("KUNO_C2PA_ISSUANCE_PER_ENCLAVE", "12")),
+            c2pa_issuance_global=int(env.get("KUNO_C2PA_ISSUANCE_GLOBAL", "1000")),
+            c2pa_issuance_window_s=int(env.get("KUNO_C2PA_ISSUANCE_WINDOW_S", "3600")),
+            c2pa_tsa_probe=(env.get("KUNO_C2PA_TSA_PROBE") or "off").strip().lower(),
+            storage_kek_provider=(env.get("KUNO_STORAGE_KEK_PROVIDER") or "").strip().lower() or None,
+            storage_kek_allow_local=env.get("KUNO_STORAGE_KEK_ALLOW_LOCAL", "0") == "1",
+            storage_local_kek_file=Path(env["KUNO_STORAGE_LOCAL_KEK_FILE"]) if env.get("KUNO_STORAGE_LOCAL_KEK_FILE") else None,
+            storage_kms_key_id=env.get("KUNO_STORAGE_KMS_KEY_ID") or None,
+            storage_kms_region=env.get("KUNO_STORAGE_KMS_REGION") or None,
+            storage_kms_endpoint_url=env.get("KUNO_STORAGE_KMS_ENDPOINT_URL") or None,
+            storage_vault_addr=env.get("KUNO_STORAGE_VAULT_ADDR") or None,
+            storage_vault_token=env.get("KUNO_STORAGE_VAULT_TOKEN") or None,
+            storage_vault_token_file=Path(env["KUNO_STORAGE_VAULT_TOKEN_FILE"]) if env.get("KUNO_STORAGE_VAULT_TOKEN_FILE") else None,
+            storage_vault_namespace=env.get("KUNO_STORAGE_VAULT_NAMESPACE") or None,
+            storage_vault_mount=env.get("KUNO_STORAGE_VAULT_MOUNT") or "transit",
+            storage_vault_key=env.get("KUNO_STORAGE_VAULT_KEY") or None,
+            storage_vault_ca_cert=Path(env["KUNO_STORAGE_VAULT_CACERT"]) if env.get("KUNO_STORAGE_VAULT_CACERT") else None,
+            tombstone_export=(env.get("KUNO_TOMBSTONE_EXPORT") or "auto").strip().lower(),
+            tombstone_export_dir=Path(env["KUNO_TOMBSTONE_EXPORT_DIR"]) if env.get("KUNO_TOMBSTONE_EXPORT_DIR") else None,
+            tombstone_export_bucket=env.get("KUNO_TOMBSTONE_BUCKET") or None,
+            tombstone_export_prefix=env.get("KUNO_TOMBSTONE_PREFIX") or "tombstones/",
             standard_storage_key=env.get("KUNO_STANDARD_STORAGE_KEY") or None,
             standard_upload_ttl_s=int(env.get("KUNO_STANDARD_UPLOAD_TTL_S", "86400")),
             private_jobs_per_minute=int(env.get("KUNO_PRIVATE_JOBS_PER_MINUTE", "10")),
@@ -214,9 +294,30 @@ class Settings:
             strike_rules=parse_strike_rules(env["KUNO_STRIKE_RULES"]) if env.get("KUNO_STRIKE_RULES") else
             [(3, 86400, 3600), (5, 7 * 86400, 7 * 86400), (10, 30 * 86400, None)],
             reports_per_hour_per_ip=int(env.get("KUNO_REPORTS_PER_HOUR_PER_IP", "10")),
+            signin_links_per_ip=int(env.get("KUNO_SIGNIN_LINKS_PER_IP", "20")),
+            signin_links_per_email=int(env.get("KUNO_SIGNIN_LINKS_PER_EMAIL", "5")),
+            share_views_per_minute_per_ip=int(env.get("KUNO_SHARE_VIEWS_PER_MINUTE_PER_IP", "60")),
             blocked_hashes_file=Path(env["KUNO_BLOCKED_HASHES_FILE"]) if env.get("KUNO_BLOCKED_HASHES_FILE") else None,
             ffmpeg_path=env.get("KUNO_FFMPEG") or None,
             preservation_days=float(env.get("KUNO_PRESERVATION_DAYS", "365")),
+            perceptual_hash_files=[Path(p.strip()) for p in env.get("KUNO_PERCEPTUAL_HASH_FILES", "").split(",") if p.strip()],
+            pdq_match_distance=int(env.get("KUNO_PDQ_MATCH_DISTANCE", "31")),
+            pdq_min_quality=int(env.get("KUNO_PDQ_MIN_QUALITY", "50")),
+            perceptual_frame_interval_s=float(env.get("KUNO_PERCEPTUAL_FRAME_INTERVAL_S", "1")),
+            perceptual_max_frames=int(env.get("KUNO_PERCEPTUAL_MAX_FRAMES", "300")),
+            perceptual_timeout_s=float(env.get("KUNO_PERCEPTUAL_TIMEOUT_S", "300")),
+            hash_sharing_programmes=[p.strip().lower() for p in env.get("KUNO_HASH_SHARING_PROGRAMMES", "").split(",") if p.strip()],
+            cybertip_env=(env.get("KUNO_CYBERTIP_ENV") or "disabled").strip().lower(),
+            cybertip_username=env.get("KUNO_CYBERTIP_USERNAME") or None,
+            cybertip_password=env.get("KUNO_CYBERTIP_PASSWORD") or None,
+            cybertip_base_url=env.get("KUNO_CYBERTIP_BASE_URL") or None,
+            cybertip_timeout_s=float(env.get("KUNO_CYBERTIP_TIMEOUT_S", "60")),
+            cybertip_reporting_entity=env.get("KUNO_CYBERTIP_REPORTING_ENTITY") or "[REPORTING ENTITY]",
+            cybertip_reporter_first_name=env.get("KUNO_CYBERTIP_REPORTER_FIRST_NAME") or "[POINT OF CONTACT]",
+            cybertip_reporter_last_name=env.get("KUNO_CYBERTIP_REPORTER_LAST_NAME") or "[POINT OF CONTACT]",
+            cybertip_reporter_email=env.get("KUNO_CYBERTIP_REPORTER_EMAIL") or "[POINT OF CONTACT EMAIL]",
+            cybertip_reporter_phone=env.get("KUNO_CYBERTIP_REPORTER_PHONE") or None,
+            cybertip_legal_url=env.get("KUNO_CYBERTIP_LEGAL_URL") or None,
         )
 
 

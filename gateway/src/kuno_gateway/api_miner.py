@@ -272,6 +272,17 @@ async def complete(job_id: str, request: Request, auth=Depends(require_enclave))
     enclave, raw = auth
     body: CompleteBody = _parse(CompleteBody, raw)
     receipt = body.receipt
+
+    def finish() -> None:
+        # Off the event loop: finishing a Standard job decrypts and scans the video (output_scan.py), which can take a
+        # while for a long clip, and must not stall every other request meanwhile.
+        _complete(state, job_id, enclave, body, receipt)
+
+    await asyncio.to_thread(finish)
+    return {"ok": True}
+
+
+def _complete(state, job_id: str, enclave, body, receipt) -> None:
     with state.session() as s, s.begin():
         job = _assigned_job(s, job_id, enclave)
         if job.status != JobState.RUNNING.value:
@@ -299,7 +310,6 @@ async def complete(job_id: str, request: Request, auth=Depends(require_enclave))
         job.content_digest = r.content_digest
         job.progress, job.stage = 1.0, "done"
         state.finish_job(s, job, JobState.SUCCEEDED)
-    return {"ok": True}
 
 
 @router.post("/jobs/{job_id}/fail")

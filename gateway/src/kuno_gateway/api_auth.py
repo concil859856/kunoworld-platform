@@ -73,8 +73,9 @@ async def request_magic_link(body: MagicLinkRequest, request: Request):
         raise _error(422, "invalid_email", "Enter a valid email address.")
     next_path = _safe_next(body.next)
     window = identity.AUTH_LIMIT_WINDOW_S
-    if not state.limiter.allow(f"link-ip:{_client_ip(request)}", LINKS_PER_IP, window) or not state.limiter.allow(
-        f"link-email:{email}", LINKS_PER_EMAIL, window
+    per_ip, per_email = state.settings.signin_links_per_ip, state.settings.signin_links_per_email
+    if not state.limiter.allow(f"link-ip:{_client_ip(request)}", per_ip, window) or not state.limiter.allow(
+        f"link-email:{email}", per_email, window
     ):
         raise _error(429, "rate_limited", "Too many sign-in links requested. Wait a few minutes and try again.")
     with state.session() as s, s.begin():

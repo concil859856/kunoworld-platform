@@ -8,6 +8,7 @@ type Status = (typeof STATUSES)[number];
 
 const KIND_LABEL: Record<string, string> = {
   report: "Report",
+  appeal: "Appeal",
   upload_blocked: "Blocked upload",
   strike_threshold: "Strike threshold",
 };

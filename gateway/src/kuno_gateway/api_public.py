@@ -308,7 +308,13 @@ async def delete_video(job_id: str, request: Request, account: Account = Depends
         job = s.get(Job, job_id)
         if job is None or job.account_id != account.id:
             raise _error(404, "not_found", "No such video job.")
-        standard_jobs.delete_for_owner(state, s, job, time.time())
+        now = time.time()
+        standard_jobs.delete_for_owner(state, s, job, now)
+        # Destroyed now (not kept by a hold): replayed after a database or bucket restore (tombstones.py).
+        from . import holds, tombstones
+
+        if not holds.job_held(s, job.id, now):
+            tombstones.record(s, tombstones.VIDEO, job.id, account.id, now)
     return Response(status_code=204)
 
 

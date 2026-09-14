@@ -52,8 +52,11 @@ def is_exempt(account: Account) -> bool:
 
 def strike_counts(s: Session, account_id: str, now: float) -> dict[str, int]:
     def since(seconds: float) -> int:
+        # Voided strikes (overturned on appeal, appeals.py) don't count.
         return s.scalar(
-            select(func.count()).select_from(Strike).where(Strike.account_id == account_id, Strike.created_at > now - seconds)
+            select(func.count()).select_from(Strike).where(
+                Strike.account_id == account_id, Strike.created_at > now - seconds, Strike.voided_at.is_(None)
+            )
         ) or 0
 
     return {"24h": since(DAY), "7d": since(7 * DAY), "30d": since(30 * DAY)}
@@ -118,7 +121,9 @@ def record_strike(
     triggered: list[tuple[float | None, int, int]] = []
     for count, window_s, length_s in settings.strike_rules:
         n = s.scalar(
-            select(func.count()).select_from(Strike).where(Strike.account_id == account_id, Strike.created_at > now - window_s)
+            select(func.count()).select_from(Strike).where(
+                Strike.account_id == account_id, Strike.created_at > now - window_s, Strike.voided_at.is_(None)
+            )
         ) or 0
         if n >= count:
             triggered.append((None if length_s is None else now + length_s, n, window_s))

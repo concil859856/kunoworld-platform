@@ -29,7 +29,7 @@ from .auth import SignedIn, gw, require_account, require_user
 from .db import NEVER_EXPIRES, Account, Blob, Enclave, Job
 from .db_moderation import StandardJob, StandardUpload
 from .state import job_status
-from .upload_scan import ScanUnavailable, build_scanner
+from .upload_scan import ScanUnavailable, Unscannable, build_scanner
 from .vault import StorageKeyMissing, Vault, vault
 
 log = logging.getLogger("kuno.standard")
@@ -128,6 +128,9 @@ async def _upload(request: Request, account: Account, role: InputRole) -> dict:
     scanner = getattr(request.app.state, "upload_scanner", None) or build_scanner(state.settings)
     try:
         match = await asyncio.to_thread(scanner.scan, data, digest, mime)
+    except Unscannable:
+        # The file claims a supported type but doesn't decode, so it can't be checked.
+        raise _error(422, "unsupported_media", "That file can't be read.") from None
     except ScanUnavailable:
         log.error("upload scanning is unavailable; refusing a standard upload")
         raise _error(503, "scan_unavailable", "Uploads can't be accepted right now. Try again shortly.") from None
@@ -148,7 +151,7 @@ async def _upload(request: Request, account: Account, role: InputRole) -> dict:
                     s, "upload_match", moderation.UPLOAD_MATCH_PRIORITY, account_id=account.id, now=now,
                     detail={"sha256": digest, "size": len(data), "mime": mime, "role": role.value, "matcher": match.matcher,
                             "match_kind": match.kind, "list": match.list_name, "category": match.category,
-                            "upload_id": upload_id, "hold_id": hold.id},
+                            "upload_id": upload_id, "hold_id": hold.id, **match.detail()},
                 )
                 moderation.record_strike(s, state.settings, account.id, "upload_blocked", now=now)
         except BaseException:

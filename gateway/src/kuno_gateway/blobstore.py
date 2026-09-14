@@ -34,6 +34,12 @@ class BlobStore:
             raise KeyError(blob_id)
         return path.read_bytes()
 
+    def exists(self, blob_id: str) -> bool:
+        try:
+            return self._path(blob_id).exists()
+        except KeyError:
+            return False
+
     def delete(self, blob_id: str) -> None:
         try:
             self._path(blob_id).unlink(missing_ok=True)

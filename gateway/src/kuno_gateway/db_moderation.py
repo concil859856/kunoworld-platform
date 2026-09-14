@@ -68,6 +68,9 @@ class Strike(Base):
     # safety_blocked or upload_blocked
     reason: Mapped[str] = mapped_column(String(32))
     created_at: Mapped[float] = mapped_column(Float, index=True)
+    # Set when an operator overturns the strike on appeal (appeals.py, migration 0012). Voided strikes don't count.
+    voided_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    voided_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class AccountRestriction(Base):

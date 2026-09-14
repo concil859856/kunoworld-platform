@@ -17,7 +17,7 @@ import { SESSION_COOKIE, fromThisSite } from "@/lib/gateway.server";
 const ID = "[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}";
 
 interface Rule {
-  method: "GET" | "POST" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "DELETE";
   pattern: RegExp;
   /** Public endpoints go without the session. */
   session: boolean;
@@ -43,11 +43,30 @@ const RULES: Rule[] = [
   rule("GET", "v1/standard/videos"),
   rule("GET", `v1/standard/videos/${ID}/(video|thumbnail)`),
   rule("DELETE", `v1/standard/videos/${ID}`),
+  // Key sync. Everything sent is wrapped in the browser first (lib/keyvault.ts): the proxy relays ciphertext.
+  rule("GET", "v1/me/keyvault"),
+  rule("POST", "v1/me/keyvault"),
+  rule("DELETE", "v1/me/keyvault"),
+  rule("POST", "v1/me/keyvault/unlockers"),
+  rule("DELETE", `v1/me/keyvault/unlockers/${ID}`),
+  rule("PUT", `v1/me/keyvault/job-keys/${ID}`),
+  rule("DELETE", `v1/me/keyvault/job-keys/${ID}`),
+  rule("POST", "v1/me/keyvault/rotate"),
+  // Share links: the owner's own, and the public link anyone opens (no session, and never the private key).
+  rule("POST", `v1/me/videos/${ID}/shares`),
+  rule("GET", "v1/me/shares"),
+  rule("DELETE", `v1/me/shares/${ID}`),
+  rule("POST", `v1/videos/${ID}/shares`),
+  rule("GET", "v1/account/shares"),
+  rule("DELETE", `v1/account/shares/${ID}`),
+  rule("GET", "v1/shares/[A-Za-z0-9_-]{43}", false),
+  rule("GET", "v1/shares/[A-Za-z0-9_-]{43}/video", false),
 ];
 
-/** Request headers worth passing on. Authorization and Cookie are never among them. */
-const FORWARD_REQUEST = ["accept", "content-type", "content-length", "x-kuno-country"];
-const FORWARD_RESPONSE = ["content-type", "content-length", "content-disposition", "etag", "last-modified"];
+/** Request headers worth passing on. Authorization and Cookie are never among them. The gateway rate-limits public
+ * share links per visitor IP, which Cloudflare puts in cf-connecting-ip. */
+const FORWARD_REQUEST = ["accept", "content-type", "content-length", "x-kuno-country", "cf-connecting-ip"];
+const FORWARD_RESPONSE = ["content-type", "content-length", "content-disposition", "etag", "last-modified", "x-robots-tag"];
 
 /** Errors in the gateway's own shape, so the SDK reads them like any other. */
 function problem(status: number, code: string, message: string): Response {
@@ -106,4 +125,5 @@ async function forward(request: NextRequest, ctx: { params: Promise<{ path: stri
 
 export const GET = forward;
 export const POST = forward;
+export const PUT = forward;
 export const DELETE = forward;

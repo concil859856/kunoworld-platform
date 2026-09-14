@@ -26,6 +26,7 @@ const SECTIONS = [
   { id: "accounts", title: "Eligibility, accounts and signing in" },
   { id: "modes", title: "Private and Standard modes, storage and deletion" },
   { id: "keys", title: "API keys and saved film keys" },
+  { id: "share-links", title: "Share links", review: true },
   { id: "credit", title: "Credit, pricing and refunds" },
   { id: "crypto-payments", title: "Cryptocurrency payments", review: true },
   { id: "acceptable-use", title: "Acceptable use and prohibited content" },
@@ -53,7 +54,15 @@ const PH = {
   abuseEmail: { label: "[ABUSE REPORT EMAIL]", note: "where to report prohibited content or misuse." },
   appeals: {
     label: "[APPEAL PROCESS FOR RESTRICTIONS AND REMOVALS]",
-    note: "how a customer asks for a restriction, content removal or account closure to be reviewed, and how quickly.",
+    note: "who reviews appeals and how independent they are of the original decision, how quickly appeals are decided, and whether any further review is available.",
+  },
+  retentionAfterClosure: {
+    label: "[RETENTION OF RECORDS AFTER CLOSURE]",
+    note: "how long billing, payment, receipt, report, strike and audit records are kept after an account is closed, and the legal reason for each.",
+  },
+  balanceOnClosure: {
+    label: "[BALANCE ON CLOSURE POLICY]",
+    note: "what happens to unused credit when a customer closes their own account: refunded, forfeited or refunded on request, and how.",
   },
   minimumAge: { label: "[MINIMUM AGE]", note: "minimum age to use the Service." },
   prices: {
@@ -140,6 +149,10 @@ export default function Terms() {
             KunoWorld’s systems and the GPU provider. In both modes your videos are kept until you delete them.
           </p>
           <p>
+            Only you can open your videos, unless you create a share link for one. Anyone who has a link can watch that
+            video, so you are responsible for who you share it with. You can revoke a link at any time.
+          </p>
+          <p>
             Sexual content and nudity are banned in both modes. Jobs blocked by the content checks count as strikes, and
             strikes can restrict your account. KunoWorld staff can open a video only in a few narrow cases, and every
             view is logged.
@@ -150,7 +163,7 @@ export default function Terms() {
             reversed.
           </p>
           <p>
-            Keep your email account, your API keys and your saved film keys safe. Don’t use the service for abusive or
+            Keep your email account, your API keys, your saved film keys and your recovery code safe. Don’t use the service for abusive or
             illegal content. A video’s receipt is public to anyone who has the file.
           </p>
         </>
@@ -247,7 +260,9 @@ export default function Terms() {
           </li>
           <li>
             The stored video is encrypted. Only someone who holds its key can open it. The key stays on your own devices
-            (see <SectionRef id="keys" />).
+            (see <SectionRef id="keys" />). If you turn on key sync, KunoWorld also stores a copy of the key that is
+            encrypted on your device and that we cannot decrypt. A share link to a Private video contains its key (see{" "}
+            <SectionRef id="share-links" />).
           </li>
           <li>
             <strong>KunoWorld cannot read Private videos or prompts.</strong> We cannot recover a lost key. A lost key
@@ -303,7 +318,11 @@ export default function Terms() {
           In either mode, authorized KunoWorld operators can open a video’s content only if it is the subject of a
           report of child sexual abuse material or of sexual content involving a minor, or if it is under a legal hold.
           Every such view is logged. We do not sample or randomly review videos. A Private video can be opened even then
-          only if its key was provided. See <SectionRef id="enforcement" />.
+          only if its key was provided. See <SectionRef id="enforcement" />. Share links do not change this.
+        </p>
+        <p>
+          Anyone you give a share link to can watch that one video until the link stops working (see{" "}
+          <SectionRef id="share-links" />).
         </p>
 
         <LegalSubheading id="modes-storage">Storage and deletion</LegalSubheading>
@@ -326,6 +345,7 @@ export default function Terms() {
         </ul>
         <p>
           The record of the charge, the job’s metadata and the signed receipt remain (see <SectionRef id="receipts" />).
+          Deleting a video also deletes its synced key, if you use key sync, and stops its share links working.
         </p>
         <p>
           <strong>Preservation holds.</strong> Content under a legal hold, or reported as child sexual abuse material, is
@@ -369,6 +389,81 @@ export default function Terms() {
           If you believe your account or keys have been compromised, revoke the affected keys and contact{" "}
           <a href="mailto:security@kunoworld.com">security@kunoworld.com</a>.
         </p>
+
+        <LegalSubheading id="keys-sync">Key sync and your recovery code</LegalSubheading>
+        <p>
+          Key sync is optional. If you turn it on, your browser encrypts your film keys before they are uploaded, and
+          KunoWorld stores only the encrypted copies so that you can unlock them on your other devices with your recovery
+          code or a passkey. We cannot decrypt them.
+        </p>
+        <ul>
+          <li>
+            Your recovery code is shown once, when you set up key sync. Keep it safe and private.{" "}
+            <strong>KunoWorld cannot recover a lost recovery code.</strong>
+          </li>
+          <li>
+            Anyone who can sign in to your account and has your recovery code, or one of your passkeys, can unlock your
+            synced keys and open your Private videos.
+          </li>
+          <li>
+            Rotating your keys on your account page makes a new master key and a new recovery code. Old recovery codes
+            and passkeys stop working.
+          </li>
+          <li>
+            Turning key sync off deletes the encrypted copies from KunoWorld. Keys already saved in a browser stay there.
+          </li>
+          <li>
+            <strong>
+              If you lose every device, your recovery code and your passkeys, your keys cannot be recovered and your
+              Private videos cannot be opened.
+            </strong>
+          </li>
+        </ul>
+        <ReviewNote>
+          Confirm that the disclaimers and limitation of liability cover the loss of film keys, recovery codes and
+          Private videos, including where key sync is not used.
+        </ReviewNote>
+      </Section>
+
+      <Section id="share-links">
+        <p>
+          Only you can open your videos, unless you create a share link for one. Links are off by default.
+        </p>
+        <ul>
+          <li>
+            You can create a link to one finished video, with or without an expiry, and revoke it at any time on your
+            account page. A video can have up to 20 working links. An account under a restriction cannot create links.
+          </li>
+          <li>
+            <strong>Anyone who has a link can watch that video.</strong> You are responsible for who you share a link
+            with. Revoking a link stops it working, but cannot undo what someone did while they had access.
+          </li>
+          <li>
+            A link to a Private video contains that video’s key. KunoWorld still cannot see the video, but anyone with the
+            full link can decrypt and watch it. Share it as carefully as the video itself.
+          </li>
+          <li>
+            We store only a hash of each link’s token, so we cannot show you a lost link again. Create a new one instead.
+          </li>
+          <li>
+            A link stops working when you revoke it, when it expires, when you delete the video, when the video is
+            removed after a review under these Terms or placed under a legal preservation hold, or when your account is
+            closed.
+          </li>
+          <li>
+            Shared videos remain subject to these Terms, including <SectionRef id="acceptable-use" /> and{" "}
+            <SectionRef id="enforcement" />. Anyone who sees a shared video can report it.
+          </li>
+          <li>
+            Creating a link does not give KunoWorld staff any further access to your content: they can open a video only
+            in the cases described in <SectionRef id="enforcement" />.
+          </li>
+        </ul>
+        <ReviewNote>
+          Confirm whether sharing a link affects the output ownership and model license terms in{" "}
+          <SectionRef id="content" /> (for example, attribution when a video is distributed), and whether terms are
+          needed for people who watch a shared video without an account.
+        </ReviewNote>
       </Section>
 
       <Section id="credit">
@@ -493,7 +588,10 @@ export default function Terms() {
             circumventing the regional restrictions in <SectionRef id="regions" />, for example by disguising your
             location;
           </li>
-          <li>accessing another person’s account, sessions, API keys or film keys; or</li>
+          <li>
+            accessing another person’s account, sessions, API keys, film keys or recovery codes, or a share link that was
+            not given to you; or
+          </li>
           <li>interfering with, overloading or disrupting the Service, its GPU operators or its validators.</li>
         </ul>
         <p>
@@ -587,8 +685,28 @@ export default function Terms() {
           is recorded with who took it, when and why. Reported content may be placed under a preservation hold (see{" "}
           <SectionRef id="modes" />).
         </p>
+        <LegalSubheading id="enforcement-appeals">Appeals</LegalSubheading>
         <p>
-          To ask for a restriction, removal or closure to be reviewed: <Ph k="appeals" />.
+          If you think a strike, a restriction, the removal of one of your videos, or a decision on a report about your
+          account was a mistake, you can appeal it from the Appeals section of your account page. You say why in up to
+          2,000 characters. You can have one open appeal about each decision, and send up to 5 appeals a day.
+        </p>
+        <p>
+          A KunoWorld moderator reviews the appeal from the record: the decision, the report and the account’s history.
+          Appeals are decided without opening your content. The moderator upholds the decision or overturns it, and we
+          email you the outcome with the moderator’s note. The outcome also shows on your account page.
+        </p>
+        <ul>
+          <li>An overturned strike no longer counts toward restrictions or Private mode.</li>
+          <li>An overturned restriction, or a restriction or ban placed by a decision on a report, is lifted.</li>
+          <li>
+            A removed video can be restored only if its content is still stored, which happens only when it was kept under
+            a preservation hold. Otherwise its content is gone, and we will tell you so.
+          </li>
+        </ul>
+        <p>
+          Who reviews appeals, how quickly they are decided, and whether any further review is available:{" "}
+          <Ph k="appeals" />.
         </p>
         <ReviewNote>
           Confirm whether jobs blocked by a content check are charged or refunded, and whether reporters or account
@@ -684,8 +802,37 @@ export default function Terms() {
 
       <Section id="termination">
         <p>
-          You can stop using the Service at any time, delete your videos and revoke your API keys. To ask us to close
-          your account, contact <Ph k="legalEmail" />.
+          You can stop using the Service at any time, delete your videos, and revoke your API keys and share links.
+        </p>
+        <LegalSubheading id="termination-export">Downloading your data</LegalSubheading>
+        <p>
+          You can download a copy of your data from your account page at any time. It includes your account details,
+          balance, charges and payments, your jobs and their receipts, your strikes and appeals, your Standard prompts,
+          videos and uploads, and your Private videos as the encrypted files we store, which only your keys open. Content
+          you deleted, or that was removed after a review, is not included. The copy is deleted automatically 7 days after
+          it is ready.
+        </p>
+        <LegalSubheading id="termination-closing">Closing your account</LegalSubheading>
+        <p>
+          You can close your account yourself on your account page. To protect you, closing needs a sign-in from the last
+          10 minutes (we email you a link to confirm it’s you) and your email address typed out. Closing is permanent:
+        </p>
+        <ul>
+          <li>videos still rendering are canceled and refunded;</li>
+          <li>
+            your videos, prompts, uploads and data exports are deleted, except content under a preservation hold, which is
+            kept until the hold ends (see <SectionRef id="modes" />);
+          </li>
+          <li>
+            your sign-in sessions and API keys stop working, your share links end, your synced keys are deleted, linked
+            wallets are unlinked, and any operator role ends; and
+          </li>
+          <li>your email address is removed from the account, so signing in again with it creates a new, empty account.</li>
+        </ul>
+        <p>
+          We keep billing and ledger records, payments, job records and receipts, reports, strikes, restrictions and the
+          audit log: <Ph k="retentionAfterClosure" />. Unused credit when you close your account:{" "}
+          <Ph k="balanceOnClosure" />. It is not refunded automatically.
         </p>
         <p>
           We may suspend or end your access, restrict your account, revoke API keys, remove content, or cancel or refuse
@@ -701,8 +848,9 @@ export default function Terms() {
           disclaimers, limitation of liability, indemnity and governing law continue to apply after your access ends.
         </p>
         <ReviewNote>
-          Decide what notice, explanation and appeal route, if any, will be given for suspensions and terminations, and
-          what happens to stored videos when an account is closed.
+          Decide what notice and explanation will be given for suspensions and terminations KunoWorld starts, and whether
+          the appeal route above applies to them. Confirm what records are kept after a customer closes their account and
+          for how long, and the policy for unused credit on closure.
         </ReviewNote>
       </Section>
 

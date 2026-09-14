@@ -140,12 +140,30 @@ def seal_job(
     return sealed
 
 
-def discard_blobs(state: GatewayState, blob_ids) -> None:
+def discard_blobs(state: GatewayState, blob_ids, s: Session | None = None, account_id: str | None = None) -> None:
+    """Deletes blobs from the store. With a session, also records a `blob` tombstone for each in that transaction, so a
+    database or bucket restore can't bring them back for good (tombstones.py)."""
+    from . import tombstones
+
     for blob_id in blob_ids:
         try:
             state.blobs.delete(blob_id)
         except Exception:  # best effort: an orphan is ciphertext nobody can open
             log.warning("could not delete blob %s", blob_id)
+        if s is not None:
+            tombstones.record(s, tombstones.BLOB, blob_id, account_id)
+
+
+def forget_data_keys(state: GatewayState, s: Session, labels, account_id: str | None = None) -> list[str]:
+    """Deletes the at-rest data keys of these vault labels in the caller's transaction, so any copy of those objects left
+    in a backup is unreadable, and records a `data_key` tombstone for each label that had keys."""
+    from . import tombstones
+    from .storage_keys import keyring_for
+
+    forgotten = keyring_for(state).forget(s, labels)
+    for label in forgotten:
+        tombstones.record(s, tombstones.DATA_KEY, label, account_id)
+    return forgotten
 
 
 def read_upload(state: GatewayState, upload: StandardUpload) -> bytes:
@@ -191,7 +209,13 @@ def ingest_output(state: GatewayState, s: Session, job: Job, now: float) -> str 
     digest = sha256_hex(video)
     if digest != receipt.body.content_digest:
         return "decrypted video does not match the receipt's content digest"
-    blob_id, _, _ = state.blobs.put(store.seal(video_label(job.id), video))
+    # Known-content matching before anything is kept for the owner (output_scan.py).
+    from .output_scan import scan_output
+
+    refused = scan_output(state, s, job, row, video, digest, now)
+    if refused is not None:
+        return refused
+    blob_id, _, _ = state.blobs.put(store.seal(video_label(job.id), video, s))
     row.video_blob_id, row.video_sha256, row.video_bytes = blob_id, digest, len(video)
     row.output_key = None
     return None
@@ -271,15 +295,23 @@ def delete_content(state: GatewayState, s: Session, row: StandardJob, now: float
     if holds.job_held(s, row.job_id, now):
         holds.hide_job_blobs(s, row.job_id, now)
         return False
-    discard_blobs(state, [b for b in (row.video_blob_id, row.thumbnail_blob_id) if b])
+    from . import tombstones
+
+    # Tombstones and data-key deletion commit with this transaction (tombstones.py, storage_keys.py).
+    tombstones.record(s, tombstones.STANDARD_CONTENT, row.job_id, row.account_id, now)
+    discard_blobs(state, [b for b in (row.video_blob_id, row.thumbnail_blob_id) if b], s, row.account_id)
     row.video_blob_id = row.thumbnail_blob_id = None
     row.prompt = row.negative_prompt = row.options = row.inputs = row.output_key = None
+    labels = [video_label(row.job_id), thumbnail_label(row.job_id), output_key_label(row.job_id)]
     for upload in s.scalars(select(StandardUpload).where(StandardUpload.job_id == row.job_id)).all():
         if holds.upload_held(s, upload.id, now):
             continue
         if upload.blob_id:
-            discard_blobs(state, [upload.blob_id])
+            discard_blobs(state, [upload.blob_id], s, row.account_id)
+        tombstones.record(s, tombstones.STANDARD_UPLOAD, upload.id, row.account_id, now)
+        labels.append(upload_label(upload.id))
         s.delete(upload)
+    forget_data_keys(state, s, labels, row.account_id)
     remove_job_blobs(state, s, row.job_id, now)
     return True
 
@@ -295,7 +327,12 @@ def remove_job_blobs(state: GatewayState, s: Session, job_id: str, now: float | 
         holds.hide_job_blobs(s, job_id, now)
         return 0
     blobs = s.scalars(select(Blob).where(Blob.job_id == job_id)).all()
-    discard_blobs(state, [b.id for b in blobs])
+    account_id = next((b.owner_id for b in blobs if b.owner_kind == "account"), None)
+    if blobs:
+        from . import tombstones
+
+        tombstones.record(s, tombstones.JOB_BLOBS, job_id, account_id, now)
+    discard_blobs(state, [b.id for b in blobs], s, account_id)
     for blob in blobs:
         s.delete(blob)
     return len(blobs)
@@ -321,8 +358,12 @@ def expire_unused_uploads(state: GatewayState, s: Session, now: float | None = N
     ).all():
         if holds.upload_held(s, upload.id, now):
             continue
+        from . import tombstones
+
         if upload.blob_id:
-            discard_blobs(state, [upload.blob_id])
+            discard_blobs(state, [upload.blob_id], s, upload.account_id)
+        tombstones.record(s, tombstones.STANDARD_UPLOAD, upload.id, upload.account_id, now)
+        forget_data_keys(state, s, [upload_label(upload.id)], upload.account_id)
         s.delete(upload)
         deleted += 1
     return deleted
@@ -340,6 +381,11 @@ def delete_for_owner(state: GatewayState, s: Session, job: Job, now: float) -> N
             purge(state, s, row, "deleted", now)
     else:
         remove_job_blobs(state, s, job.id, now)
+    # A deleted video opens for nobody: its synced key (key_vault.py) and its share links (shares.py) go too.
+    from . import key_vault, shares
+
+    key_vault.forget_job(s, job.account_id, job.id, now)
+    shares.end_for_job(s, job.id, shares.VIDEO_DELETED, now)
 
 
 def inputs_json(row: StandardJob) -> list[dict]:

@@ -71,7 +71,11 @@ const PH = {
   sessionLifetime: { label: "[SESSION COOKIE LIFETIME]", note: "how long the sign-in session cookie lasts." },
   retention: {
     label: "[RETENTION PERIOD]",
-    note: "a period for each category where it appears: job records and receipts, charge and payment records, account data, sign-in tokens and sessions, strike records, reports, and operator audit logs. Not videos, which are kept until deleted.",
+    note: "a period for each category where it appears: job records and receipts, charge and payment records, account data, sign-in tokens and sessions, strike records, reports, operator audit logs, and share link records and view counts. Not videos, which are kept until deleted.",
+  },
+  retentionAfterClosure: {
+    label: "[RETENTION OF RECORDS AFTER CLOSURE]",
+    note: "how long billing, payment, receipt, report, strike, appeal and audit records are kept after an account is closed, and the legal reason for each (match the Terms).",
   },
   preservation: {
     label: "[PRESERVATION HOLD PERIODS]",
@@ -139,13 +143,22 @@ export default function PrivacyPolicy() {
             mode KunoWorld’s systems and the GPU provider can read your prompt, inputs and video.
           </p>
           <p>
+            If you turn on key sync, we also store your Private video keys, encrypted on your device under a key we never
+            receive. We cannot decrypt them, and cannot recover a lost recovery code.
+          </p>
+          <p>
+            Only you can open your videos, unless you create a share link for one. Links are off by default. Anyone who
+            has a link can watch that video until the link stops working. We count views of a shared video, but do not
+            record who viewed it.
+          </p>
+          <p>
             In both modes your videos are stored on Cloudflare R2 until you delete them. Nothing expires automatically.
             Deleting a video deletes its content; the charge record, job metadata and signed receipt stay.
           </p>
           <p>
             KunoWorld staff can open a video only if it is reported as child sexual abuse material or sexual content
             involving a minor, or if it is under a legal hold. Every view is logged. There is no random review. A Private
-            video can be opened even then only if its key was provided in such a report.
+            video can be opened even then only if its key was provided in such a report. Share links do not change this.
           </p>
           <p>
             A video’s receipt is public to anyone with its hash, and receipts are shared with network validators. The
@@ -188,12 +201,13 @@ export default function PrivacyPolicy() {
           </li>
           <li>
             <strong>Where the key is:</strong> on your own devices. In the website studio it is kept in your browser’s
-            local storage. If you use an SDK, it is wherever you store it. We cannot recover a lost key. A lost key means
-            a lost video.
+            local storage. If you use an SDK, it is wherever you store it. If you turn on key sync, we also store a copy
+            that is encrypted on your device and that we cannot decrypt (see{" "}
+            <SectionRef id="collect">Key sync</SectionRef>). We cannot recover a lost key. A lost key means a lost video.
           </li>
           <li>
-            <strong>What KunoWorld cannot see:</strong> your Private prompts, reference media and videos. We receive only
-            encrypted files.
+            <strong>What KunoWorld cannot see:</strong> your Private prompts, reference media and videos, including when
+            you share them with a link. We receive only encrypted files.
           </li>
           <li>
             <strong>What KunoWorld still sees:</strong> metadata. That is your account, the model, duration, resolution,
@@ -213,7 +227,9 @@ export default function PrivacyPolicy() {
             provider that renders the job, which may not use confidential-computing hardware.
           </li>
           <li>
-            <strong>Who can open the video in the product:</strong> only your account.
+            <strong>Who can open the video in the product:</strong> only your account, unless you create a share link for
+            it. Anyone who has that link can watch the video (see{" "}
+            <SectionRef id="collect">Share links</SectionRef>).
           </li>
           <li>
             <strong>What KunoWorld keeps:</strong> the prompt, negative prompt, seed, options, reference media, the video
@@ -294,6 +310,65 @@ export default function PrivacyPolicy() {
           any other data that could link a video to a person.
         </ReviewNote>
 
+        <LegalSubheading id="collect-key-sync">Key sync (optional)</LegalSubheading>
+        <p>
+          Key sync lets you open your Private videos on your other devices. It is off unless you turn it on. If you do,
+          your browser creates an account master key, which never leaves your devices unencrypted, and we store:
+        </p>
+        <ul>
+          <li>
+            <strong>Encrypted key records</strong>: for each Private video, its output key, the signing public key of the
+            confidential GPU that rendered it, the hash of the video file, and the take’s display details, such as the
+            first 500 characters of the prompt and its settings. Your browser encrypts each record (with AES-256-GCM)
+            under your master key before it is uploaded.
+          </li>
+          <li>
+            <strong>Your master key, encrypted</strong> once for each unlocker you set up: your recovery code and,
+            optionally, a passkey.
+          </li>
+          <li>
+            <strong>Public unlocker details</strong>: for a recovery code, its salt and iteration count; for a passkey,
+            its credential ID, PRF salt and site ID; and the label of each unlocker.
+          </li>
+          <li>Which videos have a synced key, and when your key sync data changed.</li>
+        </ul>
+        <p>
+          <strong>We cannot decrypt any of it, and we cannot recover a lost recovery code.</strong> Key sync works only
+          when you are signed in to the website, never with an API key.
+        </p>
+        <ReviewNote>
+          Confirm whether encrypted key records and unlocker details are personal data for which KunoWorld is
+          responsible, and how access, portability and deletion requests apply to data KunoWorld cannot read.
+        </ReviewNote>
+
+        <LegalSubheading id="collect-shares">Share links</LegalSubheading>
+        <p>
+          Only you can open your videos, unless you create a share link for one. Links are off by default. For each link
+          you create we store:
+        </p>
+        <ul>
+          <li>
+            which video it opens and that video’s mode, when you created the link, when it expires if you set an expiry,
+            when it was revoked or stopped working, and how many times it has been viewed; and
+          </li>
+          <li>
+            a hash of the link’s token. We do not store the link itself, so we cannot show it to you again.
+          </li>
+        </ul>
+        <p>
+          A link to a Private video carries the video’s key after the <code>#</code>. Browsers do not send that part of
+          a link to a server, so we never receive the key: the video is decrypted in the viewer’s browser.
+        </p>
+        <p>
+          <strong>About viewers.</strong> We count views of a shared video, but we do not record who viewed it or store
+          viewers’ IP addresses. To limit how many requests can be made, requests to public share links are counted per
+          IP address using a keyed hash of the address (by default, up to 60 requests a minute).
+        </p>
+        <ReviewNote>
+          Confirm that the statement about viewers’ IP addresses matches what server and network logs record, and
+          whether the keyed hash used for rate limiting is personal data and, if so, how long it is kept.
+        </ReviewNote>
+
         <LegalSubheading id="collect-safety">Account safety and reports</LegalSubheading>
         <ul>
           <li>
@@ -308,6 +383,10 @@ export default function PrivacyPolicy() {
             your email address if you give it, and your IP address, which is used to limit how many reports can be sent.
             An output key is accepted only with a report of child sexual abuse material or of sexual content involving a
             minor.
+          </li>
+          <li>
+            <strong>Appeals you send</strong>: which strike, restriction, removal or decision on a report you appealed,
+            your statement, the decision, the reviewer’s note, and when we emailed you the outcome.
           </li>
           <li>
             <strong>Audit log</strong>: a record of each time an operator opens a video’s content, and of each action
@@ -340,10 +419,11 @@ export default function PrivacyPolicy() {
           </li>
           <li>
             <strong>Private film keys.</strong> The studio saves each private take in your browser’s local storage: the
-            prompt, its settings and the key that decrypts the video. We do not receive this. Anyone who can use that
-            browser profile can open those videos. <strong>Forget all</strong> in the studio removes them from the
-            browser. If the key is lost, we cannot recover the video. Standard takes are listed from your account on our
-            servers instead.
+            prompt, its settings and the key that decrypts the video. We do not receive this in a form we can read: if
+            you turn on key sync, your browser encrypts it before it is uploaded (see{" "}
+            <SectionRef id="collect">Key sync</SectionRef>). Anyone who can use that browser profile can open those
+            videos. <strong>Forget all</strong> in the studio removes them from the browser. If the key is lost, we
+            cannot recover the video. Standard takes are listed from your account on our servers instead.
           </li>
           <li>
             <strong>Mode choice.</strong> The studio remembers whether you last chose Private or Standard in this
@@ -369,9 +449,14 @@ export default function PrivacyPolicy() {
             receive and store their content readable (see <SectionRef id="modes" />).
           </li>
           <li>
-            <strong>Your film keys.</strong> They stay on your devices. The only exception is an output key someone
-            includes in a report of child sexual abuse material or of sexual content involving a minor (see{" "}
-            <SectionRef id="moderation" />).
+            <strong>Your film keys.</strong> They stay on your devices. If you turn on key sync we store them only
+            encrypted, under a master key we never receive unencrypted, and we cannot decrypt them. The key in a link to
+            a Private video is never sent to us. The only exception is an output key someone includes in a report of
+            child sexual abuse material or of sexual content involving a minor (see <SectionRef id="moderation" />).
+          </li>
+          <li>
+            <strong>Who viewed a shared video.</strong> We count views, but do not record who viewed a shared video or
+            store viewers’ IP addresses (see <SectionRef id="collect">Share links</SectionRef>).
           </li>
           <li>
             <strong>Card numbers.</strong> Card details are processed by Stripe, and we do not store them.
@@ -417,6 +502,14 @@ export default function PrivacyPolicy() {
           <li>
             <strong>Job metadata</strong>: to route, price and run jobs, report their status and errors, and operate the
             Service.
+          </li>
+          <li>
+            <strong>Key sync data</strong>: to let you unlock your Private video keys and open your videos on your
+            devices. We cannot decrypt it.
+          </li>
+          <li>
+            <strong>Share link records</strong>: to serve a shared video to people who have the link, show you your links
+            and their view counts, stop links working when they should, and limit how many requests can be made.
           </li>
           <li>
             <strong>Receipts and output hashes</strong>: to let you and others check where a video came from, and to let
@@ -474,6 +567,10 @@ export default function PrivacyPolicy() {
           Every such view is recorded in an audit log. <strong>We do not sample or randomly review new or stored videos.</strong>
         </p>
         <p>
+          Share links do not change this. A link lets the people who have it watch that one video; it gives KunoWorld
+          operators no further access. Anyone who sees a shared video can report it.
+        </p>
+        <p>
           For a Private video, an operator can open it even in those two cases only if its key was provided. A report of
           child sexual abuse material, or of sexual content involving a minor, may include the video’s output key. We
           accept output keys only with those two report reasons. A key opens only that one video, and only while its
@@ -489,6 +586,14 @@ export default function PrivacyPolicy() {
         <p>
           Every action on a report (dismissing it, removing content, restricting or closing an account) is logged with
           who took it, when and why.
+        </p>
+
+        <LegalSubheading id="moderation-appeals">Appeals</LegalSubheading>
+        <p>
+          You can appeal a strike, a restriction, the removal of a video or a decision on a report about your account from
+          your account page. A moderator reviews the appeal from the record, without opening your content, and upholds or
+          overturns the decision. We email you the outcome with the moderator’s note. Each appeal and its decision is kept
+          with your account and recorded in the audit log.
         </p>
 
         <LegalSubheading id="moderation-holds">Preservation holds</LegalSubheading>
@@ -562,6 +667,13 @@ export default function PrivacyPolicy() {
             worker, timings and format, never the prompt or reference media.
           </li>
           <li>
+            <strong>People you share a link with.</strong> If you create a share link, anyone who has it can watch that
+            video, and can see its receipt, the model that made it, when it was made and shared, and when the link
+            expires. For a Standard video we serve the video to them. For a Private video we send them only the encrypted
+            file; the key is in the link and never reaches us. Links are off by default, and you can revoke them at any
+            time.
+          </li>
+          <li>
             <strong>Authorities and others</strong>, where the law requires it or where it is needed to protect rights,
             safety or the Service. See <SectionRef id="legal-requests" />.
           </li>
@@ -580,7 +692,9 @@ export default function PrivacyPolicy() {
         <LegalSubheading id="legal-requests-all">For every account</LegalSubheading>
         <p>
           Account and sign-in records, payment and ledger records, job metadata and receipts, strike and restriction
-          records, reports and audit logs, for as long as we keep them (see <SectionRef id="retention" />).
+          records, reports and audit logs, share link records (which videos were shared, when, the links’ status and view
+          counts), and key sync records (which videos have a synced key, and when your key sync data changed), for as
+          long as we keep them (see <SectionRef id="retention" />).
         </p>
         <LegalSubheading id="legal-requests-standard">Standard jobs</LegalSubheading>
         <p>
@@ -590,9 +704,11 @@ export default function PrivacyPolicy() {
         <LegalSubheading id="legal-requests-private">Private jobs</LegalSubheading>
         <p>
           We cannot produce the readable prompt, reference media or video of a private job, because we do not hold the
-          keys. We can produce its encrypted files until you delete them (or for longer under a preservation hold), and
-          they cannot be read without your key. The only exception is a private video whose output key was given to us
-          in a report of child sexual abuse material or of sexual content involving a minor.
+          keys in a form we can read. Keys stored with key sync are encrypted under a master key we never receive
+          unencrypted, and the key in a link to a Private video is never sent to us. We can produce its encrypted files
+          until you delete them (or for longer under a preservation hold), and any encrypted key sync data, and none of
+          it can be read without your keys. The only exception is a private video whose output key was given to us in a
+          report of child sexual abuse material or of sexual content involving a minor.
         </p>
         <p>
           How we assess and respond to requests, and whether we notify affected users: <Ph k="legalRequests" />.
@@ -647,13 +763,40 @@ export default function PrivacyPolicy() {
           </li>
           <li>
             <strong>Private film keys in your browser</strong>: until you use Forget all or clear this site’s data in
-            your browser. Without the key, the stored encrypted video cannot be opened.
+            your browser. Without the key, the stored encrypted video cannot be opened. Turning key sync off does not
+            remove them.
+          </li>
+          <li>
+            <strong>Key sync data</strong>: kept until you turn key sync off, which deletes it from our servers. A
+            video’s synced key is deleted when you delete the video. Rotating your keys replaces your master key and
+            unlockers.
+          </li>
+          <li>
+            <strong>Share link records and view counts</strong>: <Ph k="retention" />. A link itself stops working when
+            you revoke it, when it expires, when you delete the video, when the video is removed or placed under a
+            preservation hold, or when your account is closed.
+          </li>
+          <li>
+            <strong>Data exports</strong>: a copy of your data that you request on your account page is deleted
+            automatically 7 days after it is ready.
+          </li>
+          <li>
+            <strong>After you close your account</strong>: your videos, uploads, data exports, synced keys, share links,
+            sessions, API keys and linked wallets are deleted or revoked at once, and your email address is replaced. We keep
+            only a salted hash of the address, which can confirm that a given address closed the account but not recover
+            it. Content under a preservation hold is kept until the hold ends. Billing and ledger records, payments, job
+            records and receipts, reports, strikes, restrictions, appeals and the audit log are kept:{" "}
+            <Ph k="retentionAfterClosure" />.
           </li>
           <li>
             <strong>Data held by others</strong>: blockchain records are permanent, and validators, or anyone who has
-            looked up a receipt, may keep copies we cannot delete.
+            looked up a receipt, may keep copies we cannot delete. Anyone who watched a shared video may have kept a copy.
           </li>
         </ul>
+        <ReviewNote>
+          Closing an account deletes key sync data and ends share links. Confirm how long the records kept after closure
+          are retained, including the salted hash of the closed account’s address.
+        </ReviewNote>
       </Section>
 
       <Section id="security">
@@ -663,7 +806,12 @@ export default function PrivacyPolicy() {
             in Private mode, encrypting prompts and reference media on your device before upload, storing videos only
             encrypted, and processing jobs only on attested confidential GPUs;
           </li>
-          <li>storing API keys and sign-in tokens only as hashes;</li>
+          <li>storing API keys, sign-in tokens and share link tokens only as hashes;</li>
+          <li>
+            optional key sync, which encrypts your film keys on your device (with AES-256-GCM) under a master key that is
+            itself encrypted with your recovery code (stretched with PBKDF2-HMAC-SHA256 at 600,000 iterations) or a
+            passkey, so that we store only data we cannot decrypt;
+          </li>
           <li>
             a session kept by the website’s server in an HttpOnly cookie, which scripts on the page cannot read, so your
             browser never holds an API key or gateway token;
@@ -696,7 +844,14 @@ export default function PrivacyPolicy() {
           <li>
             <strong>Your device matters.</strong> Your devices hold the keys that decrypt your Private videos. Anyone with
             access to your browser profile can open saved takes, and a compromised device can expose your content. If you
-            lose a key, we cannot recover the video.
+            lose a key, we cannot recover the video. If you use key sync, anyone who can sign in to your account and has
+            your recovery code, or one of your passkeys, can unlock your synced keys; if you lose every device, your
+            recovery code and your passkeys, we cannot recover your keys or your Private videos.
+          </li>
+          <li>
+            <strong>Share links give access.</strong> Anyone who has a share link can watch that video, and a link to a
+            Private video contains its key. Revoking a link stops it working, but cannot undo copies someone already
+            made.
           </li>
         </ul>
         <ReviewNote>
@@ -732,8 +887,10 @@ export default function PrivacyPolicy() {
         </p>
         <p>
           You can also act directly: delete videos, in either mode, in the studio library or with {DELETE_ENDPOINT};
-          revoke API keys on your account page; use Forget all in the studio; or clear this site’s cookies and storage in
-          your browser.
+          revoke API keys and share links on your account page; turn key sync off there, which deletes your encrypted
+          keys from our servers; download a portable copy of your data or close your account there (see{" "}
+          <SectionRef id="retention" />); use Forget all in the studio; or clear this site’s cookies and storage in your
+          browser.
         </p>
       </Section>
 

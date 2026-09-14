@@ -13,6 +13,8 @@ dependencies = [
     "stripe>=15",
     "py-sr25519-bindings>=0.2",
     "scalecodec>=1.2",
+    # PDQ perceptual hashing (pdq.py).
+    "numpy>=2.0",
 ]
 
 [project.optional-dependencies]

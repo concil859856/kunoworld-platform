@@ -61,6 +61,19 @@ and the tagged ones once the gateway is current:
 npx playwright test --workers=1 --grep @needs-session-gateway
 ```
 
+### `@needs-new-gateway`
+
+Tests tagged `@needs-new-gateway` need a gateway with key sync (`/v1/me/keyvault`) and share links (migration 0011;
+`platform/gateway/STANDARD_MODE.md`, "Key sync" and "Share links"). On an older gateway run the rest with
+`--grep-invert @needs-new-gateway`.
+
+- **key-sync-shares** — after the first private take, setting up key sync with a recovery code shown once (confirmed by
+  its last four characters) and checking the gateway holds only wrapped values; a fresh browser context refusing a wrong
+  code, then unlocking with the right one and opening the private take; sharing a Standard and a Private take from the
+  inspector, watching both in another context (the private one decrypted from the `#k=` fragment, which no request
+  carries), the missing-key and wrong-key messages, revoking both on the account page so the links stop working; and
+  no sideways scroll at 320 / 375 / 768 px for share pages, the key sync panel and the account page (the untagged test).
+
 ## What each spec covers
 
 - **studio** — text to video, first + last frame, library reload, H3 → LTX fallback.
@@ -95,6 +108,14 @@ npx playwright test --workers=1 --grep @needs-session-gateway
   take that renders, plays, lists beside private takes and deletes, and the account page's
   private-mode block for a new account before and after credit. Run the rest with
   `--grep-invert @needs-standard-gateway` on a gateway that predates them.
+- **account-lifecycle** — the account page's "Your data" (request a copy, watch it get ready,
+  download the zip) and closing an account (the email-link re-authentication, the typed address,
+  signed out everywhere, the address starting a new account), appealing a restriction from its
+  notice and a moderator overturning it on the console's Appeals page, and no sideways scroll at
+  320 / 375 / 768 px. Every test is tagged `@needs-new-gateway`: it needs the routes in
+  `platform/gateway/STANDARD_MODE.md` ("Your data", "Closing an account", "Appeals"), and the
+  closure test ages a session in the gateway's SQLite database under `KUNO_DATA_DIR`. Run the
+  rest with `--grep-invert @needs-new-gateway` on an older gateway.
 
 ## Notes
 

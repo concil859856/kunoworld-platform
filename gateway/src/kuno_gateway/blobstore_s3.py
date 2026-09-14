@@ -228,6 +228,19 @@ class S3BlobStore:
 
         return chunks()
 
+    def exists(self, blob_id: str) -> bool:
+        try:
+            key = self._key(blob_id)
+        except KeyError:
+            return False
+        try:
+            self.client.head_object(Bucket=self.bucket, Key=key)
+        except Exception as exc:
+            if _error_code(exc) in _MISSING:
+                return False
+            raise
+        return True
+
     def delete(self, blob_id: str) -> None:
         try:
             key = self._key(blob_id)

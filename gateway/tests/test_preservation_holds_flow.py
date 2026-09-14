@@ -239,7 +239,8 @@ def test_a_blocked_upload_is_stored_encrypted_under_a_hold_and_reviewable_only_b
         assert s.query(StandardUpload).count() == 0
         blob_id = s.get(PreservationHold, hold["hold_id"]).blob_id
     at_rest = gw.state.blobs.get(blob_id)
-    assert at_rest.startswith(b"KUNOB1") and media.blue not in at_rest and media.blue[16:64] not in at_rest
+    # Sealed at rest with its own data key (vault.py envelope format).
+    assert at_rest.startswith(b"KUNOE1") and media.blue not in at_rest and media.blue[16:64] not in at_rest
 
     item = next(i for i in gw.client.get("/admin/v1/moderation/queue", headers=gw.admin).json() if i["kind"] == "upload_match")
     assert (item["detail"]["upload_id"], item["detail"]["hold_id"]) == (hold["upload_id"], hold["hold_id"])

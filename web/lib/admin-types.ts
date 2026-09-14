@@ -163,7 +163,11 @@ export const HOLD_REASONS = [
   { value: "operator", label: "Operator (other)" },
 ] as const;
 
-export const HOLD_REASON_LABEL: Record<string, string> = Object.fromEntries(HOLD_REASONS.map((r) => [r.value, r.label]));
+export const HOLD_REASON_LABEL: Record<string, string> = {
+  ...Object.fromEntries(HOLD_REASONS.map((r) => [r.value, r.label])),
+  // Placed only by the gateway, when a finished Standard video matches a hash list (never from the hold form).
+  output_match: "Refused video match",
+};
 
 /** "14 Sept 2026, 18:00 UTC", or a dash. */
 export function when(ts: number | null | undefined): string {
@@ -173,3 +177,39 @@ export function when(ts: number | null | undefined): string {
 
 /** Ids go into gateway paths; anything else is refused before a request is made. */
 export const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
+
+/** `GET /admin/v1/appeals`: a customer's appeal, with its subject's record (metadata only). */
+export interface AdminAppeal {
+  appeal_id: string;
+  subject_kind: "strike" | "restriction" | "removal" | "report_resolution";
+  subject_id: string;
+  status: "open" | "upheld" | "overturned" | "withdrawn";
+  statement: string;
+  created_at: number;
+  resolved_at: number | null;
+  decision: "uphold" | "overturn" | null;
+  /** The reviewer's note: the customer reads it, and it is the audit log's reason. */
+  note: string | null;
+  outcome: Record<string, unknown> | null;
+  /** The decision in the customer's words, as the gateway phrases it. */
+  summary: string[];
+  account_id: string;
+  item_id: string | null;
+  resolved_by: string | null;
+  notified_at: number | null;
+  subject: Record<string, unknown> | null;
+}
+
+export const APPEAL_SUBJECT_LABEL: Record<string, string> = {
+  strike: "a strike",
+  restriction: "a restriction",
+  removal: "a removal",
+  report_resolution: "a report's resolution",
+};
+
+export const APPEAL_STATUS_LABEL: Record<string, string> = {
+  open: "Open",
+  upheld: "Decision stands",
+  overturned: "Decision overturned",
+  withdrawn: "Withdrawn (account closed)",
+};

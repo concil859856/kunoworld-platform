@@ -14,6 +14,10 @@ from sqlalchemy import Engine, inspect
 
 # Models that live outside db.py register on Base here, so the metadata always matches head.
 from .. import db_audits, db_holds, db_moderation, db_roles  # noqa: F401
+from .. import db_cybertip  # noqa: F401
+from .. import db_shares, db_vault  # noqa: F401  (migration 0011: key sync, share links)
+from .. import db_lifecycle  # noqa: F401  (migration 0012: data exports, account closures, appeals)
+from .. import db_storage  # noqa: F401  (migration 0014: storage keys, C2PA issuance log, deletion tombstones)
 
 # The schema as it stood before migrations existed.
 BASELINE = "0001"

@@ -27,6 +27,8 @@ class Account(Base):
     balance_micros: Mapped[int] = mapped_column(BigInteger, default=0)
     is_validator: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[float] = mapped_column(Float)
+    # Set when its owner closed the account (account_closure.py, migration 0012). Nothing acts for it again.
+    closed_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class User(Base):

@@ -1,27 +1,27 @@
-"""Known-content matching for Standard-mode uploads.
+"""Known-content matching for Standard content: uploads before they are stored, and finished videos before they are
+kept (output_scan.py).
 
-Every plaintext upload (images, video and audio references, source clips) runs through an `UploadScanner`
-before it is stored. A scanner is a list of `Matcher`s; the first match wins. What ships here is an exact
-SHA-256 list (`KUNO_BLOCKED_HASHES_FILE`). Exact hashes only catch byte-identical files; re-encoding,
-resizing or cropping defeats them, which is why production deployments should add a perceptual matcher.
+Content runs through an `UploadScanner`, a list of `Matcher`s; the first match wins. What ships here:
 
-Plugging in a perceptual service
---------------------------------
+* an exact SHA-256 list (`KUNO_BLOCKED_HASHES_FILE`), which only catches byte-identical files;
+* Meta's PDQ for images, and PDQ per sampled frame for video, against `KUNO_PERCEPTUAL_HASH_FILES`
+  (perceptual.py), which survives re-encoding, resizing and small crops;
+* placeholders for membership programmes' hash lists (`KUNO_HASH_SHARING_PROGRAMMES`), which fail closed until an
+  adapter exists.
+
+Plugging in another matcher
+---------------------------
 A matcher receives the plaintext bytes, their SHA-256 and the sniffed MIME type, and returns a `Match` or
-None. It never logs, stores or forwards the bytes except to the service it wraps. Candidates (see
+None. It never logs, stores or forwards the bytes except to the service it wraps. Other candidates (see
 MODERATION.md for sources and licensing; confirm terms with counsel before integrating):
 
 * Microsoft PhotoDNA Cloud Service: robust image hashing against CSAM hash sets; free for vetted
   organizations, used solely for combating child sexual abuse content, under Microsoft's terms of use.
   Integration is an HTTPS call, so the matcher is remote and must fail closed.
-* Meta PDQ (images) and TMK+PDQF (video): open-source perceptual hashes (ThreatExchange repository,
-  BSD licence). Computing them locally needs image/video decoding; the hash *lists* to match against come
-  from membership programmes (NCMEC hash sharing for registered electronic service providers, StopNCII,
-  Tech Coalition / GIFCT for their members), each with its own agreement.
 * Commercial services (e.g. Thorn Safer) under their own contracts.
 
 A matcher that can't reach its service raises `ScanUnavailable`; the gateway then refuses the upload
-(503) instead of storing unscanned content.
+(503) instead of storing unscanned content. Content a matcher can't decode raises `Unscannable`.
 """
 
 from __future__ import annotations
@@ -45,10 +45,30 @@ class Match:
     kind: str
     list_name: str
     category: str | None = None
+    # Perceptual matches only: Hamming distance, the threshold it was within, the content's PDQ quality, where in a
+    # video the matching frame was sampled, which version of the list matched, and the content's own PDQ hash.
+    distance: int | None = None
+    threshold: int | None = None
+    quality: int | None = None
+    frame_time_s: float | None = None
+    list_version: str | None = None
+    content_pdq: str | None = None
+
+    def detail(self) -> dict:
+        """The perceptual fields for a moderation item's detail (hashes and numbers only)."""
+        fields = {
+            "distance": self.distance, "threshold": self.threshold, "quality": self.quality,
+            "frame_time_s": self.frame_time_s, "list_version": self.list_version, "pdq": self.content_pdq,
+        }
+        return {k: v for k, v in fields.items() if v is not None}
 
 
 class ScanUnavailable(Exception):
     """A matcher couldn't give an answer. The upload must not be accepted unscanned."""
+
+
+class Unscannable(ScanUnavailable):
+    """The content itself can't be scanned (it doesn't decode). Refuse it rather than retry."""
 
 
 class Matcher(Protocol):
@@ -114,7 +134,24 @@ class UploadScanner:
 
 
 def build_scanner(settings) -> UploadScanner:
+    """Exact hashes first (cheap), then perceptual lists, then membership programmes."""
     matchers: list[Matcher] = []
     if settings.blocked_hashes_file:
         matchers.append(Sha256ListMatcher(settings.blocked_hashes_file))
+    perceptual_files = list(getattr(settings, "perceptual_hash_files", None) or [])
+    programmes = list(getattr(settings, "hash_sharing_programmes", None) or [])
+    if perceptual_files or programmes:
+        from .perceptual import PdqMatcher, programme_matchers
+
+        if perceptual_files:
+            matchers.append(PdqMatcher(settings, perceptual_files))
+        matchers.extend(programme_matchers(programmes))
     return UploadScanner(matchers)
+
+
+def scanner_for(state) -> UploadScanner:
+    """The gateway's scanner for content it holds outside a request (finished Standard videos). Built once per gateway."""
+    cached = getattr(state, "_kuno_scanner", None)
+    if cached is None:
+        cached = state._kuno_scanner = build_scanner(state.settings)
+    return cached

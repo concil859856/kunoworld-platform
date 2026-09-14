@@ -13,15 +13,21 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import (
     __version__,
+    account_export,
+    api_account_lifecycle,
     api_admin,
+    api_appeals,
     api_audits,
     api_auth,
     api_ca,
+    api_cybertip,
+    api_key_vault,
     api_miner,
     api_moderation,
     api_payments,
     api_public,
     api_reports,
+    api_shares,
     api_standard,
     api_turbo,
     api_validator,
@@ -58,6 +64,16 @@ async def _webhook_loop(state: GatewayState) -> None:
         await asyncio.sleep(state.settings.webhook_interval_s)
 
 
+async def _account_export_loop(state: GatewayState) -> None:
+    """Builds queued data exports and deletes each copy a week after it finished (account_export.py)."""
+    while True:
+        try:
+            await asyncio.to_thread(account_export.run_pending, state)
+        except Exception:  # keep building; surface the error in logs
+            log.exception("data export pass failed")
+        await asyncio.sleep(state.settings.janitor_interval_s)
+
+
 async def _chain_loop(state: GatewayState) -> None:
     """Credits TAO and alpha top-ups from finalized blocks, reconnecting after any failure."""
     from .chainwatch import ChainWatcher, SubstrateChain
@@ -86,6 +102,11 @@ def _body_limit(settings: Settings, path: str) -> int:
     # Step-audit openings carry encrypted latents: tens of MB for H3.
     if path.startswith("/miner/v1/audits/") and path.endswith("/opening"):
         return settings.max_blob_bytes
+    # A key sync rotation re-wraps every synced key in one request (key_vault.py).
+    if path == "/v1/me/keyvault/rotate":
+        from .key_vault import ROTATE_MAX_BODY_BYTES
+
+        return max(settings.max_json_body_bytes, ROTATE_MAX_BODY_BYTES)
     return settings.max_json_body_bytes
 
 
@@ -98,6 +119,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tasks = [
             asyncio.create_task(_janitor_loop(state)),
             asyncio.create_task(_webhook_loop(state)),
+            asyncio.create_task(_account_export_loop(state)),
         ]
         if settings.tao_treasury_address:
             tasks.append(asyncio.create_task(_chain_loop(state)))
@@ -118,8 +140,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         log.error("KUNO_ALLOW_ADMIN_TOKEN is ignored in production: operators sign in by email")
     elif settings.break_glass_enabled:
         log.warning("break-glass admin token is enabled (KUNO_ALLOW_ADMIN_TOKEN=1); every use is logged as 'break-glass'")
-    if app.state.c2pa_ca is not None and not settings.c2pa_tsa_url and state.policy.production:
-        log.warning("C2PA CA without KUNO_C2PA_TSA_URL: manifests stop validating when their short-lived certificates expire")
+    # Storage key canary (production needs a key management service), the TSA rules, the C2PA log import.
+    from . import startup_checks
+
+    app.state.startup_report = startup_checks.run(app, state, settings)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -129,8 +153,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(BodyLimitMiddleware, limit_for=lambda path: _body_limit(settings, path))
     for module in (
         api_public, api_auth, api_payments, api_miner, api_ca, api_validator, api_admin, api_turbo, api_audits,
-        api_standard, api_reports, api_moderation, api_validator_standard,
+        api_standard, api_reports, api_moderation, api_validator_standard, api_key_vault, api_shares,
+        api_cybertip,
     ):
+        app.include_router(module.router)
+    # GET /admin/v1/c2pa/issuances (admin role).
+    app.include_router(api_ca.admin_router)
+
+    # Data export, account closure and appeals (STANDARD_MODE.md, MODERATION.md).
+    for module in (api_account_lifecycle, api_appeals):
         app.include_router(module.router)
 
     @app.get("/healthz")
@@ -178,11 +209,17 @@ def main(argv: list[str] | None = None) -> None:
         sub = commands.add_parser(name, help=help_text)
         sub.add_argument("--email", required=True)
         sub.add_argument("--role", required=True, choices=["moderator", "admin"])
+    # rotate-storage-key, check-tsa, reapply-deletions, import-c2pa-log (ops_cli.py)
+    from . import ops_cli
+
+    ops_cli.register(commands)
     args = parser.parse_args(argv)
     if args.command in ("grant-role", "revoke-role"):
         code, message = role_command(args.command, args.email, args.role)
         print(message, file=sys.stdout if code == 0 else sys.stderr)
         raise SystemExit(code)
+    if args.command in ops_cli.COMMANDS:
+        raise SystemExit(ops_cli.dispatch(args))
 
     import uvicorn
 

@@ -24,6 +24,15 @@ export const PRIVACY_COPY: Record<PrivacyMode, { label: string; sentence: string
 export const KEY_BACKUP_SENTENCE =
   "Private videos can only be opened with keys stored on your devices — back them up, or a lost key means a lost video.";
 
+/** The one rule about who can open a video. */
+export const SHARE_SENTENCE = "Only you can open your videos, unless you create a share link for one.";
+
+/** Shown wherever a private video's share link is made or copied. */
+export const PRIVATE_SHARE_WARNING =
+  "Anyone with this link can watch this video. Its key is part of the link, after the #: KunoWorld still can't see the video, but anyone the link reaches can.";
+
+export const STANDARD_SHARE_WARNING = "Anyone with this link can watch this video until you revoke the link or it expires.";
+
 export const STORAGE_SENTENCE =
   "In both modes, videos are stored on KunoWorld's storage (Cloudflare R2) until you delete them. Nothing expires on its own.";
 

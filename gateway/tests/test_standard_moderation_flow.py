@@ -172,7 +172,8 @@ def test_a_standard_job_is_sealed_as_a_client_would_seal_it_and_its_video_is_sto
     assert upload.json() | {"upload_id": None} == {"upload_id": None, "sha256": sha256_hex(media.red), "size": len(media.red), "mime": "image/png"}
     with gw.state.session() as s:
         stored = gw.state.blobs.get(s.get(StandardUpload, upload.json()["upload_id"]).blob_id)
-    assert stored.startswith(b"KUNOB1") and media.red not in stored
+    # Sealed at rest with its own data key (vault.py envelope format).
+    assert stored.startswith(b"KUNOE1") and media.red not in stored
 
     created = gw.client.post(
         "/v1/standard/videos",

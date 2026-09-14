@@ -7,8 +7,9 @@ private key, `KUNO_C2PA_CA_CHAIN` the intermediate then the root certificate, in
 The gateway issues a leaf only for an enclave whose attestation it has verified and which
 is still fresh (see api_ca.py), and only for that enclave's attested Ed25519 signing key.
 Leaves are short-lived, so dropping an enclave (revoked, stale) takes its certificate out
-of use within one validity period without CRLs or OCSP. Every issuance is appended to a
-JSONL log under the data directory (a database-backed log is a follow-up).
+of use within one validity period without CRLs or OCSP. Every issuance is recorded in the
+database (`c2pa_issuances`, c2pa_issuance.py) before the certificate is returned; the old
+JSONL log is only read, to import it.
 """
 
 from __future__ import annotations
@@ -246,8 +247,8 @@ class IssuingCA:
         # The root is the verifier's trust anchor, so the chain carries only leaf and intermediate.
         return IssuedCertificate(leaf, certificate_pem(leaf) + certificate_pem(self.intermediate), binding)
 
-    def record(self, issued: IssuedCertificate, issued_at: float) -> None:
-        record = {
+    def issuance_fields(self, issued: IssuedCertificate, issued_at: float) -> dict:
+        return {
             "serial": issued.serial_hex,
             "cert_sha256": issued.sha256,
             "enclave_id": issued.binding.enclave_id,
@@ -259,12 +260,13 @@ class IssuingCA:
             "issued_at": issued_at,
             "issuer_sha256": hashlib.sha256(self.intermediate.public_bytes(serialization.Encoding.DER)).hexdigest(),
         }
-        try:
-            self.log.append(record)
-        except OSError as exc:
-            # A certificate that is not on the record is never handed out.
-            log.error("could not append to the C2PA issuance log %s: %s", self.log.path, exc.strerror)
-            raise CAUnavailable("the issuance log is not writable") from None
+
+    def record(self, s, issued: IssuedCertificate, issued_at: float) -> None:
+        """Adds the issuance to the database log (c2pa_issuance.py) in the caller's transaction; the caller returns
+        the certificate only once that commits. `self.log` (the old JSONL file) is only read, for the import."""
+        from . import c2pa_issuance
+
+        c2pa_issuance.record(s, self.issuance_fields(issued, issued_at))
 
     # ------------------------------------------------------------ publishing
 

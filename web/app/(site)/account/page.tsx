@@ -6,7 +6,11 @@ import { TopUp, type PaymentConfig } from "@/components/site/TopUp";
 import { TopUpNotice } from "@/components/site/TopUpNotice";
 import { WalletLinker, type WalletRow } from "@/components/site/WalletLinker";
 import { WebhookSecret } from "@/components/site/WebhookSecret";
+import { AccountAppeals } from "@/components/site/AccountAppeals";
+import { YourData } from "@/components/site/YourData";
 import { PrivateModeStatus } from "@/components/site/PrivateModeStatus";
+import { KeysAndRecovery } from "@/components/site/KeysAndRecovery";
+import { ShareLinks } from "@/components/site/ShareLinks";
 import type { Eligibility } from "@kunoworld/sdk";
 import styles from "@/components/site/Account.module.css";
 import { gateway, rolesOf, sessionToken, type Me } from "@/lib/gateway.server";
@@ -98,10 +102,10 @@ function paidIn(payment: Payment): string {
   return `${payment.asset_amount} ${unit}`.trim();
 }
 
-export default async function Account({ searchParams }: { searchParams: Promise<{ topup?: string }> }) {
+export default async function Account({ searchParams }: { searchParams: Promise<{ topup?: string; closing?: string }> }) {
   const token = await sessionToken();
   if (!token) redirect("/signin?next=/account");
-  const { topup } = await searchParams;
+  const { topup, closing } = await searchParams;
 
   const [me, keys, entries, config, payments, wallets, eligibility] = await Promise.all([
     gateway<Me>("/v1/me", { token }),
@@ -212,6 +216,12 @@ export default async function Account({ searchParams }: { searchParams: Promise<
           </h2>
           <PrivateModeStatus eligibility={eligibility.ok ? eligibility.data : null} />
         </section>
+
+        <AccountAppeals token={token} />
+
+        <KeysAndRecovery accountId={account?.account_id ?? null} />
+
+        <ShareLinks />
 
         <section id="add-credit" className={styles.section} aria-labelledby="add-credit-title">
           <h2 id="add-credit-title" className={styles.sectionTitle}>
@@ -330,6 +340,8 @@ export default async function Account({ searchParams }: { searchParams: Promise<
             </div>
           )}
         </section>
+
+        <YourData token={token} closing={closing === "1"} />
       </div>
     </div>
   );

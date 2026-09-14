@@ -3,9 +3,11 @@ import { notFound } from "next/navigation";
 import { placeHold, resolveItem } from "@/app/(site)/admin/actions";
 import { ActionForm } from "@/components/admin/ActionForm";
 import ui from "@/components/admin/Admin.module.css";
+import { CybertipSection } from "@/components/admin/CybertipSection";
 import { HoldCard } from "@/components/admin/HoldCard";
 import { HoldFields } from "@/components/admin/HoldFields";
 import { ItemContent, NOT_REVIEWABLE_NOTE } from "@/components/admin/ItemContent";
+import { MatchDetails } from "@/components/admin/MatchDetails";
 import { ResolveFields } from "@/components/admin/ResolveFields";
 import styles from "@/components/site/Account.module.css";
 import { SAFE_ID, accessLabel, contentReviewable, reasonLabel, when, type AdminItem } from "@/lib/admin-types";
@@ -109,6 +111,7 @@ export default async function Item({ params }: { params: Promise<{ id: string }>
           )}
         </dl>
         {report?.details && <p className={ui.pre}>{report.details}</p>}
+        <MatchDetails detail={item.detail} />
         {operator.isAdmin && (
           <p className={styles.fine}>
             <a className="text-link" href={`/admin/audit?target_id=${encodeURIComponent(item.item_id)}`}>
@@ -152,7 +155,19 @@ export default async function Item({ params }: { params: Promise<{ id: string }>
         )}
       </section>
 
-      {item.status === "open" && (
+      <CybertipSection operator={operator} itemId={item.item_id} />
+
+      {item.kind === "appeal" && (
+        <p className={ui.note} role="note">
+          This is a customer&apos;s appeal. Decide it on the{" "}
+          <a className="text-link" href={`/admin/appeals?status=all#appeal-${encodeURIComponent(String(item.detail?.appeal_id ?? ""))}`}>
+            Appeals page
+          </a>
+          , where upholding or overturning applies the effects and emails the customer.
+        </p>
+      )}
+
+      {item.status === "open" && item.kind !== "appeal" && (
         <section className={styles.section} aria-labelledby="resolve-title">
           <h2 id="resolve-title" className={styles.sectionTitle}>
             Resolve

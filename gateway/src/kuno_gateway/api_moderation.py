@@ -5,8 +5,8 @@ the queue, items and holds; restricting accounts, releasing holds and reading th
 
 Only a video's owner can open it. An operator may open an item's content (video, blocked upload, Standard prompt)
 only for an open report of `csam` or `sexual_minor`, or under an active preservation hold whose reason is
-`report_csam`, `report_sexual_minor`, `upload_match` or `legal_request` (`content_access`). Everything else is
-metadata only. Every content view is logged.
+`report_csam`, `report_sexual_minor`, `upload_match`, `output_match` or `legal_request` (`content_access`). Everything
+else is metadata only. Every content view is logged.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ DEFAULT_RESTRICTION_S = 7 * 86400
 # Reports whose content an operator may review (the only reasons a report may carry a private video's key).
 ILLEGAL_REPORT_REASONS = ("csam", "sexual_minor")
 # Holds under which an operator may review the held content.
-REVIEWABLE_HOLD_REASONS = ("report_csam", "report_sexual_minor", "upload_match", "legal_request")
+REVIEWABLE_HOLD_REASONS = ("report_csam", "report_sexual_minor", "upload_match", "output_match", "legal_request")
 
 
 def _error(status: int, code: str, message: str) -> HTTPException:
@@ -137,6 +137,9 @@ def _preserved(s: Session, hold: PreservationHold) -> dict:
                 ) or 0,
                 hidden=row.deleted_at is not None,
             )
+        if hold.blob_id is not None:
+            # A refused output kept in the hold's own blob (output_scan.py).
+            out["blocked_output"] = True
         return out
     upload = s.get(StandardUpload, hold.upload_id)
     return {"upload": hold.blob_id is not None or bool(upload and upload.blob_id)}
@@ -229,6 +232,10 @@ def _item_json(s: Session, item: ModerationItem, *, show_prompt: bool = False) -
     job = s.get(Job, item.job_id) if item.job_id else None
     detail = json.loads(item.detail) if item.detail else None
     access = _item_access(s, item, now)
+    job_out = _job_json(s, job, report, reviewable=access is not None, show_prompt=show_prompt and access is not None)
+    if job_out is not None and item.kind == "output_match":
+        # A refused output is kept only in its hold's blob, never as the owner's video.
+        job_out["has_video"] = access is not None and holds.output_hold(s, job.id, now) is not None
     return {
         "item_id": item.id,
         "kind": item.kind,
@@ -241,7 +248,7 @@ def _item_json(s: Session, item: ModerationItem, *, show_prompt: bool = False) -
         # Whether an operator may open this item's content now, and on what basis ("report:csam", "hold:legal_request").
         "content_reviewable": access is not None,
         "content_access": access,
-        "job": _job_json(s, job, report, reviewable=access is not None, show_prompt=show_prompt and access is not None),
+        "job": job_out,
         "resolution": item.resolution,
         # Holds on the item's job, or on a blocked upload's stored file.
         "holds": _holds_for(s, now, job_id=item.job_id, upload_id=None if item.job_id else (detail or {}).get("upload_id")),
@@ -396,6 +403,7 @@ async def item_video(item_id: str, request: Request):
         held = job is not None and holds.job_held(s, job.id, now)
         held_key = holds.held_output_key(state, s, job.id, now) if job is not None and row is None else None
         upload_hold = holds.item_upload_hold(s, item, detail, now) if job is None else None
+        output_hold = holds.output_hold(s, job.id, now) if job is not None and item.kind == "output_match" else None
         basis = _item_access(s, item, now)
     if job is None and upload_hold is None:
         raise _error(404, "no_video", "This item names no job.")
@@ -410,6 +418,9 @@ async def item_video(item_id: str, request: Request):
         # A blocked upload preserved under a hold (it may be an image, not a video).
         loader, kind = (lambda: holds.open_blocked_upload(state, upload_hold, detail.get("sha256"))), "held_upload"
         media_type, action = detail.get("mime") or "application/octet-stream", "item.view_upload"
+    elif output_hold is not None:
+        # A finished Standard video refused by output scanning, preserved under its hold (output_scan.py).
+        loader, kind = (lambda: holds.open_blocked_output(state, output_hold, detail.get("sha256"))), "held_output"
     elif job.privacy == standard_jobs.STANDARD:
         if row is None or (row.deleted_at is not None and not held):
             raise _error(410, "content_deleted", "This video's content is no longer stored.")
@@ -430,8 +441,8 @@ async def item_video(item_id: str, request: Request):
     except KeyError:
         raise _error(410, "content_deleted", "This content is no longer stored.") from None
     except DecryptionError:
-        if kind == "held_upload":
-            raise _error(422, "integrity_error", "The stored upload does not match its recorded digest.") from None
+        if kind in ("held_upload", "held_output"):
+            raise _error(422, "integrity_error", "The stored content does not match its recorded digest.") from None
         raise _error(422, "key_mismatch", "The reported key does not open this job's video.") from None
     with state.session() as s, s.begin():
         moderation.log_action(
@@ -452,6 +463,9 @@ async def resolve_item(item_id: str, body: ResolveBody, request: Request):
             raise _error(404, "not_found", "No such moderation item.")
         if item.status != "open":
             raise _error(409, "already_resolved", "This item is already resolved.")
+        if item.kind == "appeal":
+            # Appeals are decided with uphold or overturn (api_appeals.py), which apply the effects and tell the customer.
+            raise _error(409, "appeal_item", "Decide an appeal with POST /admin/v1/appeals/{appeal_id}/resolve.")
         report = s.get(Report, item.report_id) if item.report_id else None
         if report is not None and report.status == "open":
             _resolve_report(state, s, report, body, by, now)

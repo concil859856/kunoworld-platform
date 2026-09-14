@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { ModelProfile } from "@kunoworld/sdk";
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ShareLinkForm } from "@/components/studio/ShareLinkForm";
 import { CertificateView } from "@/components/verify/CertificateView";
 import { useCertificate } from "@/components/verify/useCertificate";
 import { EMPTY_INPUTS, type ComposerApi } from "@/lib/composerState";
@@ -249,6 +250,7 @@ export function Inspector({ entry, film, profiles, composer, onCancel, onRemove,
           <X size={16} /> {entry.handle ? "Delete" : "Remove"}
         </button>
       </div>
+      <ShareLinkForm entry={entry} />
     </aside>
   );
 }

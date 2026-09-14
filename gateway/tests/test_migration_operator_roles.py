@@ -64,7 +64,8 @@ def test_0010_adds_roles_keeps_stored_videos_and_round_trips(tmp_path):
             {"c": now, "e": now + 3600},
         )
 
-    upgrade_database(engine)
+    # Pinned: later migrations (0011+) chain after this one, so "head" is no longer 0010.
+    upgrade_database(engine, "0010")
     assert _version(engine) == "0010"
     columns = {c["name"]: c["nullable"] for c in inspect(engine).get_columns("operator_roles")}
     assert columns == {"id": False, "user_id": False, "role": False, "granted_by": False, "granted_at": False, "revoked_at": True}

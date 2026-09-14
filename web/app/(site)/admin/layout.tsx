@@ -21,7 +21,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     { href: "/admin", label: "Overview" },
     { href: "/admin/reports", label: "Reports" },
     { href: "/admin/queue", label: "Queue" },
+    { href: "/admin/appeals", label: "Appeals" },
     { href: "/admin/holds", label: "Holds" },
+    { href: "/admin/cybertip", label: "CyberTipline" },
     { href: "/admin/accounts", label: "Accounts" },
     ...(operator.isAdmin
       ? [

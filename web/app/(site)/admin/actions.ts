@@ -144,3 +144,22 @@ export async function changeRole(_state: ActionResult | null, form: FormData): P
     change === "grant" ? `${email} is now a ${role}.` : `${email} is no longer a ${role}.`,
   );
 }
+
+/** Upholds or overturns a customer's appeal. The gateway applies an overturn's effects and emails the customer. */
+export async function resolveAppeal(_state: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const id = text(form, "appeal_id");
+  const decision = text(form, "decision");
+  const note = text(form, "note");
+  if (!SAFE_ID.test(id)) return fail("That appeal id isn't valid.");
+  if (decision !== "uphold" && decision !== "overturn") return fail("Choose uphold or overturn.");
+  if (!note) return fail("Write a note: the customer reads it, and it goes in the audit log.");
+  return call(
+    "moderator",
+    "POST",
+    `/appeals/${id}/resolve`,
+    { decision, note },
+    decision === "overturn"
+      ? "Appeal decided: the decision was overturned, and the customer was emailed."
+      : "Appeal decided: the decision stands, and the customer was emailed.",
+  );
+}

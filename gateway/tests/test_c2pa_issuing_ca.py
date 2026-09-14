@@ -81,7 +81,18 @@ def update_enclave(client: TestClient, enclave_id: str, **fields) -> None:
 
 
 def issuance_log(settings: Settings) -> list[dict]:
-    return IssuanceLog(settings.c2pa_issuance_log).records()
+    """The issuance log, which lives in the gateway's database (c2pa_issuance.py), oldest first."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from kuno_gateway import c2pa_issuance
+
+    engine = create_engine(settings.db_url)
+    try:
+        with Session(engine) as s:
+            return c2pa_issuance.records(s)
+    finally:
+        engine.dispose()
 
 
 def tamper_signature(csr_pem: str) -> str:

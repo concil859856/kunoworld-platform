@@ -39,6 +39,14 @@ const nextConfig: NextConfig = {
           { key: "X-Robots-Tag", value: "noindex, nofollow" },
         ],
       },
+      // Share links open one person's video for whoever holds the link: never indexed, never cached.
+      {
+        source: "/s/:path*",
+        headers: [
+          { key: "Cache-Control", value: "no-store, max-age=0" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
+      },
       { source: "/api/kuno/:path*", headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }] },
     ];
   },

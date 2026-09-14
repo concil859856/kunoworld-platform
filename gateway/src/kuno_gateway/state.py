@@ -346,7 +346,9 @@ class GatewayState:
 
             problem = ingest_output(self, s, job, now)
             if problem is not None:
-                status, error_code, error = JobState.FAILED, "bad_output", f"The worker's output failed verification: {problem}."
+                # A refused output (output_scan.OutputRefused) names its own code: safety_blocked for a hash-list match.
+                status, error_code = JobState.FAILED, getattr(problem, "error_code", "bad_output")
+                error = getattr(problem, "message", None) or f"The worker's output failed verification: {problem}."
         job.status = status.value
         job.updated_at = job.finished_at = now
         job.error_code, job.error = error_code, error
@@ -405,6 +407,15 @@ class GatewayState:
             s.execute(delete(UserSession).where(UserSession.expires_at < now - 86400))
             s.execute(delete(Nonce).where(Nonce.expires_at < now))
         self.limiter.prune(identity.AUTH_LIMIT_WINDOW_S)
+        # Committed deletion tombstones are copied out of the database, so a database restore can't forget them.
+        from .tombstones import export_pending
+
+        try:
+            export_pending(self)
+        except Exception:  # the next pass tries again; nothing is lost while they wait in the database
+            import logging
+
+            logging.getLogger("kuno.gateway").exception("exporting deletion tombstones failed")
 
 
 def job_status(job: Job) -> JobStatus:
