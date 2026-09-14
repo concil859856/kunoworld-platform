@@ -72,26 +72,48 @@ const MODEL_LABEL: Record<Exclude<ClipSource, "kuno">, string> = {
   "h3-reference": "MiniMax H3",
 };
 
-export function provenanceOf(c: Clip): string {
+/** Display names for the raw ids scripts/assets.mjs writes. Unknown ids are shown as written. */
+const MODEL_NAMES: Record<string, string> = { "google/veo-3.1": "Google Veo 3.1" };
+const PROVIDER_NAMES: Record<string, string> = { openrouter: "OpenRouter" };
+
+/**
+ * What labelling needs from a clip. The homepage's hand-picked samples (lib/showcase.ts) carry
+ * the same fields, so they are labelled by exactly the same rule as the generated index.
+ */
+export type Provenance = Pick<Clip, "source" | "model" | "provider">;
+
+function modelName(c: Provenance): string {
+  if (c.model) return MODEL_NAMES[c.model] ?? c.model;
+  return c.source === "kuno" ? "the KunoWorld network" : MODEL_LABEL[c.source];
+}
+
+export function provenanceOf(c: Provenance): string {
   if (c.source === "kuno") return "Made on the KunoWorld network · certificate attached";
-  return `Sample · ${c.model ?? MODEL_LABEL[c.source]}, not made on the network`;
+  const via = c.provider ? ` via ${PROVIDER_NAMES[c.provider] ?? c.provider}` : "";
+  return `Sample · ${modelName(c)}${via}, not made on the network`;
+}
+
+/** The short form for a chip on a card: which model really rendered the clip. */
+export function provenanceChip(c: Provenance): string {
+  return c.source === "kuno" ? "Made on KunoWorld" : `Sample · ${modelName(c)}`;
 }
 
 /**
- * Derived from the clips actually present rather than hardcoded, so the wording cannot
+ * Derived from the clips actually shown rather than hardcoded, so the wording cannot
  * drift from the footage. The samples may come from a model the network does not serve,
  * so this must never imply otherwise — only a film with a certificate can claim that.
  */
-function footageNote(): string {
-  const models = Array.from(
-    new Set(ALL_CLIPS.filter((c) => c.source !== "kuno").map((c) => c.model ?? MODEL_LABEL[c.source as Exclude<ClipSource, "kuno">])),
-  );
-  const made = models.length === 0 ? "third-party models" : models.length === 1 ? models[0] : `${models.slice(0, -1).join(", ")} and ${models.at(-1)}`;
+export function sampleNote(clips: Provenance[]): string {
+  const samples = clips.filter((c) => c.source !== "kuno");
+  if (samples.length === 0) return "";
+  const models = Array.from(new Set(samples.map(modelName)));
+  const providers = Array.from(new Set(samples.flatMap((c) => (c.provider ? [PROVIDER_NAMES[c.provider] ?? c.provider] : []))));
+  const made = models.length === 1 ? models[0] : `${models.slice(0, -1).join(", ")} and ${models.at(-1)}`;
+  const via = providers.length ? ` through ${providers.join(" and ")}` : "";
   return (
-    `Sample footage on this page was generated with ${made}, to show what each kind of request looks like. ` +
-    "It was not made on the KunoWorld network, is not output from the models the network serves, and carries no " +
-    "certificate — films you make in the studio are."
+    `Sample footage on this page was generated with ${made}${via}, to show what each kind of request looks like. ` +
+    "It was not made on the KunoWorld network, is not output from the models the network serves, and carries no certificate."
   );
 }
 
-export const FOOTAGE_NOTE = footageNote();
+export const FOOTAGE_NOTE = sampleNote(ALL_CLIPS);

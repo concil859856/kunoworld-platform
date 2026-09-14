@@ -8,10 +8,23 @@
  * language from ocean.css.
  *
  * The one deliberate change of meaning: the old accent was tungsten amber, and here it
- * becomes the mint primary, so restored controls pick up the studio's accent colour.
+ * becomes the page's accent, so restored controls pick it up.
+ *
+ * The studio's colour values live in studio-theme.css (green, and reaching its portals);
+ * the pinned values below are for .legacy-tokens only, so /verify keeps its look.
  */
 
 .studio-shell,
+.legacy-tokens {
+  --radius-s: calc(var(--radius) - 5px);
+  --radius-m: calc(var(--radius) - 2px);
+  --radius-pill: 999px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --font-display: "Kuno Serif", Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
 .legacy-tokens {
   /*
    * Pinned, not derived. These values used to come from the theme, which works in the
@@ -38,14 +51,6 @@
   --line: color-mix(in srgb, #ebf2f1 9%, transparent);
   --line-2: color-mix(in srgb, #ebf2f1 16%, transparent);
   --line-3: color-mix(in srgb, #ebf2f1 30%, transparent);
-
-  --radius-s: calc(var(--radius) - 5px);
-  --radius-m: calc(var(--radius) - 2px);
-  --radius-pill: 999px;
-
-  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
-  --font-display: "Kuno Serif", Georgia, serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 /* On a light page the scope carries its own surface, so the panel reads as an inset
@@ -318,9 +323,9 @@
   align-items: flex-start;
   min-width: 0;
   padding: 10px 12px;
-  border: 1px solid #385157;
+  border: 1px solid var(--studio-line-strong);
   border-radius: 9px;
-  background: #0e2026;
+  background: var(--studio-bg);
   cursor: pointer;
 }
 
@@ -331,19 +336,19 @@
 }
 
 .studio-shell .privacy-option[data-checked="true"] {
-  border-color: #a6edda;
-  background: #173a3f;
+  border-color: var(--studio-green);
+  background: var(--studio-green-pill);
 }
 
 .studio-shell .privacy-option:focus-within {
-  outline: 2px solid #a6edda;
+  outline: 2px solid var(--studio-green);
   outline-offset: 2px;
 }
 
 .studio-shell .privacy-option input {
   flex: none;
   margin-top: 3px;
-  accent-color: #a6edda;
+  accent-color: var(--studio-green);
 }
 
 .studio-shell .privacy-option > span {
@@ -358,13 +363,13 @@
   gap: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: #e1e6d9;
+  color: var(--studio-text);
 }
 
 .studio-shell .privacy-option small {
   font-size: 12px;
   line-height: 1.5;
-  color: #a2aa98;
+  color: var(--studio-muted);
   overflow-wrap: anywhere;
 }
 
@@ -378,9 +383,10 @@
   border: 1px solid var(--line-2);
   border-radius: var(--radius-pill);
   font-size: 11px;
-  color: #a6edda;
+  color: var(--studio-green-text);
 }
 
+/* Standard stays amber: a warning hue, not an accent, and 12:1 on the card. */
 .studio-shell .privacy-badge[data-privacy="standard"] {
   color: #f0d38a;
 }
@@ -407,7 +413,7 @@
 }
 
 .studio-shell .take-error a {
-  color: #a6edda;
+  color: var(--studio-green-text);
   text-decoration: underline;
   text-underline-offset: 3px;
 }

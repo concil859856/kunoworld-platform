@@ -111,8 +111,11 @@
   opacity: 0.5;
 }
 
+/* The studio sets the --keysync-primary-* hooks to its accent; elsewhere the fallbacks apply. */
 .primary {
-  background: color-mix(in srgb, currentColor 16%, transparent);
+  border-color: var(--keysync-primary-border, color-mix(in srgb, currentColor 35%, transparent));
+  background: var(--keysync-primary-bg, color-mix(in srgb, currentColor 16%, transparent));
+  color: var(--keysync-primary-fg, inherit);
   font-weight: 600;
 }
 

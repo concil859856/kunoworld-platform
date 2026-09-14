@@ -225,7 +225,7 @@ export function Composer({
 
       <div className="prompt-label">
         <label htmlFor={`${ids}-prompt`}>Your prompt</label>
-        <span className="text-[12px] text-[#8b9581]">{MODE_LABEL[mode]}</span>
+        <span className="text-[12px] text-muted-foreground">{MODE_LABEL[mode]}</span>
         {limits.prompt_enhancer && (
           <button
             type="button"
@@ -297,7 +297,7 @@ export function Composer({
           {state.settings.aspectRatio} · {state.settings.fps} fps
           <ChevronRight size={12} />
         </button>
-        <span className="text-[12px] text-[#a4af95] flex items-center gap-1.5">
+        <span className="text-[12px] text-muted-foreground flex items-center gap-1.5">
           {takePrivacy === "standard" ? <Eye size={12} /> : <LockKeyhole size={12} />} {PRIVACY_COPY[takePrivacy].short}
         </span>
       </div>

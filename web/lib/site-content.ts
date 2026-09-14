@@ -1,4 +1,99 @@
 import { additionalPosts } from "./editorial-posts";
+import type { CreationModeId } from "./showcase";
+
+/* ---- Homepage copy. Clips live in lib/showcase.ts; model limits in lib/profiles.json. ---- */
+
+/** Model cards, in display order: one line of strength each. Duration and resolutions come from the profile. */
+export const modelStrengths: { id: string; strength: string }[] = [
+  { id: "ltx-2.5-fast", strength: "Quick drafts with audio, keyframes and retakes." },
+  { id: "ltx-2.5-pro", strength: "Finer control: guidance, negative prompts and audio-driven video." },
+  { id: "ltx-2.5-4k", strength: "High-resolution finals with detail refinement." },
+  { id: "h3-turbo", strength: "MiniMax H3 with native stereo audio, in 8 distilled steps." },
+  { id: "h3", strength: "The full 50-step MiniMax H3, for maximum fidelity." },
+  { id: "h3-reference", strength: "Direct a scene from up to 9 images, 3 clips and 3 audio tracks." },
+];
+
+type Destination = { href: string; label: string };
+
+/** The creation-mode tabs. `modes` are protocol mode ids; the page lists the profiles that support them. */
+export const creationModes: { id: CreationModeId; label: string; modes: string[]; title: string; copy: string; cta: Destination; secondary?: Destination }[] = [
+  { id: "text", label: "Text to video", modes: ["text_to_video"], title: "Describe it. Watch it move.", copy: "Write the scene, the action, the camera and the light. Start with a sentence and refine from there.", cta: { href: "/studio", label: "Start with a prompt" } },
+  { id: "image", label: "Image to video", modes: ["image_to_video"], title: "A still becomes a shot.", copy: "Give one image as the first frame and describe what happens next. The composition is yours; the model adds the motion.", cta: { href: "/studio?mode=image_to_video", label: "Bring a frame to life" } },
+  { id: "first-last", label: "First & last frame", modes: ["first_last_frame", "last_frame"], title: "Choose where it starts and ends.", copy: "Set a first and a last frame and describe the journey between them, or give only a last frame to land on a composition you chose.", cta: { href: "/studio", label: "Set your frames" } },
+  { id: "keyframes", label: "Keyframes", modes: ["keyframes"], title: "Pace a shot, beat by beat.", copy: "Place up to 8 keyframes along the clip to decide what the scene looks like at each moment.", cta: { href: "/studio", label: "Place keyframes" } },
+  { id: "references", label: "References", modes: ["reference_to_video"], title: "Cast the scene yourself.", copy: "Give H3 Director up to 9 reference images, 3 clips and 3 audio tracks, such as a face, a prop or a place, and direct a new scene around them. Available through the SDK today.", cta: { href: "/docs#creation-modes", label: "Direct with the SDK" } },
+  { id: "edit", label: "Edit & retake", modes: ["retake", "video_edit", "extend_video"], title: "Change a take, keep the rest.", copy: "Retake a window of a clip with LTX-2.5 and keep everything around it. With H3 Director in the SDK, edit what happens in a clip or extend it past its last frame.", cta: { href: "/studio", label: "Retake in the studio" }, secondary: { href: "/docs#creation-modes", label: "Editing with Director" } },
+];
+
+export type HomeTool = { id: string; title: string; copy: string; href: string; mode?: string };
+
+/** Every creation mode, for the tools grid. Director-only modes go to the docs: Director is SDK-only today. */
+export const homeModes: HomeTool[] = [
+  { id: "text", mode: "text_to_video", title: "Text to video", copy: "Start from a written scene.", href: "/studio" },
+  { id: "image", mode: "image_to_video", title: "Image to video", copy: "Bring one frame to life.", href: "/studio?mode=image_to_video" },
+  { id: "last", mode: "last_frame", title: "Last frame", copy: "End on a composition you chose.", href: "/studio" },
+  { id: "first-last", mode: "first_last_frame", title: "First & last frame", copy: "Find the path between two frames.", href: "/studio" },
+  { id: "keyframes", mode: "keyframes", title: "Keyframes", copy: "Pace a shot with up to 8 frames.", href: "/studio" },
+  { id: "retake", mode: "retake", title: "Retake", copy: "Redo a window, keep the rest.", href: "/studio" },
+  { id: "audio", mode: "audio_to_video", title: "Audio to video", copy: "Picture driven by your soundtrack.", href: "/studio" },
+  { id: "reference", mode: "reference_to_video", title: "Reference to video", copy: "Cast, props and places you supply.", href: "/docs#creation-modes" },
+  { id: "edit", mode: "video_edit", title: "Video edit", copy: "Change what happens in a clip.", href: "/docs#creation-modes" },
+  { id: "extend", mode: "extend_video", title: "Extend video", copy: "Continue past the last frame.", href: "/docs#creation-modes" },
+];
+
+export const homeTools: HomeTool[] = [
+  { id: "privacy", title: "Private or Standard", copy: "Choose who can see each video.", href: "/docs#privacy-modes" },
+  { id: "share", title: "Share links", copy: "One video, one revocable link.", href: "/docs#share-links" },
+  { id: "keys", title: "Key sync", copy: "Open Private videos on any device.", href: "/docs#keys" },
+  { id: "verify", title: "Verify a film", copy: "Check a video against its receipt.", href: "/verify" },
+  { id: "sdk", title: "SDKs & API", copy: "JavaScript, Python and HTTP.", href: "/developers" },
+];
+
+/**
+ * Homepage FAQ. Every answer follows subnet/PRIVACY_MODES.md, platform/gateway/PAYMENTS.md and
+ * STANDARD_MODE.md, and research/research_pricing.md for what is decided: keep them in step.
+ */
+export const homeFaq: { q: string; a: string; link?: Destination }[] = [
+  {
+    q: "What’s the difference between Private and Standard?",
+    a: "Private is the default. Your device encrypts the prompt and inputs for the attested enclave that renders the video, and the result is sealed to a key only you hold: KunoWorld can’t open it, or recover a lost key. In Standard, KunoWorld and the GPU provider can read the prompt, inputs and video, so it can run on any GPU and costs less. Production hardware verification is still in development.",
+    link: { href: "/docs#privacy-modes", label: "Compare the modes" },
+  },
+  {
+    q: "Who can see my videos?",
+    a: "Only you, unless you create a share link for one. Nobody at KunoWorld opens your prompt, inputs or video, except for a report of child sexual abuse material or a legal preservation hold, and every such view is logged; a Private video also needs its key. In Standard, the GPU provider that renders the job can see it, and validators may check its prompt and settings, never the video.",
+    link: { href: "/docs#share-links", label: "How share links work" },
+  },
+  {
+    q: "Which models can I use?",
+    a: "Six model profiles: LTX-2.5 Fast, Pro and 4K, and MiniMax H3 Turbo, H3 and H3 Director. H3 Director works through the SDK today. MiniMax H3 is used under the MiniMax H3 Community License and isn’t available in every region; there, a compatible LTX-2.5 profile may run instead. Real GPU serving is still being completed.",
+    link: { href: "/models", label: "Compare the models" },
+  },
+  {
+    q: "How much does it cost?",
+    a: "You pay per second of video, by model, resolution and privacy mode, from credit you top up in advance. Standard costs less than Private, full MiniMax H3 and H3 Director are Private only, and every job costs at least $0.10. All prices shown today are placeholders until launch pricing is set. Credit never expires, and a job that fails, times out, is cancelled or is blocked by the safety checks is refunded automatically.",
+    link: { href: "/models", label: "See placeholder rates" },
+  },
+  {
+    q: "Is sexual content allowed?",
+    a: "No. Sexual content is banned in both modes: pornography, nudity, sexual acts, fetish content, sexualised depictions and erotic roleplay. Private mode is not a way around it. Prompts are checked before rendering and sampled frames after; a blocked job delivers nothing, is refunded and counts as a strike, and repeated strikes restrict the account.",
+    link: { href: "/privacy", label: "How the ban is enforced" },
+  },
+  {
+    q: "Is there an API or SDK?",
+    a: "Yes: JavaScript and Python SDKs and an HTTP API, using API keys you create on your account page. The SDKs encrypt Private requests on your machine and check every video against its signed receipt. The packages aren’t published yet, so for now the SDKs install from the KunoWorld source.",
+    link: { href: "/developers", label: "Build with KunoWorld" },
+  },
+  {
+    q: "How can I pay?",
+    a: "By card through Stripe, in USDT on TRON or Ethereum through NOWPayments, or in TAO and subnet alpha sent from a Bittensor coldkey linked to your account. TAO and alpha deposits earn bonus credit, 5% by default. Payments are built but not yet validated in production.",
+  },
+  {
+    q: "Where are my videos stored, and how do I delete them?",
+    a: "On Cloudflare R2, until you delete them: nothing expires on its own. A Private video is stored as ciphertext only your key opens; a Standard video is encrypted at rest. Delete a video in My creations or with the SDK and its stored files go, while billing records and the signed receipt stay. A legal preservation hold can keep deleted content, hidden, until the hold ends.",
+    link: { href: "/docs#receipts", label: "Deleting a video" },
+  },
+];
 export const sdkCode = `import { KunoClient } from "@kunoworld/sdk";
 import { readFile } from "node:fs/promises";
 

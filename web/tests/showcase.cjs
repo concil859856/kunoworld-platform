@@ -7,14 +7,23 @@ const origin = process.env.SITE_TEST_ORIGIN || 'http://127.0.0.1:8788';
  try{
   const page=await browser.newPage({viewport:{width:1440,height:1000}});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto(origin);await page.getByRole('button',{name:'Feature After the last train'}).click();
-  await page.waitForFunction(()=>document.querySelector('.hero-film video')?.src.includes('neon-city.mp4'));
-  await page.locator('.hero-film video').evaluate(v=>new Promise((resolve,reject)=>{if(v.readyState>=2)return resolve();v.addEventListener('canplay',resolve,{once:true});v.addEventListener('error',reject,{once:true});}));
-  await page.locator('.hero-film').getByRole('button',{name:'Pause background video'}).click();
-  assert.equal(await page.locator('.hero-film video').evaluate(v=>v.paused),true);
-  await page.getByRole('button',{name:'Watch the film'}).click();await page.getByRole('dialog').waitFor();
-  assert.equal(await page.getByRole('dialog').locator('video').getAttribute('src'),'/media/neon-city.mp4');
-  await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
+  // Hero reel: the clips are data (lib/showcase.ts), so assert behaviour and labelling, not file names.
+  await page.goto(origin);await page.waitForFunction(()=>document.querySelector('.reel-media video')?.getAttribute('src'));
+  const firstClip=await page.locator('.reel-media video').getAttribute('src');
+  await page.getByRole('button',{name:/^Show clip 2 of /}).click();
+  await page.waitForFunction(first=>{const src=document.querySelector('.reel-media video')?.getAttribute('src');return Boolean(src&&src!==first);},firstClip);
+  await page.locator('.reel-media video').evaluate(v=>new Promise((resolve,reject)=>{if(v.readyState>=2)return resolve();v.addEventListener('canplay',resolve,{once:true});v.addEventListener('error',reject,{once:true});}));
+  await page.locator('.reel-hero').getByRole('button',{name:'Pause background video'}).click();
+  assert.equal(await page.locator('.reel-media video').evaluate(v=>v.paused),true);
+  assert.match(await page.locator('.reel-provenance').innerText(),/^Sample · .+, not made on the network$/);
+  // Sample footage never claims to be network output, on any card or tab.
+  assert.equal(await page.locator('.model-card').count(),6);
+  for(const chip of await page.locator('.sample-chip').allInnerTexts())assert.match(chip,/^Sample · /);
+  await page.getByRole('tab',{name:'Keyframes',exact:true}).click();
+  assert.match(await page.getByRole('tabpanel').locator('.mode-provenance').innerText(),/not made on the network/);
+  // Radix moves focus on the next tick, so wait for the selection rather than reading it at once.
+  await page.getByRole('tab',{name:'Keyframes',exact:true}).press('ArrowRight');
+  await page.getByRole('tab',{name:'References',exact:true,selected:true}).waitFor();
   await page.goto(origin+'/showcase');await page.getByRole('tab',{name:'Fashion',exact:true}).click();
   assert.equal(await page.locator('.film-gallery-card').count(),1);
   await page.getByRole('button',{name:'Watch A moment, in vermilion',exact:true}).click();
@@ -29,7 +38,7 @@ const origin = process.env.SITE_TEST_ORIGIN || 'http://127.0.0.1:8788';
   await page.getByRole('tab',{name:'Art & motion',exact:true}).click();assert.equal(await page.locator('.film-gallery-card').count(),2);
   await page.getByRole('tab',{name:'All films',exact:true}).click();assert.equal(await page.locator('.film-gallery-card').count(),9);
   await page.emulateMedia({reducedMotion:'reduce'});await page.goto(origin);await page.getByRole('button',{name:'Play background video'}).first().waitFor();
-  assert.equal(await page.locator('.hero-film video').evaluate(v=>v.paused),true);
+  assert.equal(await page.locator('.reel-media video').evaluate(v=>v.paused),true);
   const articleSlugs=['directing-the-impossible','a-language-for-camera-movement','why-a-video-needs-a-receipt','building-a-product-film-one-shot-at-a-time','one-movement-for-a-vertical-fashion-film'];
   for(const route of ['/','/showcase','/use-cases','/docs','/developers','/api','/models','/blog','/about','/privacy','/studio',...articleSlugs.map(slug=>'/blog/'+slug)]){
    for(const width of [390,1440]){

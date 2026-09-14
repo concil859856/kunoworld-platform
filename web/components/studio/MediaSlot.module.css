@@ -116,7 +116,7 @@
   padding: 1px 5px;
   border-radius: 3px;
   background: var(--c-amber);
-  color: #1b1206;
+  color: var(--studio-green-ink, #1b1206);
   font-family: var(--font-mono);
   font-size: 9.5px;
   font-weight: 500;

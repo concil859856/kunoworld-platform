@@ -1,0 +1,387 @@
+/*
+ * The studio's own palette: near-black with a faint green tint, one vivid green accent.
+ *
+ * Scoped with :root:has(.studio-shell) rather than .studio-shell. The shadcn Select
+ * content and the phone sidebar (a Sheet) portal into <body>, outside the shell, so
+ * tokens set on the shell would never reach them. :root:has() matches only while a
+ * studio is mounted, so the site keeps its own tokens, including after a client-side
+ * navigation away from /studio, when this stylesheet may still be loaded.
+ *
+ * Specificity (0,2,0) beats globals.css's :root (0,1,0) whatever the load order.
+ * globals.css is shared with the site and is not edited; the legacy studio rules it
+ * holds are recoloured below instead.
+ *
+ * Contrast (WCAG): muted #8f9a93 is 5.7:1 or better on every studio surface; #04130a on
+ * the #22c55e button is 8.4:1, and 5.8:1 on the #16a34a hover.
+ */
+
+:root:has(.studio-shell) {
+  color-scheme: dark;
+
+  /* The palette, named once. */
+  --studio-bg: #0b0f0d;
+  --studio-sidebar: #0e1310;
+  --studio-panel: #111713;
+  --studio-card: #131a16;
+  --studio-raised: #18211c;
+  --studio-line: #1f2a24;
+  --studio-line-strong: #2a372f;
+  --studio-text: #f2f5f3;
+  --studio-text-2: #c2cbc5;
+  --studio-muted: #8f9a93;
+  --studio-green: #22c55e;
+  --studio-green-hover: #16a34a;
+  --studio-green-text: #4ade80;
+  --studio-green-ink: #04130a;
+  --studio-green-pill: #12241a;
+  --studio-error: #f87171;
+
+  /* shadcn tokens. */
+  --background: var(--studio-bg);
+  --foreground: var(--studio-text);
+  --card: var(--studio-card);
+  --card-foreground: var(--studio-text);
+  --popover: #151d18;
+  --popover-foreground: var(--studio-text);
+  --primary: var(--studio-green);
+  --primary-foreground: var(--studio-green-ink);
+  --secondary: var(--studio-raised);
+  --secondary-foreground: var(--studio-text);
+  --muted: #161e19;
+  --muted-foreground: var(--studio-muted);
+  --accent: var(--studio-green-pill);
+  --accent-foreground: var(--studio-green-text);
+  --destructive: var(--studio-error);
+  --border: var(--studio-line);
+  --input: var(--studio-line-strong);
+  --ring: var(--studio-green);
+  --sidebar: var(--studio-sidebar);
+  --sidebar-foreground: #aab4ad;
+  --sidebar-primary: var(--studio-green);
+  --sidebar-primary-foreground: var(--studio-green-ink);
+  --sidebar-accent: var(--studio-green-pill);
+  --sidebar-accent-foreground: var(--studio-green-text);
+  --sidebar-border: var(--studio-line);
+  --sidebar-ring: var(--studio-green);
+
+  /* The carried-over components' tokens (see studio-compat.css). */
+  --c-black: var(--studio-bg);
+  --c-tray: var(--studio-panel);
+  --c-tray-2: #1a231e;
+  --c-tray-3: var(--studio-line);
+  --c-paper: var(--studio-text);
+  --c-paper-2: var(--studio-text-2);
+  --c-muted: var(--studio-muted);
+  --c-amber: var(--studio-green);
+  --c-amber-soft: color-mix(in srgb, #22c55e 14%, transparent);
+  --c-error: var(--studio-error);
+  --c-error-soft: color-mix(in srgb, #f87171 12%, transparent);
+  --line: color-mix(in srgb, #f2f5f3 8%, transparent);
+  --line-2: color-mix(in srgb, #f2f5f3 14%, transparent);
+  --line-3: color-mix(in srgb, #f2f5f3 28%, transparent);
+
+  /* Hooks the key sync and share-link module read; unset on the account page. */
+  --keysync-primary-bg: var(--studio-green);
+  --keysync-primary-fg: var(--studio-green-ink);
+  --keysync-primary-border: var(--studio-green);
+}
+
+/* ------------------------------------------------------------ globals */
+
+:root:has(.studio-shell) :is(button, a):focus-visible {
+  outline-color: var(--studio-green);
+}
+
+:root:has(.studio-shell) ::selection {
+  background: var(--studio-green);
+  color: var(--studio-green-ink);
+}
+
+/* ------------------------------------------------------------ sidebar (inline and phone sheet) */
+
+:root:has(.studio-shell) .studio-sidebar .brand .logo-mark {
+  color: var(--studio-green-text);
+}
+
+:root:has(.studio-shell) .nav-heading {
+  color: var(--studio-muted);
+}
+
+:root:has(.studio-shell) .private-card {
+  border-color: var(--studio-line);
+  background: linear-gradient(135deg, #14211a, var(--studio-panel) 70%);
+}
+
+:root:has(.studio-shell) .private-card svg,
+:root:has(.studio-shell) .private-card button {
+  color: var(--studio-green-text);
+}
+
+:root:has(.studio-shell) .private-card strong {
+  color: var(--studio-text);
+}
+
+:root:has(.studio-shell) .private-card p {
+  color: var(--studio-muted);
+}
+
+:root:has(.studio-shell) .avatar {
+  background: var(--studio-green-pill);
+  border-color: #24422f;
+  color: var(--studio-green-text);
+}
+
+/* ------------------------------------------------------------ topbar and intro */
+
+.studio-shell .crumb {
+  color: var(--studio-muted);
+}
+
+.studio-shell .crumb strong {
+  color: var(--studio-text);
+}
+
+.studio-shell .preview-label {
+  color: var(--studio-muted);
+  border-color: var(--studio-line-strong);
+}
+
+.studio-shell .studio-home-link {
+  color: var(--studio-muted);
+}
+
+.studio-shell .studio-home-link:hover {
+  color: var(--studio-green-text);
+}
+
+.studio-shell .eyebrow {
+  color: var(--studio-muted);
+}
+
+.studio-shell .intro h1 span {
+  color: var(--studio-green-text);
+}
+
+.studio-shell .intro p,
+.studio-shell .section-heading p {
+  color: var(--studio-muted);
+}
+
+.studio-shell .text-button {
+  color: var(--studio-text-2);
+}
+
+/* ------------------------------------------------------------ composer */
+
+.studio-shell .composer {
+  border-color: var(--studio-line);
+  background: var(--studio-panel);
+  box-shadow: 0 10px 45px #00000030;
+}
+
+.studio-shell .composer [data-slot="tabs-list"] {
+  border-bottom-color: var(--studio-line);
+}
+
+.studio-shell .composer [data-slot="tabs-trigger"] {
+  color: var(--studio-muted);
+}
+
+.studio-shell .composer [data-slot="tabs-trigger"][data-state="active"] {
+  color: var(--studio-green-text);
+  border-bottom-color: var(--studio-green);
+}
+
+.studio-shell .prompt-label {
+  color: var(--studio-text);
+}
+
+.studio-shell .prompt-label button,
+.studio-shell .attach-button,
+.studio-shell .audio-switch {
+  color: var(--studio-text-2);
+}
+
+.studio-shell .prompt-box {
+  border-color: var(--studio-line-strong);
+  background: var(--studio-bg);
+}
+
+.studio-shell .prompt-box:focus-within {
+  border-color: var(--studio-green);
+}
+
+.studio-shell .prompt-box textarea {
+  color: var(--studio-text);
+}
+
+.studio-shell .prompt-box textarea::placeholder {
+  color: var(--studio-muted);
+}
+
+.studio-shell .prompt-foot,
+.studio-shell .field-label,
+.studio-shell .estimate {
+  color: var(--studio-muted);
+}
+
+.studio-shell .select-control {
+  background: var(--studio-raised);
+  border-color: var(--studio-line-strong);
+  color: var(--studio-text);
+}
+
+.studio-shell .audio-switch [data-slot="switch"] {
+  background: var(--studio-line-strong);
+}
+
+.studio-shell .audio-switch [data-slot="switch"][data-state="checked"] {
+  background: var(--studio-green);
+}
+
+.studio-shell .audio-switch [data-slot="switch-thumb"] {
+  background: var(--studio-text-2);
+}
+
+.studio-shell .audio-switch [data-slot="switch-thumb"][data-state="checked"] {
+  background: var(--studio-green-ink);
+}
+
+.studio-shell .generate-button {
+  background: var(--studio-green);
+  color: var(--studio-green-ink);
+  border-color: var(--studio-green);
+  box-shadow: 0 0 22px #22c55e1f;
+}
+
+.studio-shell .generate-button:hover {
+  background: var(--studio-green-hover);
+  border-color: var(--studio-green-hover);
+}
+
+.studio-shell .status-message {
+  color: var(--studio-text-2);
+}
+
+.studio-shell .error-message {
+  color: #fca5a5;
+}
+
+.studio-shell .modal-copy {
+  color: var(--studio-muted);
+}
+
+.studio-shell .modal-field input {
+  background: var(--studio-raised);
+  border-color: var(--studio-line-strong);
+  color: var(--studio-text);
+}
+
+/* ------------------------------------------------------------ spatial scene and inspiration */
+
+.studio-shell .spatial-scene {
+  border-color: var(--studio-line);
+  background: radial-gradient(ellipse at 55% 34%, #22c55e1c, transparent 65%), linear-gradient(145deg, var(--studio-card), var(--studio-bg) 85%);
+}
+
+.studio-shell .spatial-heading > span,
+.studio-shell .spatial-copy .eyebrow {
+  color: var(--studio-text-2);
+}
+
+.studio-shell .spatial-heading i {
+  border-color: var(--studio-green-text);
+}
+
+.studio-shell .spatial-heading button {
+  border-color: var(--studio-line-strong);
+  color: var(--studio-text-2);
+  background: #111713cc;
+}
+
+.studio-shell .film-frame {
+  border-color: #f2f5f340;
+  background: var(--studio-raised);
+}
+
+.studio-shell .frame-edge {
+  border-top-color: #f2f5f333;
+}
+
+.studio-shell .world-orbit {
+  border-color: #22c55e26;
+}
+
+.studio-shell .spatial-copy h2 {
+  color: var(--studio-text);
+}
+
+.studio-shell .spatial-copy button {
+  color: var(--studio-green-text);
+}
+
+.studio-shell .spatial-coordinate {
+  color: var(--studio-muted);
+}
+
+.studio-shell .scene-card {
+  background: var(--studio-card);
+  border-color: var(--studio-line);
+}
+
+.studio-shell .scene-image {
+  background: var(--studio-raised);
+}
+
+.studio-shell .scene-caption span,
+.studio-shell .scene-caption svg {
+  color: var(--studio-muted);
+}
+
+.studio-shell .depth-card:hover {
+  border-color: #22c55e59;
+}
+
+.studio-shell .depth-shine {
+  background: radial-gradient(circle at calc(50% + var(--pointer-x) * 35%) calc(50% + var(--pointer-y) * 35%), #ffffff10, transparent 65%);
+}
+
+.studio-shell .bottom-note {
+  border-top-color: var(--studio-line);
+  color: var(--studio-muted);
+}
+
+/* ------------------------------------------------------------ library, models, privacy, developers */
+
+.studio-shell .empty-view {
+  color: var(--studio-muted);
+  border-color: var(--studio-line-strong);
+}
+
+.studio-shell .empty-view h2 {
+  color: var(--studio-text);
+}
+
+.studio-shell .info-card {
+  border-color: var(--studio-line);
+  background: var(--studio-card);
+}
+
+.studio-shell .info-card > svg {
+  color: var(--studio-green-text);
+}
+
+.studio-shell .info-card p {
+  color: var(--studio-muted);
+}
+
+.studio-shell .info-banner {
+  background: var(--studio-panel);
+  border-color: var(--studio-line);
+  color: var(--studio-text-2);
+}
+
+.studio-shell .result-actions a {
+  background: var(--studio-raised);
+  border-color: var(--studio-line-strong);
+}
