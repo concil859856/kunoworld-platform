@@ -16,7 +16,7 @@ export type ClipRole = "hero" | "mode" | "stock" | "texture";
  * `kuno` is the only value that may claim network provenance. Everything else is a sample
  * rendered elsewhere — possibly by a model we do not even serve — and must say so.
  */
-export type ClipSource = "veo-reference" | "ltx-reference" | "h3-reference" | "kuno";
+export type ClipSource = "veo-reference" | "wan-reference" | "seedance-reference" | "ltx-reference" | "h3-reference" | "kuno";
 
 export interface Clip {
   id: string;
@@ -68,12 +68,22 @@ export function clipForFamily(family: string): Clip | undefined {
  */
 const MODEL_LABEL: Record<Exclude<ClipSource, "kuno">, string> = {
   "veo-reference": "Google Veo 3.1",
+  "wan-reference": "Wan 3.0",
+  "seedance-reference": "Seedance 2.0",
   "ltx-reference": "LTX-2",
   "h3-reference": "MiniMax H3",
 };
 
-/** Display names for the raw ids scripts/assets.mjs writes. Unknown ids are shown as written. */
-const MODEL_NAMES: Record<string, string> = { "google/veo-3.1": "Google Veo 3.1" };
+/** Sources rendered with the same open weights the network serves (still not by a sealed stage). */
+const SERVED_WEIGHTS: ReadonlySet<ClipSource> = new Set(["ltx-reference", "h3-reference"]);
+
+/** Display names for the raw model ids. Unknown ids are shown as written. */
+const MODEL_NAMES: Record<string, string> = {
+  "google/veo-3.1": "Google Veo 3.1",
+  "alibaba/wan-3.0": "Wan 3.0",
+  "bytedance/seedance-2.0": "Seedance 2.0",
+  "minimax/hailuo-3": "MiniMax H3",
+};
 const PROVIDER_NAMES: Record<string, string> = { openrouter: "OpenRouter" };
 
 /**
@@ -110,9 +120,13 @@ export function sampleNote(clips: Provenance[]): string {
   const providers = Array.from(new Set(samples.flatMap((c) => (c.provider ? [PROVIDER_NAMES[c.provider] ?? c.provider] : []))));
   const made = models.length === 1 ? models[0] : `${models.slice(0, -1).join(", ")} and ${models.at(-1)}`;
   const via = providers.length ? ` through ${providers.join(" and ")}` : "";
+  // Only claim "not the models the network serves" when that is true of every sample shown.
+  const outsideWeights = samples.every((c) => !SERVED_WEIGHTS.has(c.source));
   return (
     `Sample footage on this page was generated with ${made}${via}, to show what each kind of request looks like. ` +
-    "It was not made on the KunoWorld network, is not output from the models the network serves, and carries no certificate."
+    (outsideWeights
+      ? "It was not made on the KunoWorld network, is not output from the models the network serves, and carries no certificate."
+      : "It was not made on the KunoWorld network and carries no certificate.")
   );
 }
 

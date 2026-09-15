@@ -3,7 +3,7 @@
     "The site's footage. Each entry is generated once by scripts/assets.mjs and committed to public/reel/.",
     "",
     "HONESTY RULE: `source` decides the label the site shows. These are generated with Google",
-    "Veo 3.1 through OpenRouter, which carries neither LTX-2 nor MiniMax H3 — so this footage",
+    "Veo 3.1 through OpenRouter. Veo is not a model the network serves, so this footage",
     "is NOT from the weights the network serves and must never be labelled as network output.",
     "src/lib/reel.ts derives the wording from the clips present. When the network has GPUs,",
     "regenerate through our own gateway and set source to 'kuno' for certificate-backed clips.",

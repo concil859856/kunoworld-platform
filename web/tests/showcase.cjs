@@ -24,19 +24,19 @@ const origin = process.env.SITE_TEST_ORIGIN || 'http://127.0.0.1:8788';
   // Radix moves focus on the next tick, so wait for the selection rather than reading it at once.
   await page.getByRole('tab',{name:'Keyframes',exact:true}).press('ArrowRight');
   await page.getByRole('tab',{name:'References',exact:true,selected:true}).waitFor();
-  await page.goto(origin+'/showcase');await page.getByRole('tab',{name:'Fashion',exact:true}).click();
-  assert.equal(await page.locator('.film-gallery-card').count(),1);
-  await page.getByRole('button',{name:'Watch A moment, in vermilion',exact:true}).click();
+  await page.goto(origin+'/showcase');await page.getByRole('tab',{name:'Animation',exact:true}).click();
+  assert.equal(await page.locator('.film-gallery-card').count(),3);
+  await page.getByRole('button',{name:'Watch The paper dragon',exact:true}).click();
   const dialog=page.getByRole('dialog');await dialog.waitFor();
+  assert.equal(await dialog.locator('video').getAttribute('src'),'/media/origami-dragon.mp4');
   const dimensions=await dialog.locator('video').evaluate(v=>new Promise((resolve,reject)=>{const done=()=>resolve({width:v.videoWidth,height:v.videoHeight});if(v.readyState>=1)return done();v.addEventListener('loadedmetadata',done,{once:true});v.addEventListener('error',reject,{once:true});}));
-  assert.ok(dimensions.height>dimensions.width);
+  assert.ok(dimensions.width>dimensions.height);
+  // The film dialog names the model that really rendered the film.
+  assert.match(await dialog.locator('.film-dialog-bottom span').innerText(),/^Sample · Wan 3\.0 · Creative showcase$/);
   await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
-  await page.getByRole('tab',{name:'Animation',exact:true}).click();assert.equal(await page.locator('.film-gallery-card').count(),1);
-  await page.getByRole('button',{name:'Watch A city, folded into being',exact:true}).click();await dialog.waitFor();
-  assert.equal(await dialog.locator('video').getAttribute('src'),'/media/paper-metropolis.mp4');
-  await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
-  await page.getByRole('tab',{name:'Art & motion',exact:true}).click();assert.equal(await page.locator('.film-gallery-card').count(),2);
-  await page.getByRole('tab',{name:'All films',exact:true}).click();assert.equal(await page.locator('.film-gallery-card').count(),9);
+  await page.getByRole('tab',{name:'Cinema',exact:true}).click();assert.equal(await page.locator('.film-gallery-card').count(),1);
+  await page.getByRole('tab',{name:'Art & motion',exact:true}).click();assert.equal(await page.locator('.film-gallery-card').count(),1);
+  await page.getByRole('tab',{name:'All films',exact:true}).click();assert.equal(await page.locator('.film-gallery-card').count(),7);
   await page.emulateMedia({reducedMotion:'reduce'});await page.goto(origin);await page.getByRole('button',{name:'Play background video'}).first().waitFor();
   assert.equal(await page.locator('.reel-media video').evaluate(v=>v.paused),true);
   const articleSlugs=['directing-the-impossible','a-language-for-camera-movement','why-a-video-needs-a-receipt','building-a-product-film-one-shot-at-a-time','one-movement-for-a-vertical-fashion-film'];
@@ -51,6 +51,6 @@ const origin = process.env.SITE_TEST_ORIGIN || 'http://127.0.0.1:8788';
    }
   }
   const missing=await page.goto(origin+'/blog/this-article-does-not-exist');assert.equal(missing.status(),404);
-  assert.deepEqual(errors,[]);console.log('Hero switching, film modal, filters, portrait playback, reduced motion, 16 page routes × 2 widths, images, 404: passed.');
+  assert.deepEqual(errors,[]);console.log('Hero switching, film modal, filters, film playback, reduced motion, 16 page routes × 2 widths, images, 404: passed.');
  }finally{await browser.close()}
 })().catch(error=>{console.error(error);process.exitCode=1});
