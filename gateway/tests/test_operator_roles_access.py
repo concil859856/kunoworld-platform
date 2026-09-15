@@ -47,8 +47,13 @@ def test_the_cli_bootstraps_the_first_admin(client, settings, monkeypatch, capsy
         "granted_at": None, "revoked_at": None,
     }
 
-    # The console script: `kuno-gateway grant-role --email ... --role ...`, reading KUNO_DATA_DIR from the environment.
+    # The console script: `kuno-gateway grant-role --email ... --role ...`, configured from the environment. Point it
+    # at this test's database, not whatever KUNO_DATABASE_URL the calling shell exports.
     monkeypatch.setenv("KUNO_DATA_DIR", str(settings.data_dir))
+    if settings.database_url:
+        monkeypatch.setenv("KUNO_DATABASE_URL", settings.database_url)
+    else:
+        monkeypatch.delenv("KUNO_DATABASE_URL", raising=False)
     with pytest.raises(SystemExit) as done:
         main(["grant-role", "--email", "mo@example.com", "--role", "moderator"])
     assert done.value.code == 0 and "granted: mo@example.com is moderator" in capsys.readouterr().out
