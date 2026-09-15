@@ -88,6 +88,20 @@ def test_a_worker_gone_past_the_heartbeat_goes_stale(state):
         assert s.get(Enclave, "e" * 32).status == "stale"
 
 
+def test_a_worker_reporting_progress_through_a_long_render_stays_fresh(state):
+    # It hasn't pulled for 100 s because it is rendering (LTX-2.5 Pro takes about that long on one GPU).
+    enclave = add_enclave(state, last_seen_ago=100)
+    job_id = add_job(state, enclave, status=JobState.RUNNING, age_s=100)
+    with state.session() as s, s.begin():
+        state.touch(s, enclave, time.time())
+
+    state.janitor()
+
+    assert reload(state, job_id).status == JobState.RUNNING.value
+    with state.session() as s:
+        assert s.get(Enclave, enclave).status == "active"
+
+
 def test_a_run_that_overruns_its_profile_timeout_is_failed_and_refunded(state):
     enclave = add_enclave(state, last_seen_ago=1)
     timeout = state.profiles["ltx-2.5-fast"].timeout_s

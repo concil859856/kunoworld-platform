@@ -222,10 +222,13 @@ async def progress(job_id: str, request: Request, auth=Depends(require_enclave))
     state = gw(request)
     enclave, raw = auth
     body: ProgressBody = _parse(ProgressBody, raw)
+    now = time.time()
     with state.session() as s, s.begin():
         job = _assigned_job(s, job_id, enclave)
+        # A worker doesn't pull while it renders, so its progress reports are what keep it counted as alive.
+        state.touch(s, enclave.id, now)
         if job.status == JobState.RUNNING.value:
-            job.progress, job.stage, job.updated_at = body.progress, body.stage, time.time()
+            job.progress, job.stage, job.updated_at = body.progress, body.stage, now
         return {"canceled": job.status == JobState.CANCELED.value}
 
 

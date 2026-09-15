@@ -181,6 +181,12 @@ class GatewayState:
             and now - enclave.last_seen < self.settings.enclave_heartbeat_s
         )
 
+    def touch(self, s: Session, enclave_id: str, now: float) -> None:
+        """Records liveness for an enclave that talks to the gateway without pulling, because it is busy with a job."""
+        enclave = s.get(Enclave, enclave_id)
+        if enclave is not None:
+            enclave.last_seen = now
+
     def fresh_enclaves(self, s: Session, profile_id: str | None = None, privacy: str | None = None) -> list[Enclave]:
         """Fresh enclaves, least loaded first. `privacy` ("private" or "standard") keeps only enclaves whose tier
         may run that mode (kuno_protocol.tiers.tier_serves); None keeps every tier."""
