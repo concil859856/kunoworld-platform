@@ -19,6 +19,7 @@ from kuno_protocol.envelope import normalize as normalize_envelope
 from kuno_protocol.hardware import capacity_limit
 from kuno_protocol.receipts import Receipt, verify_receipt
 from kuno_protocol.hotkey import verify_hotkey_proof
+from kuno_protocol.regions import is_excluded
 from kuno_protocol.schemas import GenerationParams, JobState, MinerRegistration
 from kuno_protocol.tiers import OPEN, hotkey_proof_required, tier_for_tee, tier_serves
 
@@ -114,6 +115,17 @@ async def register_enclave(request: Request):
     )
     if not verdict.ok:
         raise _error(403, "attestation_failed", "; ".join(verdict.reasons))
+    # Where the miner runs, not where the customer is: MiniMax H3's licence bars its Excluded Territories outright,
+    # so an enclave offering such a profile is refused there. An unknown country counts as excluded, as for customers.
+    if state.settings.enforce_miner_region:
+        country = state.country(request)
+        barred = sorted(p for p in evidence.profiles if is_excluded(state.profiles[p].license.region_policy, country))
+        if barred:
+            raise _error(
+                403, "region_not_licensed",
+                f"{', '.join(barred)} may not run in {country or 'an unknown country'} under the model's licence. "
+                "Register only the profiles you are licensed to serve, or run this worker in a licensed country.",
+            )
     # Before anything is written: an open-tier registration without a valid hotkey proof never lands.
     miner_hotkey = _proven_hotkey(state, body, verdict.enclave_id)
     if verdict.gpu_count is not None:
