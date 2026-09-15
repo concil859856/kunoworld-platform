@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { ArrowDown, ArrowUpRight, Aperture, Clapperboard, Layers3, MoveUpRight, Smartphone, Sparkles } from "lucide-react";
 import { AmbientVideo, Reveal } from "@/components/site/motion";
+import { originalFilms } from "@/lib/showcase";
+import { sampleNote } from "@/lib/reel";
 import "@/app/use-cases.css";
 
 export const metadata: Metadata = {
@@ -50,7 +52,7 @@ export default function UseCasesPage() {
       <section className="cases-section cases-product" id="product" aria-labelledby="product-heading">
         <Reveal className="cases-media-wrap">
           <div className="cases-media cases-product-media">
-            <AmbientVideo src="/media/chrome-runner.mp4" poster="/media/chrome-runner-poster.webp" label="Pause product study video" />
+            <AmbientVideo src="/media/chrome-runner-seedance.mp4" poster="/media/chrome-runner-seedance-poster.webp" label="Pause product study video" />
             <span className="cases-frame-label">PRODUCT STUDY / CHROME RUNNER</span>
           </div>
           <div className="cases-media-caption"><span>Light. Texture. A different point of view.</span><span>01 / 04</span></div>
@@ -76,7 +78,7 @@ export default function UseCasesPage() {
           <Reveal><p>Set the mood for a film, pitch a visual direction, or explore an opening shot. Start with a place, a time of day, and one deliberate camera move.</p><a href="/studio?scene=neon-city&model=h3" className="text-link">Build your establishing shot <ArrowUpRight size={17} /></a></Reveal>
         </div>
         <Reveal className="cases-cinema-film">
-          <AmbientVideo src="/media/neon-city.mp4" poster="/media/neon-city-poster.webp" label="Pause cinematic city video" />
+          <AmbientVideo src="/media/neon-city-seedance.mp4" poster="/media/neon-city-seedance-poster.webp" label="Pause cinematic city video" />
           <span className="cases-frame-label">WORLD STUDY / AFTER THE RAIN</span>
           <div className="cases-cinema-film-title"><span>A PLACE YOU HAVEN’T BEEN. YET.</span><p>Somewhere<br /><em>after midnight.</em></p></div>
         </Reveal>
@@ -104,7 +106,7 @@ export default function UseCasesPage() {
         <Reveal className="cases-social-board">
           <div className="cases-social-note"><span>MAKE THE<br />SCROLL<br /><em>pause.</em></span><Sparkles size={23} strokeWidth={1.1} /></div>
           <div className="cases-social-frame">
-            <AmbientVideo src="/media/sculptural-fashion.mp4" poster="/media/sculptural-fashion-poster.webp" label="Pause fashion study video" />
+            <AmbientVideo src="/media/sculptural-fashion-wan.mp4" poster="/media/sculptural-fashion-wan-poster.webp" label="Pause fashion study video" />
             <span className="cases-frame-label">MOTION / EDITORIAL</span>
           </div>
           <div className="cases-social-format"><span>9:16</span><p>A different frame.<br />A whole new feeling.</p></div>
@@ -113,7 +115,7 @@ export default function UseCasesPage() {
 
       <section className="cases-section cases-reference" id="reference" aria-labelledby="reference-heading">
         <Reveal className="cases-media-wrap">
-          <div className="cases-media cases-reference-media"><AmbientVideo src="/media/astronaut-garden.mp4" poster="/media/astronaut-garden-poster.webp" label="Pause astronaut garden video" /><span className="cases-frame-label">IMAGINATION STUDY / A QUIET DISCOVERY</span></div>
+          <div className="cases-media cases-reference-media"><AmbientVideo src="/media/astronaut-garden-seedance.mp4" poster="/media/astronaut-garden-seedance-poster.webp" label="Pause astronaut garden video" /><span className="cases-frame-label">IMAGINATION STUDY / A QUIET DISCOVERY</span></div>
           <div className="cases-reference-strip"><img src="/media/astronaut-garden.webp" alt="Still frame of an astronaut exploring a garden" loading="lazy" /><div><span>YOUR STARTING FRAME</span><p>Keep the composition.<br />Imagine what happens next.</p></div><ArrowUpRight size={21} strokeWidth={1.25} /></div>
         </Reveal>
         <Reveal className="cases-copy">
@@ -138,7 +140,7 @@ export default function UseCasesPage() {
           <Reveal><span className="cases-step">02 / CHOOSE YOUR TOOLS</span><h3>Match the model to the moment.</h3><p>Compare durations, aspect ratios, and creation modes. Select the controls that matter to your scene.</p><a href="/models" className="text-link">Explore the model catalog <ArrowUpRight size={15} /></a></Reveal>
           <Reveal><span className="cases-step">03 / SIGN IN AND CREATE</span><h3>Sign in with your email.</h3><p>Open the studio signed in, choose Private or Standard, and generate. Building your own app instead? Create an API key on your account page.</p><a href="/docs#studio" className="text-link">Get your workflow ready <ArrowUpRight size={15} /></a></Reveal>
         </div>
-        <p className="cases-preview-note">Creative studies shown here were generated through external models. KunoWorld is a development preview; production GPU serving is still being built. <a href="/docs#project-status">See project status <ArrowUpRight size={12} /></a></p>
+        <p className="cases-preview-note">{sampleNote(originalFilms)} KunoWorld is a development preview; production GPU serving is still being built. <a href="/docs#project-status">See project status <ArrowUpRight size={12} /></a></p>
       </section>
 
       <section className="cases-finale"><span className="section-kicker">THE NEXT DIRECTION IS YOURS</span><h2>What will you<br /><em>make of it?</em></h2><a href="/studio" className="ocean-button button-dark">Open the studio <ArrowUpRight size={18} /></a></section>
