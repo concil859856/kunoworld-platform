@@ -79,9 +79,10 @@ PRF_SALT_BYTES = 32
 CREDENTIAL_ID_BYTES = (16, 1023)
 MAX_TRANSPORTS = 8
 
-# A rotation replaces every wrapped value in one request, so its body may be far larger than other JSON (app.py).
+# A rotation replaces every wrapped value in one request, so its body may be far larger than other JSON (app.py). It
+# re-wraps every Element's key too (elements.py): at most 200 of them, about 150 characters each.
 ROTATE_PATH = "/v1/me/keyvault/rotate"
-ROTATE_MAX_BODY_BYTES = MAX_JOB_KEYS * (MAX_WRAPPED_JOB_CHARS + 64) + MAX_UNLOCKERS * 4096 + 64 * 1024
+ROTATE_MAX_BODY_BYTES = MAX_JOB_KEYS * (MAX_WRAPPED_JOB_CHARS + 64) + MAX_UNLOCKERS * 4096 + 256 * 1024
 
 _ID = re.compile(r"^[0-9a-f]{32}$")
 _B64URL = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -426,11 +427,14 @@ forget_job = delete_job_key
 
 def rotate(
     s: Session, account_id: str, *, expected_version: int, master_key_id: str, unlockers: list[Unlocker],
-    job_keys: list[tuple[str, str]], now: float | None = None,
+    job_keys: list[tuple[str, str]], element_keys: list[tuple[str, str]] | None = None, now: float | None = None,
 ) -> KeyVault:
-    """Replaces the master key generation atomically: every unlocker, and every job key re-wrapped under the new master
-    key. `job_keys` must name exactly the jobs the vault holds, and `expected_version` must be current, so a key another
-    device added meanwhile can't be dropped."""
+    """Replaces the master key generation atomically: every unlocker, every job key re-wrapped under the new master
+    key, and every Element's key re-wrapped under the new Elements key derived from it (elements.py). `job_keys` and
+    `element_keys` must name exactly the jobs and Elements the account holds, and `expected_version` must be current, so
+    a key another device added meanwhile can't be dropped. Element writes bump the vault's version for the same reason."""
+    from . import elements
+
     now = _now(now)
     _check_id(master_key_id, "master_key_id")
     if not 1 <= len(unlockers) <= MAX_UNLOCKERS:
@@ -452,6 +456,8 @@ def rotate(
             409, "vault_changed", "The rotation must re-wrap exactly the keys the vault holds.",
             version=vault.version, missing_job_ids=missing[:50], unknown_job_ids=unknown[:50],
         )
+    # Checked before anything changes; an Element written meanwhile waits on the vault's lock (elements._vault).
+    element_rows = elements.plan_rotation(s, account_id, list(element_keys or []), vault.version)
     old = s.scalars(select(KeyVaultUnlocker).where(KeyVaultUnlocker.account_id == account_id)).all()
     old_ids = {row.id for row in old}
     if any(u.unlocker_id in old_ids for u in unlockers):
@@ -463,6 +469,7 @@ def rotate(
     _add_unlockers(s, account_id, unlockers, now)
     for job_id, row in current.items():
         row.wrapped, row.updated_at = given[job_id], now
+    elements.apply_rotation(element_rows, list(element_keys or []), master_key_id, now)
     vault.master_key_id = master_key_id
     _touch(vault, now)
     s.flush()

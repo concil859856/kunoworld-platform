@@ -70,6 +70,54 @@ went away, an output that didn't verify, and `safety_blocked`: a Private job the
 Standard output that matched a hash list. A blocked job still counts as a strike (`MODERATION.md`). A Standard prompt
 refused with `422 content_policy` is refused before anything is charged.
 
+## Quotes
+
+`POST /v1/quote` (`api_quote.py`) answers, before anything is sealed or uploaded, the exact price the gateway would hold
+if the job were submitted now. It takes only what a client knows beforehand, never a prompt or an input:
+
+```
+{profile_id?, family?, mode?, privacy?: "private" | "standard", duration_s?, resolution?, aspect_ratio?, fps?, audio?: true,
+ input_roles?: [InputRole], shots?: [{duration_s?, join?}]}
+```
+
+**What it does, in the order a job goes:**
+1. **Shape checks.** `shots` makes the mode `storyboard`. With shots, `duration_s`, another `mode` or `input_roles` is
+   refused (`422 invalid_params`, `invalid_shots`, `invalid_inputs`), and so is `mode: "storyboard"` without shots.
+   Without `mode`, the mode comes from `input_roles` as the SDKs infer it from the inputs; without `input_roles`, the
+   inputs are the ones the mode needs (`profiles.example_roles`). A shot with a `prompt` field is refused (`422`).
+2. **Routing, exactly as `GET /v1/route`.** The owner's switch, licence regions, capacity and fallbacks. The size, frame
+   rate and duration given (a storyboard's longest shot) filter workers by their serving envelopes. With a credential
+   that works, the account's standing is checked too. Refusals are the route's: `404 unknown_model`,
+   `422 mode_unsupported`, `422 privacy_mode_unavailable`, `451 region_restricted`, `409 model_disabled`,
+   `503 no_capacity`, `403 private_mode_not_eligible`, `403 account_restricted`. A key that doesn't work quotes as
+   anonymous, as routing does.
+3. **The params a client would send.** Defaults are the SDKs' (the model's first resolution, 16:9, its default fps, 5 s
+   clips and shots, joins `fresh` then `continue`, and audio where the model has it). After a fallback the requested values
+   are adapted to the model that serves. `validate_params` then checks them (`422 invalid_params`).
+4. **Some worker's hardware must fit the filled-in params.** Otherwise `503 no_capacity` with `max_duration_s`, as for a
+   Standard job.
+5. **The price:** `ModelProfile.price_usd(params, privacy)`, the function admission charges with.
+
+**Response:**
+
+| Field | Meaning |
+|---|---|
+| `price_usd`, `currency` | the hold, in USD |
+| `privacy` | the mode priced |
+| `profile_id`, `profile_name`, `requested_profile_id`, `fallback_reason` | the model that would serve, and why when it isn't the one asked for |
+| `params` | the `GenerationParams` priced; a client that sends exactly these is charged `price_usd` |
+| `breakdown` | `usd_per_second`, `billable_seconds` (a storyboard's stitched seconds), `fps_multiplier`, `long_clip_over_s` (null unless the profile has a Private long-clip rule), `long_clip_multiplier`, `subtotal_usd`, `min_job_usd`, `minimum_applied` |
+| `placeholder` | `/v1/models`' `pricing_placeholder`: true while prices are placeholders |
+| `balance_usd`, `balance_covers` | with a working credential, the account's balance and whether it covers the price; otherwise null |
+
+A quote holds nothing and reserves no capacity: the job is priced again, the same way, when it is submitted. The Python
+SDK's budget guard (`max_price_usd`) sends every field of the params it is about to seal, on the routed profile, and
+refuses `over_budget` on the client when the price is over the limit. Its MCP server (`kunoworld-mcp`) quotes before
+every job.
+
+**Limit.** `KUNO_QUOTES_PER_MINUTE` (120) per account, or per network without a credential, counted under a keyed hash
+of the address so none is stored: `429 rate_limited`. Validator accounts are exempt.
+
 ## Card: Stripe
 
 ```

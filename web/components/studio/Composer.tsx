@@ -7,7 +7,7 @@ import { useId, useRef, useState } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { offersStandard } from "@/lib/catalog";
+import { offersStandard, profilesOrCatalog } from "@/lib/catalog";
 import { collectInputs, type ComposerApi } from "@/lib/composerState";
 import { usd } from "@/lib/format";
 import type { InputSummary } from "@/lib/library";
@@ -25,8 +25,10 @@ import {
 } from "@/lib/shot";
 import { MODE_LABEL, validateParams, validatePrompt, validateStoryboard, type Problem } from "@/lib/validation";
 import { NSFW_SENTENCE, PRIVACY_COPY } from "@/lib/privacy-copy";
+import type { ElementsLibrary } from "@/lib/useElements";
 import { setPrivacyChoice, usePrivacyChoice } from "@/lib/usePrivacyChoice";
 
+import { ElementPicker } from "./ElementPicker";
 import { StoryboardTray } from "./StoryboardTray";
 import { EditTray, FramesTray, KeyframesTray, ReferencesTray } from "./Trays";
 
@@ -99,6 +101,10 @@ export function Composer({
   busy,
   onGenerate,
   onCancel,
+  elements,
+  elementFocus,
+  onElementFocusDone,
+  onOpenElements,
 }: {
   composer: ComposerApi;
   /** From the connected gateway, so routing predictions match where jobs actually go. */
@@ -107,6 +113,12 @@ export function Composer({
   onGenerate: (submission: Submission) => void;
   /** Shown while a job is in flight, so a long render can be abandoned. */
   onCancel?: () => void;
+  /** The account's Elements, for the picker above the prompt. */
+  elements?: ElementsLibrary;
+  /** An Element chosen from the library's "Use in a video". */
+  elementFocus?: string | null;
+  onElementFocusDone?: () => void;
+  onOpenElements?: () => void;
 }) {
   const { state, profile, actions } = composer;
   const profiles = models?.models ?? [profile];
@@ -235,6 +247,20 @@ export function Composer({
         {state.tab === "references" && <ReferencesTray composer={composer} problems={trayProblems} onInsert={insertToken} />}
         {state.tab === "edit" && <EditTray composer={composer} problems={trayProblems} />}
       </div>
+
+      {elements && onOpenElements && (
+        <ElementPicker
+          key={elementFocus ?? "picker"}
+          composer={composer}
+          library={elements}
+          profiles={profilesOrCatalog(models?.models)}
+          privacy={takePrivacy}
+          storyboard={storyboard}
+          focusId={elementFocus ?? null}
+          onClose={onElementFocusDone}
+          onOpenLibrary={onOpenElements}
+        />
+      )}
 
       <div className="prompt-label">
         <label htmlFor={`${ids}-prompt`}>{storyboard ? "Scene" : "Your prompt"}</label>

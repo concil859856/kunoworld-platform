@@ -18,6 +18,7 @@ from .. import db_cybertip  # noqa: F401
 from .. import db_shares, db_vault  # noqa: F401  (migration 0011: key sync, share links)
 from .. import db_lifecycle  # noqa: F401  (migration 0012: data exports, account closures, appeals)
 from .. import db_storage  # noqa: F401  (migration 0014: storage keys, C2PA issuance log, deletion tombstones)
+from .. import db_elements  # noqa: F401  (migration 0021: Elements)
 
 # The schema as it stood before migrations existed.
 BASELINE = "0001"

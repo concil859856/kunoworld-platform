@@ -1,5 +1,6 @@
 "use client";
 
+import { KunoError, deriveElementsKey, rewrapElementKey, type ElementRow } from "@kunoworld/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError, vaultApi } from "./keyvault-api";
@@ -28,7 +29,7 @@ import {
   type Unlocker,
   type Vault,
 } from "./keyvault";
-import { keyFingerprint } from "./kuno";
+import { keyFingerprint, makeClient } from "./kuno";
 import type { LibraryEntry } from "./library";
 
 /*
@@ -41,6 +42,9 @@ import type { LibraryEntry } from "./library";
  * - unavailable: the gateway or this site can't serve key sync; the library works as before, on this browser's keys.
  *
  * With no library (the account page), unlocking only remembers the key here, for managing unlockers and rotating.
+ *
+ * Elements (lib/useElements.ts) are sealed under a key derived from the master key, so `masterKey` is exposed while
+ * unlocked, and a rotation re-wraps every Element's key along with the video keys.
  */
 
 export type KeySyncStatus = "signed_out" | "loading" | "unavailable" | "off" | "locked" | "unlocked";
@@ -77,6 +81,16 @@ function describe(err: unknown): string {
   return "Something went wrong. Try again.";
 }
 
+/** Every stored Element's row, for a rotation. A gateway from before Elements has none to re-wrap. */
+async function elementRows(): Promise<ElementRow[]> {
+  try {
+    return (await makeClient().elements.rows()).rows;
+  } catch (err) {
+    if (err instanceof KunoError && err.status === 404) return [];
+    throw err;
+  }
+}
+
 /** How long a key that failed to upload waits before key sync tries again. */
 const RETRY_MS = 30_000;
 
@@ -93,6 +107,8 @@ export function useKeySync(accountId: string | null, library?: KeySyncLibrary) {
   const [retry, setRetry] = useState(0);
 
   const master = useRef<{ id: string; key: Uint8Array } | null>(null);
+  // The same key as `master`, as state, so what depends on it (Elements) renders again when it changes.
+  const [masterKey, setMasterKey] = useState<{ id: string; key: Uint8Array } | null>(null);
   const synced = useRef<Record<string, string>>({});
   const pushing = useRef(false);
   const pushAgain = useRef(false);
@@ -132,6 +148,7 @@ export function useKeySync(accountId: string | null, library?: KeySyncLibrary) {
     async (current: Vault, key: Uint8Array, { pullKeys = true } = {}) => {
       if (!fingerprint) return;
       master.current = { id: current.master_key_id, key };
+      setMasterKey(master.current);
       saveDeviceKey(fingerprint, current.master_key_id, key);
       setVault(summarize(current));
       if (pullKeys) await pull(current, key);
@@ -154,6 +171,7 @@ export function useKeySync(accountId: string | null, library?: KeySyncLibrary) {
     }
     if (!current) {
       master.current = null;
+      setMasterKey(null);
       forgetDeviceKey(fingerprint);
       setVault(null);
       setStatus("off");
@@ -167,6 +185,7 @@ export function useKeySync(accountId: string | null, library?: KeySyncLibrary) {
     // Rotated on another device, or never unlocked here.
     if (device) forgetDeviceKey(fingerprint);
     master.current = null;
+    setMasterKey(null);
     setVault(summarize(current));
     setStatus("locked");
   }, [accountId, fingerprint, adopt]);
@@ -341,10 +360,22 @@ export function useKeySync(accountId: string | null, library?: KeySyncLibrary) {
           throw new KeySyncError("vault_changed", "Your keys were rotated on another device. Unlock again first.");
         }
         const key = newMasterKey();
+        const masterKeyId = newId();
         const jobKeys = [];
         for (const item of current.job_keys) jobKeys.push({ job_id: item.job_id, wrapped: await rewrapJobKey(accountId, unlocked.key, key, item) });
+        // Elements' keys come from the master key too: the same element keys, wrapped under the new Elements key.
+        const elementKeys = [];
+        const oldElements = deriveElementsKey(unlocked.key, accountId, unlocked.id);
+        const newElements = deriveElementsKey(key, accountId, masterKeyId);
+        for (const row of await elementRows()) {
+          try {
+            elementKeys.push({ element_id: row.element_id, wrapped_key: rewrapElementKey(oldElements, newElements, row.element_id, row.wrapped_key) });
+          } catch {
+            throw new KeySyncError("corrupt", "One of your Elements didn't open, so the rotation stopped. Nothing changed. Delete that Element, then rotate.");
+          }
+        }
         const unlocker = await makeRecoveryUnlocker(accountId, key, code);
-        const rotated = await vaultApi.rotate(current.version, newId(), [unlocker], jobKeys);
+        const rotated = await vaultApi.rotate(current.version, masterKeyId, [unlocker], jobKeys, elementKeys);
         // The same records under a new key: nothing to download or upload again.
         await adopt(rotated, key, { pullKeys: false });
       }),
@@ -355,6 +386,7 @@ export function useKeySync(accountId: string | null, library?: KeySyncLibrary) {
   const lock = useCallback(() => {
     if (!fingerprint) return;
     master.current = null;
+    setMasterKey(null);
     forgetDeviceKey(fingerprint);
     setStatus((s) => (s === "unlocked" ? "locked" : s));
   }, [fingerprint]);
@@ -364,6 +396,7 @@ export function useKeySync(accountId: string | null, library?: KeySyncLibrary) {
       run("Turning off key sync…", async () => {
         await vaultApi.turnOff();
         master.current = null;
+        setMasterKey(null);
         if (fingerprint) {
           forgetDeviceKey(fingerprint);
           saveSynced(fingerprint, {});
@@ -385,6 +418,8 @@ export function useKeySync(accountId: string | null, library?: KeySyncLibrary) {
   return {
     status: accountId ? status : ("signed_out" as const),
     vault,
+    /** While unlocked: the master key and its id, from which Elements' keys are derived. */
+    masterKey: accountId && status === "unlocked" ? masterKey : null,
     busy,
     error,
     setError,

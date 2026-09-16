@@ -24,7 +24,8 @@ What goes in (README.txt in the zip says the same to the customer):
 * Standard jobs whose content is stored: request.json (prompt and settings), the video, its thumbnail and the input
   files, decrypted as the owner's download is;
 * Private jobs whose output is stored: the sealed output as stored (ciphertext; the key is the customer's);
-* the wrapped Private keys from key sync (`key_vault.export_account`), when that module is installed.
+* the wrapped Private keys from key sync (`key_vault.export_account`), when that module is installed;
+* Elements as stored (`elements.export_account`): wrapped keys, sealed records and sealed files, all ciphertext.
 
 What never goes in: content the owner deleted or moderation removed, even while a preservation hold keeps it; secrets
 (API keys, the webhook secret); anything about holds; operators' identities or notes.
@@ -380,7 +381,15 @@ def _private_content(state: GatewayState, archive: _Archive, job: Job, counts: d
     return "stored", [name]
 
 
-def readme(account_id: str, now: float, key_sync: bool) -> str:
+ELEMENTS_README = (
+    "elements/elements.json and elements/<element id>/<position>.kunob\n"
+    "  Your Elements (characters, products, locations, styles and voices) exactly as KunoWorld stores them: each\n"
+    "  element's key wrapped with your key sync keys, its sealed record (name, description, consent) and its sealed\n"
+    "  files. KunoWorld can't open any of it; the studio opens them with your key sync keys.\n\n"
+)
+
+
+def readme(account_id: str, now: float, key_sync: bool, elements: bool = False) -> str:
     keys = (
         "private/keys.json\n"
         "  Your wrapped Private keys from key sync, exactly as KunoWorld stores them. They are wrapped with a secret only\n"
@@ -418,6 +427,7 @@ def readme(account_id: str, now: float, key_sync: bool) -> str:
         "  A Private video exactly as KunoWorld stores it: ciphertext. The keys are yours: KunoWorld never had them. It\n"
         "  opens only with the key kept on your devices (the studio, its key backup, or wherever your program saved it).\n\n"
         f"{keys}\n"
+        f"{ELEMENTS_README if elements else ''}"
         "NOT INCLUDED\n\n"
         "- Content you deleted, and content KunoWorld removed after a review.\n"
         "- Private prompts and inputs: they were sealed to the worker that rendered each job, and KunoWorld could never\n"
@@ -444,14 +454,15 @@ def write_export(
             uploads.setdefault(upload.job_id, []).append(upload)
         removed = appeals.removed_job_ids(s, account_id)
         key_sync, wrapped_keys = lifecycle_hooks.key_vault_export(s, account_id)
+        has_elements, element_export = lifecycle_hooks.elements_export(s, account_id)
 
     counts = {
         "jobs": len(jobs), "standard_requests": 0, "standard_videos": 0, "thumbnails": 0, "thumbnails_unavailable": 0,
         "standard_inputs": 0, "private_outputs": 0, "left_out_deleted": 0, "left_out_removed": 0, "key_sync": key_sync,
-        "wrapped_keys": None,
+        "wrapped_keys": None, "elements": None,
     }
     archive = _Archive(fp, now)
-    archive.add("README.txt", readme(account_id, now, key_sync).encode(), compress=True)
+    archive.add("README.txt", readme(account_id, now, key_sync, has_elements).encode(), compress=True)
     archive.add_json("account.json", document)
     entries = []
     for job in jobs:
@@ -472,6 +483,19 @@ def write_export(
         })
         job_keys = wrapped_keys.get("job_keys") if isinstance(wrapped_keys, dict) else wrapped_keys
         counts["wrapped_keys"] = len(job_keys) if isinstance(job_keys, (list, tuple)) else None
+    if has_elements:
+        document, element_files = element_export
+        stored = 0
+        for path, blob_id in element_files:
+            try:
+                archive.add(path, state.blobs.get(blob_id), compress=False)
+            except KeyError:
+                continue
+            stored += 1
+            heartbeat()
+        archive.add_json("elements/elements.json", document)
+        counts["elements"] = len(document["elements"])
+        counts["element_files"] = stored
     archive.add_json("jobs.json", {"format": "kunoworld-jobs-export", "version": FORMAT_VERSION, "jobs": entries})
     archive.close()
     return counts

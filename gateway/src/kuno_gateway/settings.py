@@ -89,6 +89,8 @@ class Settings:
     jobs_per_minute: int = 30
     max_active_jobs: int = 10
     uploads_per_minute: int = 240
+    # Creating, replacing and deleting Elements (elements.py), per account.
+    element_writes_per_minute: int = 60
     # Everything but blob uploads is JSON and small; refuse anything larger before reading it.
     max_json_body_bytes: int = 1024 * 1024
     # "memory" for one gateway process; "database" when several share one database.
@@ -187,6 +189,8 @@ class Settings:
     signin_links_per_email: int = 5
     # Public share-link routes (shares.py), per IP, per minute: the link's details and its video count alike.
     share_views_per_minute_per_ip: int = 60
+    # POST /v1/quote (api_quote.py), per account, or per network without a credential.
+    quotes_per_minute: int = 120
     # One lowercase SHA-256 per line, optionally followed by a category; "#" starts a comment.
     blocked_hashes_file: Path | None = None
     ffmpeg_path: str | None = None
@@ -276,6 +280,7 @@ class Settings:
             jobs_per_minute=int(env.get("KUNO_JOBS_PER_MINUTE", "30")),
             max_active_jobs=int(env.get("KUNO_MAX_ACTIVE_JOBS", "10")),
             uploads_per_minute=int(env.get("KUNO_UPLOADS_PER_MINUTE", "240")),
+            element_writes_per_minute=int(env.get("KUNO_ELEMENT_WRITES_PER_MINUTE", "60")),
             max_json_body_bytes=int(env.get("KUNO_MAX_JSON_BODY_BYTES", str(1024 * 1024))),
             rate_limit_backend=env.get("KUNO_RATE_LIMIT_BACKEND", "memory"),
             allow_private_webhooks=env.get("KUNO_ALLOW_PRIVATE_WEBHOOKS", "0") == "1",
@@ -341,6 +346,7 @@ class Settings:
             signin_links_per_ip=int(env.get("KUNO_SIGNIN_LINKS_PER_IP", "20")),
             signin_links_per_email=int(env.get("KUNO_SIGNIN_LINKS_PER_EMAIL", "5")),
             share_views_per_minute_per_ip=int(env.get("KUNO_SHARE_VIEWS_PER_MINUTE_PER_IP", "60")),
+            quotes_per_minute=int(env.get("KUNO_QUOTES_PER_MINUTE", "120")),
             blocked_hashes_file=Path(env["KUNO_BLOCKED_HASHES_FILE"]) if env.get("KUNO_BLOCKED_HASHES_FILE") else None,
             ffmpeg_path=env.get("KUNO_FFMPEG") or None,
             preservation_days=float(env.get("KUNO_PRESERVATION_DAYS", "365")),

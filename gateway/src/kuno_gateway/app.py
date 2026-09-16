@@ -21,11 +21,13 @@ from . import (
     api_auth,
     api_ca,
     api_cybertip,
+    api_elements,
     api_key_vault,
     api_miner,
     api_moderation,
     api_payments,
     api_public,
+    api_quote,
     api_reports,
     api_shares,
     api_standard,
@@ -159,6 +161,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.include_router(module.router)
     # GET /admin/v1/c2pa/issuances (admin role).
     app.include_router(api_ca.admin_router)
+    # POST /v1/quote: the exact price of a job before it is sealed (PAYMENTS.md, "Quotes").
+    app.include_router(api_quote.router)
+
+    # Elements: encrypted characters, products, locations, styles and voices (ELEMENTS.md).
+    app.include_router(api_elements.router)
 
     # Data export, account closure and appeals (STANDARD_MODE.md, MODERATION.md).
     for module in (api_account_lifecycle, api_appeals):

@@ -25,6 +25,10 @@ router = APIRouter(prefix="/v1", tags=["public"])
 
 BLOB_MAGIC = b"KUNOB1"
 
+# Every price is a placeholder until the owner sets real pricing (STANDARD_MODE.md, PAYMENTS.md). /v1/models and
+# /v1/quote (api_quote.py) both say so from here.
+PRICING_PLACEHOLDER = True
+
 
 def _error(status: int, code: str, message: str) -> HTTPException:
     return HTTPException(status, {"code": code, "message": message})
@@ -43,8 +47,7 @@ async def list_models(request: Request):
         "country": country,
         "workers_online": workers_online,
         "switch": switch.model_dump(mode="json"),
-        # Every price is a placeholder until the owner sets real pricing (STANDARD_MODE.md, PAYMENTS.md).
-        "pricing_placeholder": True,
+        "pricing_placeholder": PRICING_PLACEHOLDER,
         "models": [
             {
                 # `pricing.usd_per_second` is the Private price; `pricing.standard_usd_per_second` is null where the

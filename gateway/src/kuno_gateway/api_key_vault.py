@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 
-from . import identity, key_vault
+from . import elements, identity, key_vault
 from .auth import SignedIn, gw, require_user
 from .db_vault import KeyVault
 from .key_vault import VaultError
@@ -79,6 +79,13 @@ class RotatedJobKey(BaseModel):
     wrapped: str
 
 
+class RotatedElementKey(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    element_id: str = Field(max_length=32)
+    wrapped_key: str
+
+
 class VaultRotate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -86,6 +93,8 @@ class VaultRotate(BaseModel):
     master_key_id: str
     unlockers: list[UnlockerIn] = Field(min_length=1, max_length=key_vault.MAX_UNLOCKERS)
     job_keys: list[RotatedJobKey] = Field(default_factory=list, max_length=key_vault.MAX_JOB_KEYS)
+    # Every Element's key, re-wrapped under the Elements key of the new master key (ELEMENTS.md).
+    element_keys: list[RotatedElementKey] = Field(default_factory=list, max_length=elements.MAX_ELEMENTS)
 
 
 @router.get("")
@@ -120,9 +129,21 @@ async def create_vault(body: VaultCreate, request: Request, who: SignedIn = Depe
 
 @router.delete("", status_code=204)
 async def delete_vault(request: Request, who: SignedIn = Depends(require_user)):
-    """Turns key sync off: the vault, its unlockers and every wrapped job key are deleted. Keys on devices stay."""
+    """Turns key sync off: the vault, its unlockers and every wrapped job key are deleted. Keys on devices stay.
+
+    Refused while the account has Elements: their keys come from the master key, so turning key sync off would leave them
+    unopenable everywhere. The customer deletes them first. (Closing the account deletes both.)"""
     account_id = _account_id(request, who)
     with gw(request).session() as s, s.begin():
+        held = elements.count(s, account_id)
+        if held:
+            raise HTTPException(
+                409,
+                {"code": "elements_exist", "count": held, "message": (
+                    f"Your {held} Element{'s are' if held != 1 else ' is'} encrypted with key sync's keys, so turning it off "
+                    "would lock them for good. Delete your Elements first."
+                )},
+            )
         key_vault.purge_account(s, account_id, time.time())
     return Response(status_code=204)
 
@@ -182,7 +203,8 @@ async def rotate(body: VaultRotate, request: Request, who: SignedIn = Depends(re
         with gw(request).session() as s, s.begin():
             vault = key_vault.rotate(
                 s, account_id, expected_version=body.expected_version, master_key_id=body.master_key_id, unlockers=unlockers,
-                job_keys=[(k.job_id, k.wrapped) for k in body.job_keys], now=time.time(),
+                job_keys=[(k.job_id, k.wrapped) for k in body.job_keys],
+                element_keys=[(k.element_id, k.wrapped_key) for k in body.element_keys], now=time.time(),
             )
             return key_vault.vault_json(s, vault, limit=0)
     except VaultError as exc:

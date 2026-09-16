@@ -15,6 +15,9 @@ This is the contract the gateway, the website and both SDKs build against. Modes
 - **How long they stay.** Until the owner deletes them. Nothing a job stores expires, in either mode: no retention
   period for videos, thumbnails, prompts, inputs or sealed blobs. Only uploads that never became part of a job
   expire, after 24 hours.
+- **Elements.** A customer's reusable characters, products, locations, styles and voices are sealed in their browser or
+  program under keys derived from key sync, and stored as ciphertext (files on R2) until they delete them. KunoWorld
+  can't open them ([ELEMENTS.md](ELEMENTS.md)).
 - **Who can open them.** Only the owner, unless the owner creates a share link for that one video
   ([Share links](#share-links)). An operator may open content only for an open report of `csam` or
   `sexual_minor`, or under an active preservation hold for a child-safety report, a blocked upload or a legal
@@ -30,7 +33,8 @@ This is the contract the gateway, the website and both SDKs build against. Modes
   its `pricing.usd_per_second`, which is the Private price. A profile without a Standard price
   (`standard_usd_per_second: null`, `privacy_modes: ["private"]`) is sold in Private mode only, and a Standard job for
   it is refused with `422 privacy_mode_unavailable` before anything is charged; every profile has a Standard price
-  today. Every job costs at least $0.10. Prices, multipliers and refunds: `PAYMENTS.md`.
+  today. Every job costs at least $0.10. `POST /v1/quote` returns the exact price of a job before it is sent. Prices,
+  multipliers, quotes and refunds: `PAYMENTS.md`.
 
 ## Credentials
 
@@ -44,6 +48,8 @@ This is the contract the gateway, the website and both SDKs build against. Modes
 - `GET /v1/me` returns `{user, account, roles: [...]}`; `roles` is `[]`, `["moderator"]` or `["admin"]` (or both).
 - Key sync (`/v1/me/keyvault/...`) and the `/v1/me/...` share-link routes take only the web session. Share links also
   have job-API routes that take an API key.
+- Elements (`/v1/elements/...`) take an API key or the web session, like the job API. They are sealed under keys derived
+  from key sync, so an account needs key sync set up before it can make one ([ELEMENTS.md](ELEMENTS.md)).
 - Data export, closing the account and appeals (`/v1/me/exports`, `/v1/me/close`, `/v1/me/reauth`, `/v1/me/standing`,
   `/v1/me/appeals`) take only the web session.
 
@@ -174,7 +180,8 @@ appeal is voided (`strikes.voided_at`) and no longer counts toward the rules or 
   and `files`); `standard/<job>/request.json` (with `shots` for a storyboard), `video.mp4`, `thumbnail.jpg` and
   `inputs/<index>-<role>.<ext>`, decrypted as the owner's download is; `private/<job>/output.kunob`, the sealed output
   (ciphertext; the keys are the customer's); `private/keys.json` from `key_vault.export_account` when key sync is
-  installed.
+  installed; `elements/elements.json` and `elements/<element_id>/<position>.kunob`, every Element as stored (ciphertext,
+  [ELEMENTS.md](ELEMENTS.md)).
 - Never in it: content the owner deleted or moderation removed, even while a hold keeps it; anything about holds;
   secrets (API keys, the webhook secret); operators' identities or notes. `contents` counts `left_out_deleted` and
   `left_out_removed`.
@@ -194,7 +201,7 @@ the database write lock on SQLite) and checks the account isn't closed. Job admi
 or after is refused. Then, in this order: key sync purged (`key_vault.purge_account`) and share links ended
 (`shares.revoke_account`); sessions and API keys revoked, wallets unlinked, pending sign-in links deleted, operator roles
 revoked, open appeals withdrawn; every job through the path of `DELETE /v1/videos/{job_id}` (unfinished jobs canceled
-and refunded; held content hidden and deleted when its hold ends); unused uploads and exports deleted; the webhook
+and refunded; held content hidden and deleted when its hold ends); unused uploads, Elements and exports deleted; the webhook
 secret deleted and pending deliveries stopped; the address replaced by `closed-<user_id>@closed.invalid`, a salted hash
 of it kept in `account_closures`, and `accounts.closed_at` set. Audit action `account.close` by `owner:<user_id>`; a
 tombstone (`tombstones.record`) for each deletion when that module is installed. Kept: the ledger, payments, job records
@@ -354,12 +361,12 @@ Private video keys wrapped in the customer's browser, so their other devices can
 |---|---|---|
 | `GET /v1/me/keyvault` | `cursor?`, `limit?` (200, at most 500) | `{account_id, master_key_id, version, created_at, updated_at, job_key_count, limits, unlockers: [...], job_keys: [{job_id, wrapped, created_at, updated_at}], next_cursor}`, job keys ordered by job id; `404 no_vault` while key sync is off |
 | `POST /v1/me/keyvault` | `{master_key_id, unlockers: [unlocker]}` (1-10) | `201` the vault, without job keys; `409 vault_exists` |
-| `DELETE /v1/me/keyvault` | | `204`: the vault, its unlockers and every job key are deleted |
+| `DELETE /v1/me/keyvault` | | `204`: the vault, its unlockers and every job key are deleted. `409 elements_exist` (with `count`) while the account has Elements, whose keys come from the master key |
 | `POST /v1/me/keyvault/unlockers` | `{master_key_id, unlocker}` | `201 {version, unlocker_id}`; `409 too_many_unlockers`, `409 unlocker_exists` |
 | `DELETE /v1/me/keyvault/unlockers/{unlocker_id}` | | `200 {version}`; `409 last_unlocker` (one always stays); `404 not_found` |
 | `PUT /v1/me/keyvault/job-keys/{job_id}` | `{master_key_id, wrapped}` | `200 {job_id, created, version, updated_at}`; only the account's own private jobs (`404 not_found`, `422 not_private`); `409 vault_full` |
 | `DELETE /v1/me/keyvault/job-keys/{job_id}` | | `204` |
-| `POST /v1/me/keyvault/rotate` | `{expected_version, master_key_id, unlockers: [unlocker], job_keys: [{job_id, wrapped}]}` | `200` the vault. Every unlocker and job key replaced in one transaction. `job_keys` must name exactly the jobs the vault holds and `expected_version` must be current, else `409 vault_changed` (with `version`, `missing_job_ids`, `unknown_job_ids`); `422 same_master_key`, `422 unlocker_reused` |
+| `POST /v1/me/keyvault/rotate` | `{expected_version, master_key_id, unlockers: [unlocker], job_keys: [{job_id, wrapped}], element_keys?: [{element_id, wrapped_key}]}` | `200` the vault. Every unlocker, job key and Element key replaced in one transaction. `job_keys` and `element_keys` must name exactly the jobs and Elements the account holds and `expected_version` must be current, else `409 vault_changed` (with `version`, `missing_job_ids`, `unknown_job_ids`, `missing_element_ids`, `unknown_element_ids`); `422 same_master_key`, `422 unlocker_reused` |
 
 - **Unlocker:** `{unlocker_id, kind, label?, params, wrapped_master_key}`. `unlocker_id` and `master_key_id` are 32
   lowercase hex characters the browser chooses. `recovery_code` params are exactly `{alg: "PBKDF2-SHA256", iterations
@@ -375,6 +382,8 @@ Private video keys wrapped in the customer's browser, so their other devices can
   `master_key_id`: the keys were rotated elsewhere.
 - Limits: 10 unlockers, 10,000 job keys. A rotation's body may be up to about 42 MB; every other JSON body keeps the
   usual limit.
+- Elements are sealed under a key derived from the master key, so writing one bumps the vault's `version` and names its
+  `master_key_id`, and a rotation re-wraps every Element's key ([ELEMENTS.md](ELEMENTS.md), "Keys").
 - `DELETE /v1/videos/{job_id}` also deletes that job's wrapped key.
 - Account closure and export call `key_vault.purge_account(s, account_id)` and `key_vault.export_account(s, account_id)`
   (wrapped material only). Deletions record tombstones (`key_vault`, `key_vault_unlocker`, `key_vault_job_key`) that
@@ -466,5 +475,6 @@ answer HTTP byte ranges (RFC 9110), which iOS Safari needs to seek, and sometime
 `KUNO_CYBERTIP_PASSWORD`, `KUNO_CYBERTIP_BASE_URL` (test only), `KUNO_CYBERTIP_TIMEOUT_S` (60),
 `KUNO_CYBERTIP_REPORTING_ENTITY`, `KUNO_CYBERTIP_REPORTER_FIRST_NAME`, `KUNO_CYBERTIP_REPORTER_LAST_NAME`,
 `KUNO_CYBERTIP_REPORTER_EMAIL`, `KUNO_CYBERTIP_REPORTER_PHONE`, `KUNO_CYBERTIP_LEGAL_URL` (placeholders until the legal
-entity exists), `KUNO_SHARE_VIEWS_PER_MINUTE_PER_IP` (60), `KUNO_SITE_URL` (the origin of share-link `url`s).
+entity exists), `KUNO_SHARE_VIEWS_PER_MINUTE_PER_IP` (60), `KUNO_SITE_URL` (the origin of share-link `url`s),
+`KUNO_ELEMENT_WRITES_PER_MINUTE` (60, per account).
 Removed: `KUNO_STANDARD_RETENTION_DAYS`, `KUNO_MODERATION_SAMPLE_RATE`.

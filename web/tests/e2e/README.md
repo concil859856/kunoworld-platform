@@ -31,7 +31,7 @@ runs against the plain one.
 
 | Project | Port | Region | Specs |
 |---|---|---|---|
-| `unknown-region` | 3000 | none (H3 unlicensed) | `studio`, `modes`, `actions`, `validation`, `verify`, `responsive`, `storyboard` |
+| `unknown-region` | 3000 | none (H3 unlicensed) | `studio`, `modes`, `actions`, `validation`, `verify`, `responsive`, `storyboard`, `elements` |
 | `japan` | 3001 | `NEXT_PUBLIC_KUNO_DEV_COUNTRY=JP` | `h3-region`, `h3-director` |
 
 The studio has no API key: specs sign in through the gateway's email-link API and give the
@@ -74,6 +74,11 @@ Tests tagged `@needs-new-gateway` need a gateway with key sync (`/v1/me/keyvault
   carries), the missing-key and wrong-key messages, revoking both on the account page so the links stop working; and
   no sideways scroll at 320 / 375 / 768 px for share pages, the key sync panel and the account page (the untagged test).
 
+### `@needs-elements-gateway`
+
+Every test in `elements.spec.ts` needs a gateway with Elements (`/v1/elements`, migration 0021;
+`platform/gateway/ELEMENTS.md`). On an older gateway run the rest with `--grep-invert @needs-elements-gateway`.
+
 ### `@needs-storyboard-gateway`
 
 The test tagged `@needs-storyboard-gateway` renders a storyboard for real, in both privacy modes, so it needs a gateway
@@ -99,6 +104,14 @@ rest of `storyboard.spec.ts` runs on any gateway: run it with `--grep-invert @ne
   `params.shots` and ciphertext for Private — and that a `shot i/N` stage reads "Shot i of N" on the take and in the
   inspector. Those job calls, and `/v1/models`' storyboard limits on a gateway that predates them, are stood in with
   `page.route`; the Private test still routes to, and verifies, a real attested worker.
+- **elements** — the Elements page asking for key sync first, then a character saved with two pictures and a consent
+  record (the form's problems before it's complete, the card's "which models" line, and the gateway holding no name,
+  description or kind); "Use in a video" putting its line in the prompt and picture 2 in the first frame, then a Private
+  take rendering from it with `first_frame` as an ordinary sealed input; a storyboard taking the description into its
+  scene only; a voice nobody in this region can use kept for later; a second browser unlocking, editing without
+  re-uploading the pictures, rotating key sync on the account page (every Element's key re-wrapped, records and files
+  unchanged, the Element still opening), and deleting. The picker is checked at 320 / 375 / 768 px and the pages at the same widths.
+  All tagged `@needs-elements-gateway`.
 - **account** — email-link sign-in, API keys, a video charged to your own balance.
 - **payments** — the account page's top-up methods as the gateway's payment config
   switches them on, payment history, the return-from-checkout notices, linking coldkeys

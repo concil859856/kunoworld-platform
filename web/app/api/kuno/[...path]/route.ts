@@ -31,6 +31,7 @@ const RULES: Rule[] = [
   rule("GET", "v1/manifest/signed", false),
   rule("GET", "v1/provenance/[0-9a-f]{64}", false),
   rule("GET", "v1/route"),
+  rule("POST", "v1/quote"),
   rule("GET", "v1/account/eligibility"),
   rule("POST", "v1/blobs"),
   rule("GET", `v1/blobs/${ID}`),
@@ -53,6 +54,12 @@ const RULES: Rule[] = [
   rule("PUT", `v1/me/keyvault/job-keys/${ID}`),
   rule("DELETE", `v1/me/keyvault/job-keys/${ID}`),
   rule("POST", "v1/me/keyvault/rotate"),
+  // Elements. Sealed in the browser under keys derived from key sync (lib/useElements.ts): the proxy relays ciphertext.
+  rule("GET", "v1/elements"),
+  rule("GET", "v1/elements/[0-9a-f]{32}"),
+  rule("PUT", "v1/elements/[0-9a-f]{32}"),
+  rule("DELETE", "v1/elements/[0-9a-f]{32}"),
+  rule("GET", "v1/elements/[0-9a-f]{32}/files/[0-9]{1,2}"),
   // Share links: the owner's own, and the public link anyone opens (no session, and never the private key).
   rule("POST", `v1/me/videos/${ID}/shares`),
   rule("GET", "v1/me/shares"),

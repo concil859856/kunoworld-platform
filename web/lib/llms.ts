@@ -197,12 +197,23 @@ ${h3.map(modelLine).join("\n")}
   - TDX workers are accepted only with verified endorsements.
 - **HTTP API.**
   - \`GET /v1/models\`, \`GET /v1/route\`, \`GET /v1/manifest\` and \`GET /v1/manifest/signed\`.
+  - \`POST /v1/quote\`: the exact price a job would be charged now (the model after routing, the params, a breakdown, and the balance with a key), before anything is encrypted; send the job's shape, never a prompt.
+  - Elements (encrypted characters, products, locations, styles and voices): \`/v1/elements\`. Everything describing an Element is encrypted on the customer's device under a key derived from key sync; the gateway stores ciphertext only.
   - Private jobs: \`POST /v1/blobs\` and \`POST /v1/videos\`, then \`GET /v1/videos/{job_id}\`, \`POST /v1/videos/{job_id}/cancel\` and \`DELETE /v1/videos/{job_id}\`.
   - Standard jobs live under \`/v1/standard/…\`.
   - Provenance lookup: \`GET /v1/provenance/{content_digest}\`.
   - Share links: \`/v1/account/shares\` and \`/v1/shares/{token}\`.
   - Full reference: ${url("/api")}.
 - **Quickstart.** A local development network (gateway plus a simulated worker producing placeholder video) is described at ${url("/docs#quickstart")}.
+
+### For AI agents
+
+- **Local MCP server.** \`kunoworld-mcp\` (Python package \`kunoworld\`, extra \`mcp\`; not yet on PyPI) runs on the user's computer over stdio for Claude Code, Claude Desktop, Cursor and other MCP clients. Tools: list_models, quote_price, generate_video, get_job, download_video, cancel_job, list_jobs.
+- **Why local.** Private jobs are encrypted and decrypted on the user's computer, so the server must run there. KunoWorld runs no hosted MCP server: a hosted one would receive prompts readable, and could only ever offer Standard mode.
+- **What the assistant sees.** Private mode keeps prompts and videos from KunoWorld and GPU operators, not from the AI assistant or its provider, which see what the user types and what the tools return.
+- **Spending.** generate_video quotes first and refuses, creating and charging nothing, over max_price_usd or the server's KUNOWORLD_MAX_JOB_USD cap. Quote and agree the price with the user before generating.
+- **Handles.** Private job keys stay in local files readable only by the user; no tool returns a key.
+- **Skill.** The \`kunoworld-video\` Agent Skill (in the SDK repository, \`skills/kunoworld-video\`) covers when to use KunoWorld, Private vs Standard, quoting, LTX-2.5 and MiniMax H3 prompts, storyboards and the content rules.
 
 ## 10. For miners
 

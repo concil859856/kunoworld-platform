@@ -103,12 +103,20 @@ export const vaultApi = {
       wrapped,
     }),
 
-  rotate: (expectedVersion: number, masterKeyId: string, unlockers: Unlocker[], jobKeys: Array<{ job_id: string; wrapped: string }>) =>
+  rotate: (
+    expectedVersion: number,
+    masterKeyId: string,
+    unlockers: Unlocker[],
+    jobKeys: Array<{ job_id: string; wrapped: string }>,
+    elementKeys: Array<{ element_id: string; wrapped_key: string }> = [],
+  ) =>
     call<Vault>("POST", "/v1/me/keyvault/rotate", {
       expected_version: expectedVersion,
       master_key_id: masterKeyId,
       unlockers: unlockers.map(unlockerBody),
       job_keys: jobKeys,
+      // Sent only when there are Elements, so a gateway from before them still accepts the body.
+      ...(elementKeys.length ? { element_keys: elementKeys } : {}),
     }),
 
   turnOff: () => call<void>("DELETE", "/v1/me/keyvault"),

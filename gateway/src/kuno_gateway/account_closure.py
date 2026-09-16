@@ -11,8 +11,8 @@ irreversible happens:
    roles are revoked, and open appeals are withdrawn;
 3. every job goes through the owner's deletion path (`standard_jobs.delete_for_owner`): queued and running jobs are
    canceled and refunded, then content is deleted, except what a preservation hold keeps (hidden, and deleted when the
-   hold ends); unused uploads and data exports are deleted; each deletion gets a tombstone when that module is
-   installed;
+   hold ends); unused uploads, Elements and data exports are deleted; each deletion gets a tombstone when that module
+   is installed;
 4. the webhook secret is deleted and pending deliveries stop;
 5. the address is replaced with a placeholder that can never receive mail, a salted hash of the address is kept, the
    account is marked closed (`accounts.closed_at`), the closure is recorded with the unused balance, and it is
@@ -57,6 +57,7 @@ RETENTION_POLICY = "[RETENTION OF RECORDS AFTER CLOSURE]"
 DELETES = (
     "videos, prompts, inputs and thumbnails",
     "unused uploads and data exports",
+    "Elements (characters, products, locations, styles and voices)",
     "wrapped Private keys (key sync) and share links",
     "sign-in sessions and API keys",
     "linked wallets and the webhook secret",
@@ -225,6 +226,8 @@ def close(state: GatewayState, s: Session, user_id: str, now: float) -> ClosureR
         s.delete(blob)
         unused += 1
     detail["unused_uploads_deleted"] = unused
+    installed, removed = lifecycle_hooks.elements_purge(state, s, account.id, now)
+    detail["elements_deleted"] = removed if installed else "not_installed"
     exports = s.scalars(
         select(AccountExport).where(AccountExport.account_id == account.id, AccountExport.deleted_at.is_(None))
     ).all()
