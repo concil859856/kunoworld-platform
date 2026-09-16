@@ -60,8 +60,8 @@ def test_models_list_both_prices_and_the_modes_each_profile_is_sold_in(gw):
     fast = models["ltx-2.5-fast"]
     assert fast["privacy_modes"] == ["private", "standard"]
     assert fast["pricing"] == {
-        "usd_per_second": {"720p": 0.05, "1080p": 0.08},
-        "standard_usd_per_second": {"720p": 0.04, "1080p": 0.06},
+        "usd_per_second": {"720p": 0.12, "1080p": 0.17},
+        "standard_usd_per_second": {"720p": 0.09, "1080p": 0.13},
         "min_job_usd": 0.1,
         "long_clip": None,
         "fps_multipliers": {"48": 1.5, "50": 1.5},
@@ -130,7 +130,7 @@ def test_a_job_is_charged_the_price_of_its_privacy_mode(gw):
 
     with state.session() as s, s.begin():
         private, standard = admit(s, fast, "private"), admit(s, fast, "standard")
-        assert (private.price_usd, standard.price_usd) == (0.6, 0.45)  # $0.08 and $0.06 a second, x5 s, x1.5 at 48 fps
+        assert (private.price_usd, standard.price_usd) == (1.275, 0.975)  # $0.17 and $0.13 a second, x5 s, x1.5 at 48 fps
     with state.session() as s, s.begin():
         with pytest.raises(HTTPException) as exc:
             admit(s, h3_params(), "standard")

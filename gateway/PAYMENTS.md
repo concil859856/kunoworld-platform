@@ -41,12 +41,12 @@ Prices are per output second, per resolution and per privacy mode, from each mod
 
 | Profile | Private, per second | Standard, per second |
 | --- | --- | --- |
-| `ltx-2.5-fast` | 720p $0.05, 1080p $0.08 | 720p $0.04, 1080p $0.06 |
-| `ltx-2.5-pro` | 720p $0.075, 1080p $0.11 | 720p $0.055, 1080p $0.085 |
-| `ltx-2.5-4k` | 1440p $0.15, 2160p $0.32 | 1440p $0.12, 2160p $0.25 |
-| `h3-turbo` | 768p $0.065 | 768p $0.05 |
-| `h3` | 768p $0.20 | not offered |
-| `h3-reference` | 768p $0.30 | not offered |
+| `ltx-2.5-fast` | 720p $0.12, 1080p $0.17 | 720p $0.09, 1080p $0.13 |
+| `ltx-2.5-pro` | 720p $0.16, 1080p $0.22 | 720p $0.12, 1080p $0.17 |
+| `ltx-2.5-4k` | 1440p $0.25, 2160p $0.39 | 1440p $0.19, 2160p $0.30 |
+| `h3-turbo` | 768p $0.065, $0.091 over 8 s | 768p $0.04 |
+| `h3` | 768p $0.30, $0.51 over 6 s | 768p $0.06 |
+| `h3-reference` | 768p $0.50, $0.75 over 6 s | 768p $0.06 |
 
 These placeholders follow `research/research_pricing.md`. LTX-2.5 Fast renders up to 20 s at 24 or 25 fps and up to
 10 s at 48 or 50 fps (`limits.max_duration_s_by_fps`); Pro and 4K render up to 10 s.
@@ -56,7 +56,7 @@ These placeholders follow `research/research_pricing.md`. LTX-2.5 Fast renders u
 - **The customer pays for the stitched video:** the profile's per-second rate for the job's `duration_s`, which for a
   storyboard is the stitched length, with the fps multiplier and the minimum charge as for any job. The frames a joined
   shot repeats from the shot before (17 per `continue` or `cut` join on LTX-2.5 Fast) are trimmed from the video and
-  not charged: three 5 s shots with two joins are 13.708 s, $0.6854 Private and $0.5483 Standard at 720p.
+  not charged: three 5 s shots with two joins are 13.708 s, $1.645 Private and $1.2337 Standard at 720p.
 - **Private long-clip multiplier:** it looks at the longest shot (`GenerationParams.render_duration_s`), not the
   stitched length, because shots render one at a time. No LTX-2.5 profile has one today.
 - **Miners are paid for what they render:** validators credit a storyboard `Σ vcu_at(resolution, fps, shot.duration_s)`

@@ -82,7 +82,7 @@ def test_a_storyboard_is_sealed_with_its_shot_prompts_charged_by_its_stitched_se
     assert (job["privacy"], job["params"]["mode"], job["params"]["shots"]) == ("standard", "storyboard", BOARD.model_dump(mode="json")["shots"])
     # 3 x 5 s shots, two of them joined: 13.708 stitched seconds at the Standard 720p rate, not 15.
     assert BOARD.duration_s == pytest.approx(13.708, abs=1e-3)
-    assert job["price_usd"] == FAST.price_usd(BOARD, "standard") == round(0.04 * BOARD.duration_s, 4)
+    assert job["price_usd"] == FAST.price_usd(BOARD, "standard") == round(0.09 * BOARD.duration_s, 4)
     assert before - balance(gw, account_id) == ledger.to_micros(job["price_usd"])
 
     # The worker opens exactly what a client-sealed storyboard carries: the scene, then one prompt per shot, in order.

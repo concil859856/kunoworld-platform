@@ -195,7 +195,7 @@ function status(jobId: string, body: Record<string, unknown>, extra: Record<stri
     progress: 0.4,
     params: body.params,
     enclave_id: body.enclave_id ?? "open-1",
-    price_usd: 0.69,
+    price_usd: 1.645,
     created_at: Date.now() / 1000,
     updated_at: Date.now() / 1000,
     output_blob_id: null,

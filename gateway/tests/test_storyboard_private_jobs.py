@@ -75,7 +75,7 @@ def test_a_private_storyboard_is_admitted_by_its_longest_shot_and_held_at_its_st
     admitted = submit(gw, small, long_take)
     assert admitted.status_code == 201, admitted.text
     price = FAST.price_usd(long_take)
-    assert admitted.json()["price_usd"] == price == round(0.08 * long_take.duration_s, 4)
+    assert admitted.json()["price_usd"] == price == round(0.17 * long_take.duration_s, 4)
     assert before - balance(gw) == ledger.to_micros(price)
     with gw.state.session() as s:
         stored = GenerationParams.model_validate_json(s.get(Job, admitted.json()["job_id"]).params)

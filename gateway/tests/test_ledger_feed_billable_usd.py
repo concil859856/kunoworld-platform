@@ -21,9 +21,9 @@ from kuno_gateway.db import Account, Enclave, Job
 from kuno_gateway.settings import Settings
 
 ENCLAVE = "f" * 32
-# $0.05 a second x 5 s, Private.
+# $0.12 a second x 5 s, Private.
 PARAMS = GenerationParams(profile_id="ltx-2.5-fast", mode=Mode.TEXT_TO_VIDEO, duration_s=5, resolution="720p", aspect_ratio="16:9", fps=24)
-PRICE = 0.25
+PRICE = 0.60
 FEED_FIELDS = {
     "job_id", "enclave_id", "miner_hotkey", "profile_id", "status", "error_code", "privacy", "params", "duration_s",
     "resolution", "created_at", "started_at", "finished_at", "receipt",
