@@ -10,12 +10,17 @@ import {
   EDIT_OPS,
   TABS,
   clampSettings,
+  clampShots,
   defaultSettings,
+  defaultShots,
+  makeShot,
   supportsTab,
   type ComposerTab,
   type EditOp,
   type ShotSettings,
+  type StoryboardShot,
 } from "@/lib/shot";
+import type { ShotDraft } from "@/lib/validation";
 
 // ---------------------------------------------------------------- media items
 
@@ -101,12 +106,17 @@ export interface ComposerState {
   prompt: string;
   settings: ShotSettings;
   inputs: ComposerInputs;
+  /** The Storyboard tab's shots. `prompt` is then the scene they share. */
+  shots: StoryboardShot[];
   notice: string | null;
   /** The user picked a stock themselves; don't auto-select one for them. */
   touched: boolean;
 }
 
-export type ComposerSnapshot = Pick<ComposerState, "tab" | "editOp" | "profileId" | "prompt" | "settings" | "inputs">;
+/** A setup to load. `shots` replaces the storyboard's shots when given, and leaves them alone otherwise. */
+export type ComposerSnapshot = Pick<ComposerState, "tab" | "editOp" | "profileId" | "prompt" | "settings" | "inputs"> & {
+  shots?: ShotDraft[];
+};
 
 export interface Submission {
   request: GenerateRequest;
@@ -191,8 +201,11 @@ function describeChanges(before: ShotSettings, after: ShotSettings): string[] {
 function withProfile(state: ComposerState, profile: ModelProfile, reason: string | null): ComposerState {
   const settings = clampSettings(profile, state.settings);
   const changes = describeChanges(state.settings, settings);
+  // Shot lengths only matter, and are only mentioned, on the Storyboard tab.
+  const shots = clampShots(profile, settings.fps, state.shots);
+  if (state.tab === "storyboard" && shots !== state.shots) changes.push("shot lengths");
   const parts = [reason, changes.length ? `Adjusted to fit ${profile.name}: ${changes.join(", ")}.` : null].filter(Boolean);
-  return { ...state, profileId: profile.id, settings, notice: parts.length ? parts.join(" ") : null };
+  return { ...state, profileId: profile.id, settings, shots, notice: parts.length ? parts.join(" ") : null };
 }
 
 function ensureProfile(state: ComposerState, profiles: ModelProfile[]): ComposerState {
@@ -221,6 +234,7 @@ type Action =
   | { type: "prompt"; prompt: string }
   | { type: "settings"; patch: Partial<ShotSettings>; profile: ModelProfile }
   | { type: "inputs"; update: (inputs: ComposerInputs) => ComposerInputs }
+  | { type: "shots"; update: (shots: StoryboardShot[]) => StoryboardShot[] }
   | { type: "item"; id: string; patch: Partial<MediaItem> }
   | { type: "load"; snapshot: ComposerSnapshot; profiles: ModelProfile[]; notice: string | null }
   | { type: "notice"; notice: string | null };
@@ -235,19 +249,26 @@ function reducer(state: ComposerState, action: Action): ComposerState {
       return { ...withProfile(state, action.profile, null), touched: state.touched || !action.auto };
     case "prompt":
       return { ...state, prompt: action.prompt };
-    case "settings":
-      return { ...state, settings: clampSettings(action.profile, { ...state.settings, ...action.patch }) };
+    case "settings": {
+      const settings = clampSettings(action.profile, { ...state.settings, ...action.patch });
+      return { ...state, settings, shots: clampShots(action.profile, settings.fps, state.shots) };
+    }
     case "inputs":
       return { ...state, inputs: action.update(state.inputs) };
+    case "shots":
+      return { ...state, shots: action.update(state.shots) };
     case "item":
       return { ...state, inputs: mapItems(state.inputs, (it) => (it.id === action.id ? { ...it, ...action.patch } : it)) };
     case "load": {
       const profile = action.profiles.find((p) => p.id === action.snapshot.profileId) ?? action.profiles[0];
+      const { shots, ...snapshot } = action.snapshot;
+      const settings = clampSettings(profile, snapshot.settings);
       const loaded: ComposerState = {
         ...state,
-        ...action.snapshot,
+        ...snapshot,
         profileId: profile.id,
-        settings: clampSettings(profile, action.snapshot.settings),
+        settings,
+        shots: shots?.length ? clampShots(profile, settings.fps, shots.map((shot) => makeShot(shot))) : state.shots,
         notice: action.notice,
         touched: true,
       };
@@ -267,6 +288,7 @@ function initialState(): ComposerState {
     prompt: "",
     settings: defaultSettings(profile),
     inputs: EMPTY_INPUTS,
+    shots: defaultShots(),
     notice: null,
     touched: false,
   };
@@ -301,6 +323,7 @@ export function useComposer(profiles: ModelProfile[]) {
       setPrompt: (prompt: string) => dispatch({ type: "prompt", prompt }),
       patchSettings: (patch: Partial<ShotSettings>) => dispatch({ type: "settings", patch, profile }),
       updateInputs: (update: (inputs: ComposerInputs) => ComposerInputs) => dispatch({ type: "inputs", update }),
+      updateShots: (update: (shots: StoryboardShot[]) => StoryboardShot[]) => dispatch({ type: "shots", update }),
       patchItem: (id: string, patch: Partial<MediaItem>) => dispatch({ type: "item", id, patch }),
       load: (snapshot: ComposerSnapshot, notice: string | null) => dispatch({ type: "load", snapshot, profiles, notice }),
       setNotice: (notice: string | null) => dispatch({ type: "notice", notice }),

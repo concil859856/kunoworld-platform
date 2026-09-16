@@ -448,3 +448,34 @@
   font-size: 12px;
   opacity: 0.8;
 }
+
+/* A storyboard's stitched length, where the Duration picker sits for other modes: read-only, set on each shot. */
+.studio-shell .stitched-field {
+  min-width: 0;
+}
+
+.studio-shell .stitched-length {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid var(--studio-line-strong);
+  border-radius: var(--radius-m);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Six creation tabs don't fit a phone's width: the row scrolls sideways rather than spilling out of the composer. */
+@media (max-width: 440px) {
+  .studio-shell .composer [data-slot="tabs-list"] {
+    gap: 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .studio-shell .composer [data-slot="tabs-list"]::-webkit-scrollbar {
+    display: none;
+  }
+}

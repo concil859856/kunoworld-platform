@@ -373,3 +373,184 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------------------------------------------------------------- storyboard */
+
+/* The storyboard tray follows the scene box rather than sitting above the prompt like the other trays. */
+.tray[data-storyboard] {
+  margin-top: 12px;
+}
+
+.strip {
+  display: flex;
+  gap: 0;
+  height: 22px;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-s);
+  background: var(--c-black);
+}
+
+.stripShot {
+  flex-basis: 0;
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--c-amber-soft);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--c-paper-2);
+}
+
+/* A seam where the picture changes: a cut keeps the sound, so its seam is a thin line; a new shot is a gap. */
+.stripShot[data-join="cut"] {
+  border-left: 1px solid var(--line-3);
+}
+
+.stripShot + .stripShot[data-join="fresh"] {
+  border-left: 3px solid var(--c-black);
+}
+
+.stripShot:nth-child(even) {
+  background: color-mix(in srgb, var(--c-amber) 22%, transparent);
+}
+
+.shotList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shotCard {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--c-black);
+}
+
+.shotCard[data-invalid] {
+  border-color: color-mix(in srgb, var(--c-error) 55%, transparent);
+}
+
+.shotHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shotNumber {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--c-paper);
+}
+
+.shotTools {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.shotTools .iconButton {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  padding: 0;
+}
+
+.shotText {
+  width: 100%;
+  min-height: 64px;
+  max-height: 200px;
+  padding: 8px 10px;
+  resize: vertical;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-s);
+  background: transparent;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--c-paper);
+}
+
+.shotText::placeholder {
+  color: var(--c-muted);
+}
+
+.shotText:focus {
+  outline: none;
+  border-color: var(--c-amber);
+}
+
+.shotControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 14px;
+}
+
+.shotLength {
+  display: grid;
+  gap: 4px;
+  width: 116px;
+}
+
+.join {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.join .ops {
+  justify-self: start;
+}
+
+.joinHint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--c-muted);
+}
+
+.joinHint strong {
+  font-weight: 600;
+  color: var(--c-paper-2);
+}
+
+.shotFoot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.shotAdd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.shotAdd .textButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+}
+
+@media (max-width: 400px) {
+  .shotLength {
+    width: 100%;
+  }
+
+  .join,
+  .join .ops {
+    width: 100%;
+  }
+
+  .join .ops button {
+    flex: 1;
+    padding: 0 6px;
+  }
+}

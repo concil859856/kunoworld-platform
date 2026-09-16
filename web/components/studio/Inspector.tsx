@@ -9,9 +9,9 @@ import { ShareLinkForm } from "@/components/studio/ShareLinkForm";
 import { CertificateView } from "@/components/verify/CertificateView";
 import { useCertificate } from "@/components/verify/useCertificate";
 import { EMPTY_INPUTS, type ComposerApi } from "@/lib/composerState";
-import { isActive, type InputSummary, type LibraryEntry } from "@/lib/library";
+import { isActive, stepLabel, type InputSummary, type LibraryEntry } from "@/lib/library";
 import { extractLastFrame } from "@/lib/media";
-import { fallbackNotice } from "@/lib/shot";
+import { JOINS, fallbackNotice, storyboardLength } from "@/lib/shot";
 import type { FilmState } from "@/lib/useLibrary";
 import { MODE_LABEL } from "@/lib/validation";
 import { PRIVACY_COPY } from "@/lib/privacy-copy";
@@ -41,6 +41,8 @@ const ROLE_LABEL: Record<InputSummary["role"], string> = {
 
 /** 4 → "4", 1.5 → "1.5": seconds read better without trailing zeroes. */
 const secs = (n: number) => String(Number(n.toFixed(2)));
+
+const JOIN_LABEL = Object.fromEntries(JOINS.map((j) => [j.id, j.label]));
 
 function summaryLine(i: InputSummary): string {
   const label = ROLE_LABEL[i.role];
@@ -86,6 +88,8 @@ export function Inspector({ entry, film, profiles, composer, onCancel, onRemove,
   const fallback = fallbackNotice(entry.fallbackReason, requested, profile);
   const canceled = entry.step === "canceled";
   const { settings } = entry;
+  const storyboard = entry.mode === "storyboard";
+  const stitched = storyboard && profile && entry.shots?.length ? storyboardLength(profile, entry.shots, settings.fps) : null;
 
   /** Carries the film's final frame into the composer as the next shot's first frame. */
   async function carryLastFrame() {
@@ -117,6 +121,7 @@ export function Inspector({ entry, film, profiles, composer, onCancel, onRemove,
         prompt: entry.prompt,
         settings: entry.settings,
         inputs: EMPTY_INPUTS,
+        shots: entry.shots,
       },
       "Settings are back in the composer.",
     );
@@ -125,7 +130,7 @@ export function Inspector({ entry, film, profiles, composer, onCancel, onRemove,
 
   return (
     <aside className="inspector" aria-label="Inspector">
-      <h2 className="inspector-title">{entry.prompt || "No prompt"}</h2>
+      <h2 className="inspector-title">{entry.prompt || (storyboard ? entry.shots?.[0]?.prompt || "Storyboard" : "No prompt")}</h2>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as "details" | "certificate")}>
         <TabsList aria-label="Take">
@@ -161,7 +166,7 @@ export function Inspector({ entry, film, profiles, composer, onCancel, onRemove,
             )}
             <div>
               <dt>State</dt>
-              <dd>{canceled ? "Canceled" : entry.step}</dd>
+              <dd>{canceled ? "Canceled" : stepLabel(entry)}</dd>
             </div>
             {settings.resolution && (
               <div>
@@ -173,10 +178,20 @@ export function Inspector({ entry, film, profiles, composer, onCancel, onRemove,
               <dt>Aspect ratio</dt>
               <dd>{settings.aspectRatio}</dd>
             </div>
-            <div>
-              <dt>Duration</dt>
-              <dd>{secs(settings.durationS)} s</dd>
-            </div>
+            {storyboard && entry.shots ? (
+              <div>
+                <dt>Length</dt>
+                <dd>
+                  {stitched ? `${Number(stitched.stitchedS.toFixed(1))} s · ` : ""}
+                  {entry.shots.length} shots
+                </dd>
+              </div>
+            ) : (
+              <div>
+                <dt>Duration</dt>
+                <dd>{secs(settings.durationS)} s</dd>
+              </div>
+            )}
             <div>
               <dt>Frame rate</dt>
               <dd>{settings.fps} fps</dd>
@@ -188,6 +203,16 @@ export function Inspector({ entry, film, profiles, composer, onCancel, onRemove,
               </div>
             )}
           </dl>
+
+          {storyboard && entry.shots && entry.shots.length > 0 && (
+            <ol className="inspector-inputs" aria-label="Shots">
+              {entry.shots.map((shot, n) => (
+                <li key={n}>
+                  {n + 1}. {shot.prompt || `Shot ${n + 1}`} · {secs(shot.durationS)} s · {n === 0 ? "New shot" : JOIN_LABEL[shot.join]}
+                </li>
+              ))}
+            </ol>
+          )}
 
           {entry.inputs.length > 0 && (
             <ul className="inspector-inputs">

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeftRight, ArrowUpRight, AudioLines, Code2, Diamond, Fingerprint, Flag, ImagePlay, Images, KeyRound, Link2, LockKeyhole, MoveRight, Plus, RotateCcw, ScanLine, ShieldCheck, Type, WandSparkles, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, ArrowUpRight, AudioLines, Clapperboard, Code2, Diamond, Fingerprint, Flag, ImagePlay, Images, KeyRound, Link2, LockKeyhole, MoveRight, Plus, RotateCcw, ScanLine, ShieldCheck, Type, WandSparkles, type LucideIcon } from "lucide-react";
 import "@/app/home.css";
 import { Reveal } from "@/components/site/motion";
 import { CinematicHero } from "@/components/site/cinematic-hero";
@@ -33,7 +33,7 @@ function tileMeta(tool: HomeTool): string | null {
   return `${supporting.length} models`;
 }
 
-const TOOL_ICONS: Record<string, LucideIcon> = { text: Type, image: ImagePlay, last: Flag, "first-last": ArrowLeftRight, keyframes: Diamond, retake: RotateCcw, audio: AudioLines, reference: Images, edit: WandSparkles, extend: MoveRight, privacy: LockKeyhole, share: Link2, keys: KeyRound, verify: ShieldCheck, sdk: Code2 };
+const TOOL_ICONS: Record<string, LucideIcon> = { text: Type, image: ImagePlay, last: Flag, "first-last": ArrowLeftRight, keyframes: Diamond, retake: RotateCcw, storyboard: Clapperboard, audio: AudioLines, reference: Images, edit: WandSparkles, extend: MoveRight, privacy: LockKeyhole, share: Link2, keys: KeyRound, verify: ShieldCheck, sdk: Code2 };
 
 function ToolTile({ tool }: { tool: HomeTool }) {
   const Icon = TOOL_ICONS[tool.id] ?? ArrowUpRight;

@@ -5,7 +5,7 @@ import type { CreationModeId } from "./showcase";
 
 /** Model cards, in display order: one line of strength each. Duration and resolutions come from the profile. */
 export const modelStrengths: { id: string; strength: string }[] = [
-  { id: "ltx-2.5-fast", strength: "Quick drafts with audio, keyframes and retakes." },
+  { id: "ltx-2.5-fast", strength: "Quick drafts with audio, keyframes, retakes and storyboards." },
   { id: "ltx-2.5-pro", strength: "Finer control: guidance, negative prompts and audio-driven video." },
   { id: "ltx-2.5-4k", strength: "High-resolution finals with detail refinement." },
   { id: "h3-turbo", strength: "MiniMax H3 with native stereo audio, in 8 distilled steps." },
@@ -39,6 +39,7 @@ export const homeModes: HomeTool[] = [
   { id: "reference", mode: "reference_to_video", title: "Reference to video", copy: "Cast, props and places you supply.", href: "/docs#creation-modes" },
   { id: "edit", mode: "video_edit", title: "Video edit", copy: "Change what happens in a clip.", href: "/docs#creation-modes" },
   { id: "extend", mode: "extend_video", title: "Extend video", copy: "Continue past the last frame.", href: "/docs#creation-modes" },
+  { id: "storyboard", mode: "storyboard", title: "Storyboard", copy: "Chain up to 12 shots into one video.", href: "/studio?mode=storyboard" },
 ];
 
 export const homeTools: HomeTool[] = [

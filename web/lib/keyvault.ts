@@ -80,6 +80,8 @@ const PBKDF2_MAX_ITERATIONS = 10_000_000;
 export const MAX_WRAPPED_JOB_KEY_CHARS = 4096;
 /** How much of a take's prompt travels (encrypted) with its key, so another device's library can show it. */
 export const MAX_SYNCED_PROMPT_CHARS = 500;
+/** How much of each storyboard shot's prompt travels with its key; a record too large keeps only the shots' lengths and joins. */
+export const MAX_SYNCED_SHOT_PROMPT_CHARS = 120;
 
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const MASTER_MAGIC = "KVM1";
@@ -405,6 +407,8 @@ export interface JobKeyRecord {
     settings: ShotSettings;
     inputs: Array<Omit<LibraryEntry["inputs"][number], "name">>;
     price: number | null;
+    /** A storyboard's shots. Records from before storyboards have none. */
+    shots?: NonNullable<LibraryEntry["shots"]>;
   };
 }
 
@@ -460,6 +464,7 @@ function recordFor(entry: LibraryEntry): JobKeyRecord {
       settings: entry.settings,
       inputs: entry.inputs.map(({ role, timeS, startS, endS }) => ({ role, timeS, startS, endS })),
       price: entry.price,
+      shots: entry.shots?.map(({ prompt, durationS, join }) => ({ prompt: prompt.slice(0, MAX_SYNCED_SHOT_PROMPT_CHARS), durationS, join })),
     },
   };
 }
@@ -468,7 +473,13 @@ function recordFor(entry: LibraryEntry): JobKeyRecord {
 export async function wrapJobKey(accountId: string, masterKey: Uint8Array, entry: LibraryEntry): Promise<string> {
   const key = await aesKey(masterKey);
   const full = recordFor(entry);
-  const attempts: JobKeyRecord[] = [full, { ...full, meta: full.meta && { ...full.meta, prompt: full.meta.prompt.slice(0, 80), inputs: [] } }, { ...full, meta: undefined }];
+  const trimmed = full.meta && {
+    ...full.meta,
+    prompt: full.meta.prompt.slice(0, 80),
+    inputs: [],
+    shots: full.meta.shots?.map((shot) => ({ ...shot, prompt: "" })),
+  };
+  const attempts: JobKeyRecord[] = [full, { ...full, meta: trimmed }, { ...full, meta: undefined }];
   for (const record of attempts) {
     const wrapped = await seal(key, JOB_MAGIC, utf8(JSON.stringify(record)), jobKeyAad(accountId, record.jobId));
     if (wrapped.length <= MAX_WRAPPED_JOB_KEY_CHARS) return wrapped;
@@ -529,6 +540,7 @@ export function entryFromRecord(record: JobKeyRecord): LibraryEntry {
     fallbackReason: record.fallbackReason,
     settings: { ...FALLBACK_SETTINGS, ...meta?.settings },
     inputs: Array.isArray(meta?.inputs) ? meta.inputs.map((i) => ({ ...i, name: "" })) : [],
+    shots: Array.isArray(meta?.shots) ? meta.shots : undefined,
     step,
     progress: step === "ready" ? 1 : 0,
     price: typeof meta?.price === "number" ? meta.price : null,

@@ -62,11 +62,14 @@ export interface SubmitInput {
   fallbackReason: string | null;
   estimate: number | null;
   inputs: LibraryEntry["inputs"];
+  /** A storyboard's shots; the request's prompt is its scene. */
+  shots?: LibraryEntry["shots"];
 }
 
 /** Maps a gateway status onto the entry fields the shelf renders. */
 function statusPatch(s: JobStatus, standard: boolean): Partial<LibraryEntry> {
-  const base: Partial<LibraryEntry> = { price: s.price_usd };
+  // The worker's stage, e.g. `shot 3/8` while a storyboard renders; kept only while it runs.
+  const base: Partial<LibraryEntry> = { price: s.price_usd, stage: s.status === "running" ? s.stage : null };
   if (s.status === "queued") return { ...base, step: "queued", progress: 0 };
   if (s.status === "running") {
     if (!standard && (s.stage === "sealing" || s.progress >= 0.92)) return { ...base, step: "sealing", progress: 1 };
@@ -96,7 +99,7 @@ function standardEntry(client: KunoClient, row: StandardVideoSummary): LibraryEn
     privacy: "standard",
     createdAt: row.created_at * 1000,
     prompt: row.prompt ?? "",
-    tab: "text",
+    tab: p.mode === "storyboard" ? "storyboard" : "text",
     editOp: "edit",
     mode: p.mode,
     requestedProfileId: row.profile_id,
@@ -113,6 +116,8 @@ function standardEntry(client: KunoClient, row: StandardVideoSummary): LibraryEn
       enhance: false,
     },
     inputs: p.input_roles.map((role) => ({ role, name: "" })),
+    // The list doesn't carry shot prompts: a storyboard shows its shots' lengths and joins.
+    shots: p.shots?.map((shot) => ({ prompt: "", durationS: shot.duration_s, join: shot.join })),
     step,
     progress: step === "ready" ? 1 : 0,
     price: null,
@@ -327,6 +332,7 @@ export function useLibrary(client: KunoClient | null, accountId: string | null) 
         fallbackReason: input.fallbackReason,
         settings: snapshot.settings,
         inputs: input.inputs,
+        shots: input.shots,
         step: standard ? "uploading" : "encrypting",
         progress: 0,
         price: input.estimate,

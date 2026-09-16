@@ -3,18 +3,21 @@
 import {
   fitParams,
   priceQuote,
+  storyboardDurationS,
+  storyboardTrimFrames,
   type InputRole,
   type Mode,
   type ModelProfile,
   type ModelsResponse,
   type PriceQuote,
   type PrivacyMode,
+  type ShotJoin,
 } from "@kunoworld/sdk";
 
 import { isH3, variantLabel } from "./catalog";
-import { MODE_LABEL } from "./validation";
+import { MODE_LABEL, specsOf, type ShotDraft } from "./validation";
 
-export type ComposerTab = "text" | "frames" | "keyframes" | "references" | "edit";
+export type ComposerTab = "text" | "frames" | "keyframes" | "references" | "edit" | "storyboard";
 export type EditOp = "edit" | "extend" | "retake" | "audio";
 
 export const TABS: Array<{ id: ComposerTab; label: string }> = [
@@ -23,6 +26,7 @@ export const TABS: Array<{ id: ComposerTab; label: string }> = [
   { id: "keyframes", label: "Keyframes" },
   { id: "references", label: "References" },
   { id: "edit", label: "Edit" },
+  { id: "storyboard", label: "Storyboard" },
 ];
 
 export const EDIT_OPS: Array<{ id: EditOp; label: string; mode: Mode; hint: string }> = [
@@ -39,6 +43,7 @@ const TAB_MODES: Record<Exclude<ComposerTab, "edit">, Mode[]> = {
   frames: ["image_to_video", "last_frame", "first_last_frame"],
   keyframes: ["keyframes"],
   references: ["reference_to_video"],
+  storyboard: ["storyboard"],
 };
 
 export function tabModes(tab: ComposerTab, editOp: EditOp): Mode[] {
@@ -55,6 +60,7 @@ export function unsupportedReason(profile: ModelProfile, tab: ComposerTab, editO
   if (tab === "keyframes") return isH3(profile) ? "Keyframes are an LTX-2.5 feature" : `${variantLabel(profile)} doesn't do keyframes`;
   if (tab === "edit") return `${variantLabel(profile)} doesn't do ${MODE_LABEL[EDIT_OP_MODE[editOp]].toLowerCase()}`;
   if (tab === "frames") return `${variantLabel(profile)} doesn't take frames`;
+  if (tab === "storyboard") return `${variantLabel(profile)} doesn't do storyboards`;
   return `${variantLabel(profile)} needs reference media — use References or Edit`;
 }
 
@@ -75,7 +81,73 @@ export function modeFor(tab: ComposerTab, editOp: EditOp, roles: InputRole[]): M
       return "reference_to_video";
     case "edit":
       return EDIT_OP_MODE[editOp];
+    case "storyboard":
+      return "storyboard";
   }
+}
+
+// ---------------------------------------------------------------- storyboards
+
+/** A shot card in the composer. `join` is kept as chosen, but the first shot always renders fresh. */
+export interface StoryboardShot extends ShotDraft {
+  id: string;
+}
+
+/** How a shot starts, in the words the composer uses. */
+export const JOINS: Array<{ id: ShotJoin; label: string; hint: string }> = [
+  { id: "continue", label: "Continue", hint: "one unbroken take" },
+  { id: "cut", label: "Cut", hint: "new picture, same sound" },
+  { id: "fresh", label: "New shot", hint: "nothing carried over" },
+];
+
+let shotSeq = 0;
+
+export function makeShot(patch: Partial<ShotDraft> = {}): StoryboardShot {
+  shotSeq += 1;
+  return { id: `shot${shotSeq}-${Date.now().toString(36)}`, prompt: "", durationS: 5, join: "continue", ...patch };
+}
+
+/** Two shots in one take. The first renders fresh wherever it holds `continue`, which it keeps if it moves down. */
+export function defaultShots(): StoryboardShot[] {
+  return [makeShot(), makeShot()];
+}
+
+/** Fits every shot's duration to what the profile renders at this frame rate. */
+export function clampShots(profile: ModelProfile, fps: number, shots: StoryboardShot[]): StoryboardShot[] {
+  const lim = profile.limits;
+  const max = maxDurationAt(profile, fps);
+  const step = lim.duration_step_s || 1;
+  let changed = false;
+  const out = shots.map((shot) => {
+    const bounded = Math.min(Math.max(shot.durationS, lim.min_duration_s), max);
+    const durationS = Math.min(max, lim.min_duration_s + Math.round((bounded - lim.min_duration_s) / step) * step);
+    if (durationS === shot.durationS) return shot;
+    changed = true;
+    return { ...shot, durationS };
+  });
+  return changed ? out : shots;
+}
+
+export interface StoryboardLength {
+  /** The shots' durations added up. */
+  renderedS: number;
+  /** The stitched video, exactly as the gateway computes it. */
+  stitchedS: number;
+  /** Joined shots, each of which loses `overlapS` where it repeats the shot before. */
+  joins: number;
+  overlapS: number;
+}
+
+/** A storyboard's length, or null where the profile has no storyboard mode. */
+export function storyboardLength(profile: ModelProfile, shots: ShotDraft[], fps: number): StoryboardLength | null {
+  if (!profile.limits.storyboard || !shots.length) return null;
+  const specs = specsOf(shots);
+  return {
+    renderedS: shots.reduce((sum, shot) => sum + shot.durationS, 0),
+    stitchedS: storyboardDurationS(profile, specs, fps),
+    joins: specs.filter((shot) => shot.join !== "fresh").length,
+    overlapS: storyboardTrimFrames(profile) / fps,
+  };
 }
 
 export interface ShotSettings {
@@ -240,7 +312,10 @@ export function estimatePrice(
   settings: ShotSettings,
   fallbackReason: string | null,
   privacy: PrivacyMode = "private",
+  shots: ShotDraft[] = [],
 ): PriceQuote | null {
+  // A storyboard is priced by its stitched length; a model without storyboards can't price one.
+  if (mode === "storyboard" && (!profile.limits.storyboard || !shots.length)) return null;
   const params = fitParams(
     profile,
     mode,
@@ -251,8 +326,14 @@ export function estimatePrice(
       aspectRatio: settings.aspectRatio,
       fps: settings.fps,
       audio: settings.audio,
+      shots: mode === "storyboard" ? requestShots(shots) : undefined,
     },
     fallbackReason,
   );
   return priceQuote(profile, params, privacy);
+}
+
+/** The shots as a GenerateRequest carries them: the first always fresh. */
+export function requestShots(shots: ShotDraft[]): Array<{ prompt: string; durationS: number; join: ShotJoin }> {
+  return shots.map((shot, i) => ({ prompt: shot.prompt.trim(), durationS: shot.durationS, join: i === 0 ? "fresh" : shot.join }));
 }

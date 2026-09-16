@@ -237,7 +237,7 @@ export async function connect(page: Page, { credit = true }: { credit?: boolean 
 
 
 /**
- * A composer tab ("Text", "Frames", "Keyframes", "References", "Edit"). Matched on
+ * A composer tab ("Text", "Frames", "Keyframes", "References", "Edit", "Storyboard"). Matched on
  * the start of the name, because a tab holding inputs shows a count after its label.
  */
 export async function openTab(page: Page, name: string): Promise<void> {

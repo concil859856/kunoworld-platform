@@ -31,7 +31,7 @@ runs against the plain one.
 
 | Project | Port | Region | Specs |
 |---|---|---|---|
-| `unknown-region` | 3000 | none (H3 unlicensed) | `studio`, `modes`, `actions`, `validation`, `verify`, `responsive` |
+| `unknown-region` | 3000 | none (H3 unlicensed) | `studio`, `modes`, `actions`, `validation`, `verify`, `responsive`, `storyboard` |
 | `japan` | 3001 | `NEXT_PUBLIC_KUNO_DEV_COUNTRY=JP` | `h3-region`, `h3-director` |
 
 The studio has no API key: specs sign in through the gateway's email-link API and give the
@@ -74,6 +74,12 @@ Tests tagged `@needs-new-gateway` need a gateway with key sync (`/v1/me/keyvault
   carries), the missing-key and wrong-key messages, revoking both on the account page so the links stop working; and
   no sideways scroll at 320 / 375 / 768 px for share pages, the key sync panel and the account page (the untagged test).
 
+### `@needs-storyboard-gateway`
+
+The test tagged `@needs-storyboard-gateway` renders a storyboard for real, in both privacy modes, so it needs a gateway
+and worker that serve storyboards (`subnet/PROTOCOL.md`, "Storyboards"; `POST /v1/standard/videos` taking `shots`). The
+rest of `storyboard.spec.ts` runs on any gateway: run it with `--grep-invert @needs-storyboard-gateway` until then.
+
 ## What each spec covers
 
 - **studio** — text to video, first + last frame, library reload, H3 → LTX fallback.
@@ -86,6 +92,13 @@ Tests tagged `@needs-new-gateway` need a gateway with key sync (`/v1/me/keyvault
   Generate button is off, prompt length, seed range, per-role caps, duration/fps/size
   sets, negative-prompt and enhancer availability, and the retake window.
 - **verify**, **responsive** — the certificate page, 400 px layouts, reduced motion.
+- **storyboard** — the Storyboard tab: two shot cards to start with the first always a new shot, the join picker and its
+  explanations, reordering, 2 to 12 shots, the stitched length (each joined shot loses 17 frames) and its price in both
+  modes, the 120 s cap, shots fitted to 48 fps, each shot's prompt length with the scene, and no sideways scroll at 320 px.
+  Submission in both modes checks what the browser sends — the scene and shot prompts in the Standard body, only
+  `params.shots` and ciphertext for Private — and that a `shot i/N` stage reads "Shot i of N" on the take and in the
+  inspector. Those job calls, and `/v1/models`' storyboard limits on a gateway that predates them, are stood in with
+  `page.route`; the Private test still routes to, and verifies, a real attested worker.
 - **account** — email-link sign-in, API keys, a video charged to your own balance.
 - **payments** — the account page's top-up methods as the gateway's payment config
   switches them on, payment history, the return-from-checkout notices, linking coldkeys

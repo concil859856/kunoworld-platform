@@ -4,7 +4,16 @@
  * uploaded or charged. The gateway and the enclave still enforce the same rules.
  */
 
-import type { InputRole, Mode, ModelProfile } from "@kunoworld/sdk";
+import {
+  numFrames,
+  shotPrompt,
+  storyboardDurationS,
+  storyboardTrimFrames,
+  type InputRole,
+  type Mode,
+  type ModelProfile,
+  type ShotJoin,
+} from "@kunoworld/sdk";
 
 export const MODE_ROLES: Record<Mode, { required: InputRole[]; allowed: InputRole[] }> = {
   text_to_video: { required: [], allowed: [] },
@@ -17,6 +26,7 @@ export const MODE_ROLES: Record<Mode, { required: InputRole[]; allowed: InputRol
   extend_video: { required: ["source_video"], allowed: ["source_video", "reference_image"] },
   audio_to_video: { required: ["source_audio"], allowed: ["source_audio", "first_frame", "reference_image"] },
   retake: { required: ["source_video"], allowed: ["source_video"] },
+  storyboard: { required: [], allowed: [] },
 };
 
 export const VISUAL_ROLES: ReadonlySet<InputRole> = new Set<InputRole>([
@@ -40,6 +50,7 @@ export const MODE_LABEL: Record<Mode, string> = {
   extend_video: "Extend",
   audio_to_video: "Audio to video",
   retake: "Retake",
+  storyboard: "Storyboard",
 };
 
 const ROLE_NOUN: Record<InputRole, [string, string]> = {
@@ -66,6 +77,8 @@ export interface Problem {
   message: string;
   /** Roles the problem is about, so trays can highlight the right slots. */
   roles?: InputRole[];
+  /** A storyboard shot the problem is about (from 0), so its card can show it. */
+  shot?: number;
 }
 
 export function validateRoles(profile: ModelProfile, mode: Mode, roles: InputRole[]): Problem[] {
@@ -146,9 +159,11 @@ export interface ShotParams {
 export function validateParams(profile: ModelProfile, params: ShotParams, roles: InputRole[]): Problem[] {
   const out: Problem[] = [];
   const lim = profile.limits;
-  if (params.durationS < lim.min_duration_s || params.durationS > lim.max_duration_s) {
+  // A storyboard's length comes from its shots, which validateStoryboard checks one by one.
+  const timed = params.mode !== "storyboard";
+  if (timed && (params.durationS < lim.min_duration_s || params.durationS > lim.max_duration_s)) {
     out.push({ code: "duration", message: `Duration must be between ${lim.min_duration_s} and ${lim.max_duration_s} seconds.` });
-  } else {
+  } else if (timed) {
     const steps = (params.durationS - lim.min_duration_s) / lim.duration_step_s;
     if (Math.abs(steps - Math.round(steps)) > 1e-6) {
       out.push({ code: "duration_step", message: `Duration must be in ${lim.duration_step_s}-second steps.` });
@@ -161,16 +176,17 @@ export function validateParams(profile: ModelProfile, params: ShotParams, roles:
   }
   if (!lim.fps.includes(params.fps)) out.push({ code: "fps", message: `Frame rate must be one of ${lim.fps.join(", ")} fps.` });
   const fpsMax = lim.max_duration_s_by_fps?.[String(params.fps)];
-  if (fpsMax !== undefined && lim.fps.includes(params.fps) && params.durationS > fpsMax) {
+  if (timed && fpsMax !== undefined && lim.fps.includes(params.fps) && params.durationS > fpsMax) {
     out.push({ code: "duration_fps", message: `At ${params.fps} fps, ${profile.name} renders up to ${fpsMax} seconds.` });
   }
   if (params.audio && !lim.audio) out.push({ code: "audio", message: `${profile.name} can't generate audio.` });
   return [...out, ...validateRoles(profile, params.mode, roles)];
 }
 
-export function validatePrompt(profile: ModelProfile, prompt: string, negativePrompt?: string): Problem[] {
+/** `optional`: a storyboard's scene, which may be empty. */
+export function validatePrompt(profile: ModelProfile, prompt: string, negativePrompt?: string, optional = false): Problem[] {
   const out: Problem[] = [];
-  if (!prompt.trim()) out.push({ code: "prompt_empty", message: "Describe the shot first." });
+  if (!optional && !prompt.trim()) out.push({ code: "prompt_empty", message: "Describe the shot first." });
   if (prompt.length > profile.limits.max_prompt_chars) {
     out.push({
       code: "prompt_long",
@@ -181,4 +197,71 @@ export function validatePrompt(profile: ModelProfile, prompt: string, negativePr
     out.push({ code: "negative", message: `${profile.name} doesn't use negative prompts.` });
   }
   return out;
+}
+
+export interface ShotDraft {
+  prompt: string;
+  durationS: number;
+  join: ShotJoin;
+}
+
+const n = (x: number) => x.toLocaleString("en-US");
+const seconds = (x: number) => `${Number(x.toFixed(1))} s`;
+
+/**
+ * A storyboard's rules, from `_validate_storyboard` in kuno_protocol/profiles.py, plus what the enclave refuses: 2 to
+ * `max_shots` shots, each within the profile's duration limits with a prompt that fits alongside the scene, and a
+ * stitched length within `max_total_s`. The first shot's join is always fresh, so it isn't checked here: the composer
+ * sends it that way. Problems about one shot carry its index.
+ */
+export function validateStoryboard(profile: ModelProfile, scene: string, shots: ShotDraft[], fps: number): Problem[] {
+  const out: Problem[] = [];
+  const lim = profile.limits;
+  const board = lim.storyboard;
+  if (!board) return out; // validateRoles already says the model doesn't do storyboards.
+  if (shots.length < 2 || shots.length > board.max_shots) {
+    out.push({ code: "shot_count", message: `A storyboard has 2 to ${board.max_shots} shots — you have ${shots.length}.` });
+  }
+  const fpsMax = lim.max_duration_s_by_fps?.[String(fps)];
+  const trim = storyboardTrimFrames(profile);
+  const max = lim.max_prompt_chars;
+  let durationsOk = true;
+  shots.forEach((shot, i) => {
+    const name = `Shot ${i + 1}`;
+    if (!shot.prompt.trim()) out.push({ code: "shot_prompt_empty", message: `${name} needs a prompt.`, shot: i });
+    const length = shotPrompt(scene, shot.prompt).length;
+    if (length > max) {
+      out.push({
+        code: "shot_prompt_long",
+        message: `${name} and the scene come to ${n(length)} characters; ${profile.name} takes ${n(max)}.`,
+        shot: i,
+      });
+    }
+    const steps = (shot.durationS - lim.min_duration_s) / (lim.duration_step_s || 1);
+    if (shot.durationS < lim.min_duration_s || shot.durationS > lim.max_duration_s || Math.abs(steps - Math.round(steps)) > 1e-6) {
+      durationsOk = false;
+      out.push({ code: "shot_duration", message: `${name} must be ${lim.min_duration_s}–${lim.max_duration_s} seconds, in whole steps.`, shot: i });
+    } else if (fpsMax !== undefined && shot.durationS > fpsMax) {
+      durationsOk = false;
+      out.push({ code: "shot_duration_fps", message: `At ${fps} fps, ${name.toLowerCase()} can be at most ${fpsMax} seconds.`, shot: i });
+    } else if (i > 0 && shot.join !== "fresh" && numFrames(profile, shot.durationS, fps) <= trim) {
+      durationsOk = false;
+      out.push({ code: "shot_too_short", message: `${name} is too short to join to the shot before.`, shot: i });
+    }
+  });
+  if (durationsOk && shots.length) {
+    const stitched = storyboardDurationS(profile, specsOf(shots), fps);
+    if (stitched > board.max_total_s + 1e-6) {
+      out.push({
+        code: "storyboard_long",
+        message: `These shots make ${seconds(stitched)}; a storyboard can be at most ${board.max_total_s} s. Shorten or remove a shot.`,
+      });
+    }
+  }
+  return out;
+}
+
+/** The shots as the protocol sees them: the first always fresh. */
+export function specsOf(shots: Pick<ShotDraft, "durationS" | "join">[]): { duration_s: number; join: ShotJoin }[] {
+  return shots.map((shot, i) => ({ duration_s: shot.durationS, join: i === 0 ? "fresh" : shot.join }));
 }

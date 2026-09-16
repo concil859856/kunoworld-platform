@@ -26,6 +26,7 @@ const MODE_NAMES: Record<string, string> = {
   reference_to_video: "reference to video",
   video_edit: "video edit",
   extend_video: "extend video",
+  storyboard: "storyboard",
 };
 
 const SUMMARY =
@@ -55,6 +56,7 @@ export function llmsTxt(): string {
 Key facts:
 - Every video has a privacy mode. **Private** (the default) is end-to-end encrypted and runs only on confidential GPUs. **Standard** lets KunoWorld and the GPU provider read the job, so it can run on any GPU and costs less.
 - Before a client sends anything to a worker, it checks the worker itself: the worker's Intel TDX quote against Intel's root, its GPUs' NVIDIA attestation, and an owner-signed list of approved software images. None of these checks trusts KunoWorld's servers.
+- Creation modes: text, image and first/last frame to video, keyframes, references, video edit and extend, retake, audio to video, and storyboards (2 to 12 chained shots delivered as one video, on LTX-2.5 Fast).
 - Sexual and explicit content is banned in both modes. Videos are stored until their owner deletes them.
 - The MiniMax H3 licence excludes the United States, the European Union, the United Kingdom and South Korea; requests from there are served by LTX-2.5.
 - The whole project, explained in one file: ${url("/llms-full.txt")}
@@ -95,7 +97,7 @@ Updated ${UPDATED}. Short index: ${url("/llms.txt")}. This file describes the de
 
 ## 1. What KunoWorld is
 
-- **A video studio and API.** People describe a scene, or give frames, reference images, clips or audio, and get a video with sound. The website's studio is at ${url("/studio")}; developers use the JavaScript and Python SDKs or the HTTP API.
+- **A video studio and API.** People describe a scene, give frames, reference images, clips or audio, or plan several shots as a storyboard, and get a video with sound. The website's studio is at ${url("/studio")}; developers use the JavaScript and Python SDKs or the HTTP API.
 - **A privacy promise.** In Private mode, nobody but the customer and the attested enclave that renders the video can read the prompt, the inputs or the result: not KunoWorld, not the GPU owner, not the network in between.
 - **A verifiable result.** Each video comes with a receipt signed by the enclave key, stating which model made it from which (hashed) request, plus a C2PA content-credentials manifest embedded in the file. Anyone can check it at ${url("/verify")}.
 - **A Bittensor subnet.** Independent miners supply the GPUs and are paid in the subnet's emissions for verified work. Validators check that miners run the approved software on genuine confidential hardware. The subnet is not yet registered on Bittensor mainnet.
@@ -168,6 +170,7 @@ ${ltx.map(modelLine).join("\n")}
 MiniMax H3 (MiniMax; MiniMax H3 Community License):
 ${h3.map(modelLine).join("\n")}
 
+- **Storyboards.** LTX-2.5 Fast chains 2 to 12 shots into one video of at most 120 seconds, rendered one shot after another by one worker inside one enclave, with one receipt. The scene is written once and each shot has its own prompt and length. A shot either continues the one before (one unbroken take), cuts to a new picture over the same sound, or starts fresh. Each joined shot repeats the previous shot's last 17 frames, which are trimmed, so the video is a little shorter than its shots added up. The price is per stitched second. Storyboards run only on confidential GPUs, in both privacy modes, because validators don't step-audit them yet. In the JavaScript SDK pass \`shots\` (the scene goes in \`prompt\`); in the Python SDK, \`generate(prompt=scene, shots=[Shot(...)])\`; over HTTP, \`params.shots\` lists each shot's \`duration_s\` and \`join\`, and a Standard request adds \`shots: [{prompt}]\`.
 - **Prices.** The live profiles, limits and placeholder prices are at ${url("/models")} and \`GET /v1/models\`, which returns \`pricing_placeholder: true\` while they are placeholders. Every job costs at least $0.10. The gateway holds the price when a job is submitted and refunds it automatically if the job fails, is blocked, is canceled or times out.
 
 ## 7. Content policy and safety

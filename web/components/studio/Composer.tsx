@@ -11,6 +11,7 @@ import { offersStandard } from "@/lib/catalog";
 import { collectInputs, type ComposerApi } from "@/lib/composerState";
 import { usd } from "@/lib/format";
 import type { InputSummary } from "@/lib/library";
+import type { ShotSummary } from "@/lib/library";
 import {
   durationOptions,
   estimatePrice,
@@ -18,30 +19,37 @@ import {
   frameSize,
   modeFor,
   predictRoute,
+  requestShots,
+  storyboardLength,
   TABS,
 } from "@/lib/shot";
-import { MODE_LABEL, validateParams, validatePrompt, type Problem } from "@/lib/validation";
+import { MODE_LABEL, validateParams, validatePrompt, validateStoryboard, type Problem } from "@/lib/validation";
 import { NSFW_SENTENCE, PRIVACY_COPY } from "@/lib/privacy-copy";
 import { setPrivacyChoice, usePrivacyChoice } from "@/lib/usePrivacyChoice";
 
+import { StoryboardTray } from "./StoryboardTray";
 import { EditTray, FramesTray, KeyframesTray, ReferencesTray } from "./Trays";
 
 /*
- * The composer, covering all ten creation modes.
+ * The composer, covering all eleven creation modes.
  *
- * Five tabs map onto the modes: text, frames (first/last), keyframes, references, and
- * edit — which itself carries four operations (edit, extend, retake, audio-to-video).
+ * Six tabs map onto the modes: text, frames (first/last), keyframes, references, edit —
+ * which itself carries four operations (edit, extend, retake, audio-to-video) — and
+ * storyboard, where the prompt box holds the scene every shot shares.
  * The state machine, role collection and profile switching live in lib/composerState;
  * this file is the surface. Problems are computed every render rather than memoised,
  * because they derive from objects created during render.
  */
 
-const QUIET_UNTIL_ATTEMPT = new Set(["prompt_empty", "missing", "empty"]);
+const QUIET_UNTIL_ATTEMPT = new Set(["prompt_empty", "missing", "empty", "shot_prompt_empty"]);
 const MAX_SEED = 2 ** 31 - 1;
 
 export interface Submission {
+  /** For a storyboard, the scene; it may be empty. */
   prompt: string;
   mode: Mode;
+  /** A storyboard's shots, in order, the first fresh. */
+  shots?: ShotSummary[];
   inputs: GenerateInput[];
   summaries: InputSummary[];
   requested: ModelProfile;
@@ -112,6 +120,7 @@ export function Composer({
 
   const collected = collectInputs(state);
   const mode = modeFor(state.tab, state.editOp, collected.roles);
+  const storyboard = mode === "storyboard";
   const prediction = predictRoute(models, profile, mode);
   const target = prediction.ok ? prediction.profile : profile;
   const reason = prediction.ok ? prediction.reason : null;
@@ -119,18 +128,21 @@ export function Composer({
   // and the choice itself is kept for the next model that offers Standard.
   const privateOnly = !offersStandard(profile) ? profile : !offersStandard(target) ? target : null;
   const takePrivacy: PrivacyMode = privateOnly ? "private" : privacy;
-  const quote = prediction.ok ? estimatePrice(target, mode, collected.roles, state.settings, reason, takePrivacy) : null;
+  const quote = prediction.ok ? estimatePrice(target, mode, collected.roles, state.settings, reason, takePrivacy, state.shots) : null;
+  const length = storyboard ? storyboardLength(profile, state.shots, state.settings.fps) : null;
   const estimate = quote?.usd ?? null;
 
   const problems: Problem[] = (() => {
     const s = state.settings;
     const out: Problem[] = [
-      ...validatePrompt(profile, state.prompt, limits.negative_prompt ? s.negativePrompt : ""),
+      // A storyboard's scene may be empty; each shot needs its own prompt instead.
+      ...validatePrompt(profile, state.prompt, limits.negative_prompt ? s.negativePrompt : "", storyboard),
       ...validateParams(
         profile,
         { mode, durationS: s.durationS, resolution: s.resolution, aspectRatio: s.aspectRatio, fps: s.fps, audio: s.audio },
         collected.roles,
       ),
+      ...(storyboard ? validateStoryboard(profile, state.prompt, state.shots, s.fps) : []),
     ];
     if (state.tab === "frames" && !state.inputs.first && !state.inputs.last) {
       const i = out.findIndex((p) => p.code === "missing");
@@ -152,8 +164,8 @@ export function Composer({
   })();
 
   const shown = attempted ? problems : problems.filter((p) => !QUIET_UNTIL_ATTEMPT.has(p.code));
-  const trayProblems = shown.filter((p) => p.roles?.length);
-  const generalProblems = shown.filter((p) => !p.roles?.length);
+  const trayProblems = shown.filter((p) => p.roles?.length || p.shot !== undefined);
+  const generalProblems = shown.filter((p) => !p.roles?.length && p.shot === undefined);
   const blocked = problems.length > 0;
   const routeNotice = prediction.ok ? fallbackNotice(reason, profile, target, true) : null;
 
@@ -178,6 +190,7 @@ export function Composer({
     onGenerate({
       prompt: state.prompt.trim(),
       mode,
+      shots: storyboard ? requestShots(state.shots) : undefined,
       inputs: collected.inputs,
       summaries: collected.summaries,
       requested: profile,
@@ -224,8 +237,8 @@ export function Composer({
       </div>
 
       <div className="prompt-label">
-        <label htmlFor={`${ids}-prompt`}>Your prompt</label>
-        <span className="text-[12px] text-muted-foreground">{MODE_LABEL[mode]}</span>
+        <label htmlFor={`${ids}-prompt`}>{storyboard ? "Scene" : "Your prompt"}</label>
+        <span className="text-[12px] text-muted-foreground">{storyboard ? "Optional" : MODE_LABEL[mode]}</span>
         {limits.prompt_enhancer && (
           <button
             type="button"
@@ -248,15 +261,21 @@ export function Composer({
               submit();
             }
           }}
-          placeholder="Describe a scene, a feeling, a world that doesn't exist yet…"
+          placeholder={
+            storyboard
+              ? "Who and where: the characters, the place, the look. Every shot starts from this."
+              : "Describe a scene, a feeling, a world that doesn't exist yet…"
+          }
         />
         <div className="prompt-foot">
-          <span>Let your imagination do the talking.</span>
+          <span>{storyboard ? "Shared by every shot." : "Let your imagination do the talking."}</span>
           <span>
             {state.prompt.length.toLocaleString()}/{limits.max_prompt_chars.toLocaleString()}
           </span>
         </div>
       </div>
+
+      {state.tab === "storyboard" && <StoryboardTray composer={composer} problems={trayProblems} />}
 
       <div className="settings-row">
         <Picker
@@ -268,12 +287,22 @@ export function Composer({
           }}
           options={profiles.map((p) => ({ value: p.id, label: p.name }))}
         />
-        <Picker
-          label="Duration"
-          value={String(state.settings.durationS)}
-          onChange={(v) => actions.patchSettings({ durationS: Number(v) })}
-          options={durationOptions(profile, state.settings.fps).map((d) => ({ value: String(d), label: `${d} seconds` }))}
-        />
+        {storyboard ? (
+          // A storyboard's length comes from its shots: shown here, set on each shot.
+          <div className="stitched-field">
+            <span className="field-label">Stitched length</span>
+            <output className="select-control stitched-length" aria-label="Stitched length">
+              {length ? `${Number(length.stitchedS.toFixed(1))} s` : "—"}
+            </output>
+          </div>
+        ) : (
+          <Picker
+            label="Duration"
+            value={String(state.settings.durationS)}
+            onChange={(v) => actions.patchSettings({ durationS: Number(v) })}
+            options={durationOptions(profile, state.settings.fps).map((d) => ({ value: String(d), label: `${d} seconds` }))}
+          />
+        )}
         {Object.keys(limits.sizes).length > 1 && (
           <Picker
             label="Resolution"
@@ -418,7 +447,7 @@ export function Composer({
           {/* The reason sits on an input up in the tray, so say where to look. */}
           {generalProblems.length === 0 && (
             <li role="alert" className="status-message error-message">
-              Fix the highlighted inputs above.
+              {storyboard ? "Fix the highlighted shots above." : "Fix the highlighted inputs above."}
             </li>
           )}
         </ul>

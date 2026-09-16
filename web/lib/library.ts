@@ -10,7 +10,7 @@
  * here and never go into a key backup.
  */
 
-import type { AnyJobHandle, InputRole, JobHandle, Mode, PrivacyMode, Receipt } from "@kunoworld/sdk";
+import { storyboardStage, type AnyJobHandle, type InputRole, type JobHandle, type Mode, type PrivacyMode, type Receipt, type ShotJoin } from "@kunoworld/sdk";
 
 import type { FriendlyError } from "./errors";
 import type { ComposerTab, EditOp, ShotSettings } from "./shot";
@@ -35,6 +35,13 @@ export interface InputSummary {
   endS?: number;
 }
 
+/** One shot of a storyboard take. Its prompt can be empty where it wasn't kept (a Standard take listed by the gateway). */
+export interface ShotSummary {
+  prompt: string;
+  durationS: number;
+  join: ShotJoin;
+}
+
 export interface LibraryEntry {
   /** Job id once submitted; a local id before that. */
   id: string;
@@ -51,7 +58,11 @@ export interface LibraryEntry {
   fallbackReason: string | null;
   settings: ShotSettings;
   inputs: InputSummary[];
+  /** A storyboard's shots, in order; `prompt` above is its scene. */
+  shots?: ShotSummary[];
   step: Step;
+  /** The worker's own stage while it renders, e.g. `shot 3/8` for a storyboard. */
+  stage?: string | null;
   /** 0..1 of the generating step. */
   progress: number;
   /** Charged price once the gateway accepted the job, else the estimate. */
@@ -93,6 +104,12 @@ export function saveLibrary(fingerprint: string, entries: LibraryEntry[]): boole
 
 export function isActive(entry: LibraryEntry): boolean {
   return !["ready", "failed", "canceled"].includes(entry.step);
+}
+
+/** A take's state in a word or two: `Shot 3 of 8` while a storyboard renders its shots, else its step. */
+export function stepLabel(entry: Pick<LibraryEntry, "step" | "stage">): string {
+  const at = entry.step === "generating" ? storyboardStage(entry.stage) : null;
+  return at ? `Shot ${at.shot} of ${at.shots}` : entry.step;
 }
 
 // ---------------------------------------------------------------- key backup
@@ -148,7 +165,9 @@ function normalize(entry: LibraryEntry): LibraryEntry {
     fallbackReason: entry.fallbackReason ?? handle.fallbackReason ?? null,
     settings: { ...FALLBACK_SETTINGS, ...entry.settings },
     inputs: Array.isArray(entry.inputs) ? entry.inputs : [],
+    shots: Array.isArray(entry.shots) ? entry.shots : undefined,
     step,
+    stage: undefined,
     progress: 1,
     price: typeof entry.price === "number" ? entry.price : null,
     error: undefined,
