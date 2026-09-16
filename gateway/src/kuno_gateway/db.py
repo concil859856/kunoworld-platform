@@ -318,6 +318,19 @@ class Challenge(Base):
     answered_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
+class ValidatorFindings(Base):
+    """A findings report the main validator signed (kuno_protocol.findings), relayed to auditor validators. Migration 0018."""
+
+    __tablename__ = "validator_findings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    validator_hotkey: Mapped[str] = mapped_column(String(64), index=True)
+    issued_at: Mapped[float] = mapped_column(Float, index=True)
+    received_at: Mapped[float] = mapped_column(Float)
+    submitted_by: Mapped[str] = mapped_column(String(32))
+    document: Mapped[str] = mapped_column(Text)
+
+
 class Setting(Base):
     __tablename__ = "settings"
 

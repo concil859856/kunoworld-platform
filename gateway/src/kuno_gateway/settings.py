@@ -48,6 +48,10 @@ class Settings:
     attestation: str = "dev"
     dev_api_key: str | None = None
     validator_api_key: str | None = None
+    # The main validator's hotkey (ss58). When set, only findings it signed are relayed to auditors (VALIDATING.md).
+    main_validator_hotkey: str | None = None
+    # How long relayed findings reports are kept; auditors read those inside their scoring window.
+    findings_retention_s: float = 7 * 86400.0
     database_url: str | None = None
     dev_balance_usd: float = 100.0
     # Dev only: lets tests and local runs pretend to be in another country.
@@ -252,6 +256,8 @@ class Settings:
             attestation=env.get("KUNO_ATTESTATION", "dev") or "dev",
             dev_api_key=env.get("KUNO_DEV_API_KEY"),
             validator_api_key=env.get("KUNO_VALIDATOR_API_KEY"),
+            main_validator_hotkey=env.get("KUNO_MAIN_VALIDATOR_HOTKEY") or None,
+            findings_retention_s=float(env.get("KUNO_FINDINGS_RETENTION_S", str(7 * 86400))),
             database_url=env.get("KUNO_DATABASE_URL"),
             allow_country_override=env.get("KUNO_ALLOW_COUNTRY_OVERRIDE", "0") == "1",
             enforce_miner_region=env.get("KUNO_ENFORCE_MINER_REGION", "1") == "1",

@@ -9,13 +9,14 @@ import secrets
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
-from sqlalchemy import select
+from pydantic import BaseModel, ValidationError
+from sqlalchemy import delete, select
 
+from kuno_protocol.findings import SignedFindings, verify_findings
 from kuno_protocol.schemas import GenerationParams, JobState
 
 from .auth import gw, require_validator
-from .db import Account, Challenge, Enclave, Job
+from .db import Account, Challenge, Enclave, Job, ValidatorFindings
 from .state import enclave_public
 
 router = APIRouter(prefix="/validator/v1", tags=["validator"])
@@ -110,3 +111,41 @@ async def get_challenge(challenge_id: str, request: Request, validator: Account 
         "status": challenge.status,
         "evidence": json.loads(challenge.evidence) if challenge.evidence else None,
     }
+
+
+# ---------------------------------------------------------------- findings: main validator -> auditors
+
+
+@router.post("/findings", status_code=201)
+async def publish_findings(request: Request, validator: Account = Depends(require_validator)):
+    """The main validator's signed findings for a round. Auditors verify the signature themselves; the gateway checks it
+    too, so a forged or foreign report is refused here rather than served."""
+    state = gw(request)
+    try:
+        signed = SignedFindings.model_validate(await request.json())
+    except (ValidationError, ValueError) as exc:
+        raise HTTPException(422, {"code": "bad_findings", "message": f"Not a signed findings report: {str(exc)[:200]}"}) from None
+    hotkey = signed.report.validator_hotkey
+    if state.settings.main_validator_hotkey and hotkey != state.settings.main_validator_hotkey:
+        raise HTTPException(403, {"code": "not_main_validator", "message": "Only the main validator publishes findings."})
+    ok, detail = verify_findings(signed, hotkey)
+    if not ok:
+        raise HTTPException(422, {"code": "bad_signature", "message": detail})
+    now = time.time()
+    with state.session() as s, s.begin():
+        s.execute(delete(ValidatorFindings).where(ValidatorFindings.issued_at < now - state.settings.findings_retention_s))
+        s.add(ValidatorFindings(
+            validator_hotkey=hotkey, issued_at=signed.report.issued_at, received_at=now, submitted_by=validator.id,
+            document=signed.model_dump_json(),
+        ))
+    return {"accepted": True, "findings": len(signed.report.findings)}
+
+
+@router.get("/findings")
+async def list_findings(request: Request, since: float = 0.0, limit: int = 200, _validator: Account = Depends(require_validator)):
+    """Signed findings reports issued after `since`, oldest first. Verify each against the main validator's hotkey."""
+    with gw(request).session() as s:
+        rows = s.scalars(
+            select(ValidatorFindings).where(ValidatorFindings.issued_at > since).order_by(ValidatorFindings.issued_at).limit(min(limit, 1000))
+        ).all()
+    return [json.loads(row.document) for row in rows]
