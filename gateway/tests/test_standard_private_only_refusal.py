@@ -65,6 +65,9 @@ def test_models_list_both_prices_and_the_modes_each_profile_is_sold_in(gw):
         "min_job_usd": 0.1,
         "long_clip": None,
         "fps_multipliers": {"48": 1.5, "50": 1.5},
+        # A plan (Director) is a flat price in each mode, not per second.
+        "plan_usd": 0.1,
+        "standard_plan_usd": 0.08,
     }
     assert fast["limits"]["max_duration_s_by_fps"] == {"48": 10.0, "50": 10.0}
     assert models["h3-turbo"]["pricing"]["long_clip"] == {"over_s": 8.0, "multiplier": 1.4}
