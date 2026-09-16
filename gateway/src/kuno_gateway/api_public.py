@@ -65,6 +65,15 @@ async def manifest(request: Request):
     return gw(request).manifest.model_dump(mode="json")
 
 
+@router.get("/manifest/signed")
+async def signed_manifest(request: Request):
+    """The manifest with the owner's signature, for clients that pin the owner key rather than trust this gateway."""
+    signed = gw(request).signed_manifest
+    if signed is None:
+        raise _error(404, "unsigned_manifest", "This gateway runs an unsigned development manifest; pin a manifest instead.")
+    return signed.model_dump(mode="json")
+
+
 @router.get("/switch")
 async def switch(request: Request):
     return gw(request).switch.model_dump(mode="json")
@@ -499,5 +508,6 @@ async def provenance(content_digest: str, request: Request):
             "image_digest": enclave.image_digest,
             "hardware": json.loads(enclave.hardware),
             "evidence": json.loads(enclave.evidence),
+            "endorsements": json.loads(enclave.endorsements) if enclave.endorsements else None,
         },
     }

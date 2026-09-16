@@ -26,6 +26,12 @@ export const PINNED_MANIFEST: GoldenManifest | undefined = (() => {
   }
 })();
 
+/**
+ * The subnet owner's Ed25519 public key (base64). With it, the studio uses the gateway's manifest only once the owner's
+ * signature on it verifies in the browser, so neither the gateway nor this site's server can widen what workers pass.
+ */
+export const OWNER_PUBLIC_KEY: string | undefined = process.env.NEXT_PUBLIC_KUNO_OWNER_PUBLIC_KEY?.trim() || undefined;
+
 export const SITE = {
   name: "KunoWorld",
   domain: "kunoworld.com",

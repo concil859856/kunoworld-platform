@@ -9,7 +9,7 @@
 
 import { KunoClient, type Provenance } from "@kunoworld/sdk";
 
-import { DEV_COUNTRY, PINNED_MANIFEST, PROXY_BASE } from "./config";
+import { DEV_COUNTRY, OWNER_PUBLIC_KEY, PINNED_MANIFEST, PROXY_BASE } from "./config";
 
 /** Where an older studio kept an API key in this browser. */
 const LEGACY_KEY_STORAGE = "kuno.apiKey.v1";
@@ -24,7 +24,7 @@ export function forgetLegacyApiKey(): void {
 }
 
 export function makeClient(): KunoClient {
-  return KunoClient.forProxy(PROXY_BASE, { country: DEV_COUNTRY, manifest: PINNED_MANIFEST });
+  return KunoClient.forProxy(PROXY_BASE, { country: DEV_COUNTRY, manifest: PINNED_MANIFEST, ownerPublicKey: OWNER_PUBLIC_KEY });
 }
 
 /** Public certificate lookup by SHA-256, for /verify?sha256=… links that carry no file. */

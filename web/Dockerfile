@@ -42,9 +42,13 @@ COPY platform/web ./
 
 ARG NEXT_PUBLIC_KUNO_API=http://localhost:8080
 ARG NEXT_PUBLIC_KUNO_DEV_COUNTRY=
+# The subnet owner's Ed25519 public key (base64): the studio then checks the owner's signature on the gateway's manifest
+# in the browser. Set it for any deployment customers use.
+ARG NEXT_PUBLIC_KUNO_OWNER_PUBLIC_KEY=
 ARG PATCH_STANDALONE=0
 ENV NEXT_PUBLIC_KUNO_API=${NEXT_PUBLIC_KUNO_API} \
     NEXT_PUBLIC_KUNO_DEV_COUNTRY=${NEXT_PUBLIC_KUNO_DEV_COUNTRY} \
+    NEXT_PUBLIC_KUNO_OWNER_PUBLIC_KEY=${NEXT_PUBLIC_KUNO_OWNER_PUBLIC_KEY} \
     KUNO_DIST_DIR=.next
 
 RUN if ! grep -Eq "output:[[:space:]]*['\"]standalone['\"]" next.config.ts; then \

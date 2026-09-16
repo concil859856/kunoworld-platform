@@ -159,6 +159,7 @@ async def register_enclave(request: Request):
         enclave.profiles = json.dumps(evidence.profiles)
         enclave.hardware = json.dumps(evidence.hardware)
         enclave.evidence = evidence.model_dump_json()
+        enclave.endorsements = verdict.endorsements.model_dump_json() if verdict.endorsements is not None else None
         enclave.capacity = body.capacity
         enclave.status = "active"
         enclave.verified_at = enclave.last_seen = now
@@ -394,6 +395,10 @@ async def answer_challenge(challenge_id: str, request: Request, auth=Depends(req
                 try:
                     state.bind_hardware(s, row, verdict.hardware, now)
                     row.verified_at = now
+                    # Clients refuse evidence older than the manifest's max_evidence_age_s, so what routes serve is the
+                    # freshest verified answer, with the signed material that verified it.
+                    row.evidence = answer.evidence.model_dump_json()
+                    row.endorsements = verdict.endorsements.model_dump_json() if verdict.endorsements is not None else None
                     if verdict.gpu_count is not None:
                         row.gpu_count = verdict.gpu_count
                 except HardwareInUse as exc:

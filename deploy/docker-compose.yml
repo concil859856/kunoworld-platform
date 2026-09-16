@@ -193,6 +193,7 @@ services:
       dockerfile: platform/web/Dockerfile
       args:
         NEXT_PUBLIC_KUNO_API: ${KUNO_PUBLIC_API_URL:-http://gateway.localhost:18080}
+        NEXT_PUBLIC_KUNO_OWNER_PUBLIC_KEY: ${KUNO_OWNER_PUBLIC_KEY:-}
         PATCH_STANDALONE: ${WEB_PATCH_STANDALONE:-0}
     restart: unless-stopped
     ports:

@@ -28,6 +28,7 @@ const rule = (method: Rule["method"], path: string, session = true): Rule => ({ 
 const RULES: Rule[] = [
   rule("GET", "v1/models", false),
   rule("GET", "v1/manifest", false),
+  rule("GET", "v1/manifest/signed", false),
   rule("GET", "v1/provenance/[0-9a-f]{64}", false),
   rule("GET", "v1/route"),
   rule("GET", "v1/account/eligibility"),

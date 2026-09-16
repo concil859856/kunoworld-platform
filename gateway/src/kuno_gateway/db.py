@@ -237,6 +237,9 @@ class Enclave(Base):
     # The serving envelope from the last registration, as JSON (kuno_protocol.envelope): profile -> resolution -> aspect
     # ratio -> fps -> longest duration_s. None: the enclave serves its profiles' full limits. Migration 0016.
     envelope: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # What Intel and NVIDIA signed for the latest verified evidence, as JSON (kuno_protocol.endorsements), served next to
+    # `evidence` so clients can check it without trusting the gateway. None: nothing third-party signed. Migration 0017.
+    endorsements: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class HardwareBinding(Base):

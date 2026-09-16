@@ -205,6 +205,7 @@ async def register_candidate(request: Request):
         enclave.profiles = json.dumps(candidate_profiles(spec.target_profile))
         enclave.hardware = json.dumps(evidence.hardware)
         enclave.evidence = evidence.model_dump_json()
+        enclave.endorsements = verdict.endorsements.model_dump_json() if verdict.endorsements is not None else None
         enclave.capacity = registration.capacity
         enclave.status = "active"
         enclave.verified_at = enclave.last_seen = now
@@ -257,6 +258,8 @@ async def answer_candidate_challenge(challenge_id: str, request: Request, auth=D
         row = s.get(Enclave, enclave.id)
         if verdict.ok and verdict.enclave_id == enclave.id:
             row.verified_at = challenge.answered_at
+            row.evidence = evidence.model_dump_json()
+            row.endorsements = verdict.endorsements.model_dump_json() if verdict.endorsements is not None else None
         elif verdict.enclave_id == enclave.id:
             row.status = "stale"
     return {"ok": verdict.ok, "reasons": verdict.reasons}

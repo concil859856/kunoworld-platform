@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from fastapi import Request
+from kuno_protocol.attestation import signed_manifest_in
 from kuno_protocol.canonical import b64d
 from kuno_protocol.policy import policy_from_env
 from kuno_protocol.profiles import ModelProfile, load_profiles
@@ -85,7 +86,11 @@ class GatewayState:
         self.policy = policy_from_env(env)
         if self.policy.production:
             require_durable_blob_backend(settings, production=True)
-        self.manifest = self.policy.load_manifest(env.get("KUNO_SIGNED_MANIFEST") or settings.manifest_path)
+        manifest_path = env.get("KUNO_SIGNED_MANIFEST") or settings.manifest_path
+        self.manifest = self.policy.load_manifest(manifest_path)
+        # The owner-signed form (verified by load_manifest when an owner key is configured), served whole so clients that
+        # pin the owner's key check the signature themselves. None when the manifest file is bare (development).
+        self.signed_manifest = signed_manifest_in(manifest_path)
         self.quote_verifier = self.policy.quote_verifier
         self.gpu_verifier = self.policy.gpu_verifier
         self.claim_lock = threading.Lock()
@@ -497,6 +502,8 @@ def enclave_public(enclave: Enclave, hardware: list[HardwareBinding] | None = No
         "profiles": json.loads(enclave.profiles),
         "hardware": json.loads(enclave.hardware),
         "evidence": json.loads(enclave.evidence),
+        # Intel collateral and NRAS answers for that evidence (kuno_protocol.endorsements); None for simulated enclaves.
+        "endorsements": json.loads(enclave.endorsements) if enclave.endorsements else None,
         "capacity": enclave.capacity,
         "inflight": enclave.inflight,
         "status": enclave.status,
