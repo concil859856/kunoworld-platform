@@ -87,6 +87,15 @@ def serves(enclave: Enclave, privacy: str) -> bool:
     return check(enclave, privacy) if check else tier_serves(tier_for_tee(enclave.tee), privacy)
 
 
+def routing_tier(privacy: str, mode) -> str:
+    """The privacy mode whose tier a job is routed by. A storyboard carries no step commitment, and step audits are the
+    only integrity check on open-tier miners, so a Standard storyboard goes only where a Private job could: confidential
+    enclaves."""
+    from kuno_protocol.profiles import Mode
+
+    return "private" if mode == Mode.STORYBOARD else privacy
+
+
 def enclaves_for(state: GatewayState, s: Session, profile_id: str, privacy: str, fit=None) -> list[Enclave]:
     """Fresh enclaves for a profile that may run a job in this mode, least loaded first. `fit`
     (kuno_protocol.envelope.EnvelopeQuery) keeps only those whose serving envelope has room for the request."""

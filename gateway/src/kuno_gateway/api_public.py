@@ -124,9 +124,11 @@ async def route(
         with state.session() as s:
             moderation.enforce(s, state.settings, account, privacy)
 
+    tier = standard_jobs.routing_tier(privacy, mode)
+
     def has_capacity(profile: ModelProfile) -> bool:
         with state.session() as s:
-            return bool(standard_jobs.enclaves_for(state, s, profile.id, privacy))
+            return bool(standard_jobs.enclaves_for(state, s, profile.id, tier))
 
     # Only profiles sold in this mode can serve it, as the request or as a fallback: a profile with no Standard price is Private-only.
     offered = {pid: p for pid, p in state.profiles.items() if p.offers(privacy)}
@@ -145,8 +147,8 @@ async def route(
             raise _error(422, "privacy_mode_unavailable", f"No model offers {mode.value} in {privacy.capitalize()} mode. Use Private mode.") from None
         raise _error(exc.status, exc.code, exc.message) from None
     with state.session() as s:
-        candidates = standard_jobs.enclaves_for(state, s, chosen.profile.id, privacy, fit=None if fit.empty else fit)
-        if not candidates and not fit.empty and (available := standard_jobs.enclaves_for(state, s, chosen.profile.id, privacy)):
+        candidates = standard_jobs.enclaves_for(state, s, chosen.profile.id, tier, fit=None if fit.empty else fit)
+        if not candidates and not fit.empty and (available := standard_jobs.enclaves_for(state, s, chosen.profile.id, tier)):
             raise no_fit_error(chosen.profile, fit, available, storyboard=mode is Mode.STORYBOARD)
         if account is not None:
             # A client seals to the first attested enclave listed, so the order is the routing (admission.py).

@@ -12,6 +12,7 @@ import json
 import pytest
 from account_sessions import build_exports, export_zip, signed_in
 from test_standard_moderation_flow import (  # fixtures and helpers
+    ENCLAVE,
     TEXT,
     balance,
     gw,  # noqa: F401  (fixture)
@@ -22,7 +23,7 @@ from test_standard_moderation_flow import (  # fixtures and helpers
 )
 
 from kuno_gateway import ledger
-from kuno_gateway.db import Blob, Job
+from kuno_gateway.db import Blob, Enclave, Job
 from kuno_gateway.db_moderation import StandardJob, Strike
 from kuno_protocol.profiles import Mode, load_profiles, storyboard_duration_s
 from kuno_protocol.schemas import GenerationParams, ShotPrompt, ShotSpec
@@ -39,6 +40,18 @@ def board(*spec: tuple[float, str], resolution: str = "720p") -> GenerationParam
 
 
 BOARD = board((5, "fresh"), (5, "continue"), (5, "cut"))
+
+
+@pytest.fixture(autouse=True)
+def confidential(gw):
+    """The flow's simulated worker is open-tier; storyboards go only to confidential enclaves (standard_jobs.routing_tier),
+    so these tests run it as a confidential one. test_open_tier_workers_get_no_storyboards turns it back."""
+    set_tee(gw, "mock")
+
+
+def set_tee(gw, tee: str) -> None:
+    with gw.state.session() as s, s.begin():
+        s.get(Enclave, ENCLAVE).tee = tee
 
 
 def post(gw, headers, *, params: GenerationParams = BOARD, prompt: str = SCENE, shots=SHOTS, **extra):
@@ -205,3 +218,18 @@ def test_the_owners_data_export_carries_a_storyboards_shot_prompts(gw, media):
     assert build_exports(gw) == 1
     request = json.loads(export_zip(gw, alice.headers, requested.json()["export_id"]).read(f"standard/{job_id}/request.json"))
     assert (request["prompt"], request["shots"], request["seed"] is not None) == (SCENE, [{"prompt": p} for p in SHOTS], True)
+
+
+def test_open_tier_workers_get_no_storyboards(gw):
+    # Storyboards carry no step commitment, and step audits are the only integrity check on the open tier.
+    set_tee(gw, "open")
+    account_id, headers = new_account(gw)
+    before = balance(gw, account_id)
+    refused = post(gw, headers)
+    assert (refused.status_code, refused.json()["detail"]["code"]) == (503, "no_capacity"), refused.text
+    assert balance(gw, account_id) == before and nothing_stored(gw, account_id)
+    route = gw.client.get("/v1/route", params={"mode": "storyboard", "profile_id": FAST.id, "privacy": "standard"}, headers=headers)
+    assert route.json()["detail"]["code"] == "no_capacity"
+    # An ordinary Standard job still reaches the same open-tier worker.
+    clip = GenerationParams(profile_id=FAST.id, mode=Mode.TEXT_TO_VIDEO, duration_s=5, resolution="720p", aspect_ratio="16:9", fps=24)
+    assert post(gw, headers, params=clip, prompt="A red square drifting", shots=None).status_code == 201

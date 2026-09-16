@@ -98,7 +98,9 @@ Steps 1 to 4 come before the content check, so a malformed request is never a st
 as `SealedPayload.shots` and stores them on the job (`standard_jobs.shots`, migration 0020) next to the prompt: they are
 returned wherever the prompt is (the owner's list, the validator record, an operator's review, the data export) and
 deleted with it. The price is the stitched `duration_s` at the Standard rate (`PAYMENTS.md`). The enclave is picked by
-the longest shot, since shots render one at a time; `503 no_capacity` then names that shot's length.
+the longest shot, since shots render one at a time; `503 no_capacity` then names that shot's length. Only confidential
+enclaves take storyboards (`standard_jobs.routing_tier`): a storyboard carries no step commitment, and step audits are
+the only integrity check on open-tier miners.
 
 ## Deleting a video (both modes)
 

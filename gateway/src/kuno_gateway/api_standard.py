@@ -297,8 +297,9 @@ async def _create(body: StandardJobCreate, request: Request, account: Account) -
         # Only workers whose serving envelope fits these params (envelopes.py): a consumer card never gets a job it would
         # have to refuse.
         fit = EnvelopeQuery.of(params)
-        routable = standard_jobs.enclaves_for(state, s, profile.id, STANDARD, fit=fit)
-        if not routable and (available := standard_jobs.enclaves_for(state, s, profile.id, STANDARD)):
+        tier = standard_jobs.routing_tier(STANDARD, params.mode)
+        routable = standard_jobs.enclaves_for(state, s, profile.id, tier, fit=fit)
+        if not routable and (available := standard_jobs.enclaves_for(state, s, profile.id, tier)):
             raise no_fit_error(profile, fit, available, storyboard=params.shots is not None)
         # Open-tier miners get customer jobs only after passing validator probes, and validators' jobs reach
         # confidential miners that haven't served this family lately (admission.py).
