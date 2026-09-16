@@ -14,6 +14,14 @@ const nextConfig: NextConfig = {
   distDir: process.env.KUNO_DIST_DIR || ".next",
   turbopack: { root: workspaceRoot },
   outputFileTracingRoot: workspaceRoot,
+  // llms.txt is the convention agents look for (llmstxt.org); the other names people guess lead there too.
+  async redirects() {
+    return [
+      { source: "/agent.txt", destination: "/llms.txt", permanent: true },
+      { source: "/agents.txt", destination: "/llms.txt", permanent: true },
+      { source: "/llm.txt", destination: "/llms.txt", permanent: true },
+    ];
+  },
   async headers() {
     return [
       {

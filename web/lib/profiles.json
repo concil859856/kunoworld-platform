@@ -88,9 +88,88 @@
           "768p": 17
         },
         "duration_slope": 0.05,
-        "note": "PLACEHOLDER GPU-cost weights (research/pricing/costs.md 8.4), not benchmarked"
+        "note": "PLACEHOLDER GPU-cost weights (research/pricing/costs.md 8.4); not benchmarked — the other H3 profiles were measured 2026-09-15 (research/pricing/measured_2026-09-15.md) and cost 1.7x their estimate, so expect this to be low too"
       },
-      "min_vram_gb": 80
+      "min_vram_gb": 80,
+      "verified": {
+        "variant": "deterministic",
+        "runtime": "diffusers-modular-h3/1",
+        "scheduler": "minimax-h3-flow (video shift 6, audio shift 3)",
+        "stage_steps": [
+          8
+        ],
+        "replayable_stages": [
+          0
+        ],
+        "hardware_classes": [
+          {
+            "id": "C4.h200-141gb.x4.ulysses4",
+            "tier": "C4",
+            "gpu_sku": "NVIDIA H200 141GB (HGX H200 8-GPU; one of the two workers in a c8.h200-141gb.x8 TD)",
+            "gpu_count": 4,
+            "parallel": {
+              "ulysses": 4
+            },
+            "interconnect": "nvlink, protected PCIe (GPU-to-GPU traffic not encrypted)",
+            "dev": false
+          },
+          {
+            "id": "C4.b200-180gb.x4.ulysses4",
+            "tier": "C4",
+            "gpu_sku": "NVIDIA B200 180GB (HGX B200; one of the two workers in a c8.b200-180gb.x8 TD)",
+            "gpu_count": 4,
+            "parallel": {
+              "ulysses": 4
+            },
+            "interconnect": "nvlink, multi-GPU passthrough CC (encrypted)",
+            "dev": false
+          },
+          {
+            "id": "C4.b300-288gb.x4.ulysses4",
+            "tier": "C4",
+            "gpu_sku": "NVIDIA B300 288GB (HGX B300; one of the two workers in a c8.b300-288gb.x8 TD)",
+            "gpu_count": 4,
+            "parallel": {
+              "ulysses": 4
+            },
+            "interconnect": "nvlink, multi-GPU passthrough CC (encrypted)",
+            "dev": false
+          },
+          {
+            "id": "dev-cpu",
+            "tier": "dev",
+            "gpu_sku": "none (toy denoiser on CPU)",
+            "gpu_count": 0,
+            "parallel": {},
+            "interconnect": null,
+            "dev": true
+          }
+        ],
+        "determinism": {
+          "use_deterministic_algorithms": true,
+          "cublas_workspace_config": ":4096:8",
+          "allow_tf32": false,
+          "cudnn_deterministic": true,
+          "cudnn_benchmark": false,
+          "float32_matmul_precision": "highest",
+          "torch_compile": false,
+          "kernel_autotuning": false,
+          "data_dependent_caching": false,
+          "attention_backend": "sdpa",
+          "noise": "torch-cpu-generator",
+          "latent_dtype": "bfloat16",
+          "env": {
+            "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+            "TORCHINDUCTOR_DETERMINISTIC": "1",
+            "PYTHONHASHSEED": "0",
+            "NCCL_ALGO": "Ring",
+            "NCCL_PROTO": "Simple",
+            "NCCL_NVLS_ENABLE": "0"
+          }
+        },
+        "retention_checkpoint_every": 1,
+        "audit_rate": 0.03
+      }
     },
     {
       "id": "h3",
@@ -173,12 +252,91 @@
       },
       "vcu_weights": {
         "per_output_second": {
-          "768p": 60
+          "768p": 100
         },
         "duration_slope": 0.06,
-        "note": "PLACEHOLDER GPU-cost weights (research/pricing/costs.md 8.4), not benchmarked"
+        "note": "GPU-cost weights, measured 2026-09-15 (research/pricing/measured_2026-09-15.md): 5 s at 768p on 4x H200"
       },
-      "min_vram_gb": 80
+      "min_vram_gb": 80,
+      "verified": {
+        "variant": "deterministic",
+        "runtime": "diffusers-modular-h3/1",
+        "scheduler": "minimax-h3-flow (video shift 12, audio shift 3)",
+        "stage_steps": [
+          50
+        ],
+        "replayable_stages": [
+          0
+        ],
+        "hardware_classes": [
+          {
+            "id": "C4.h200-141gb.x4.ulysses4",
+            "tier": "C4",
+            "gpu_sku": "NVIDIA H200 141GB (HGX H200 8-GPU; one of the two workers in a c8.h200-141gb.x8 TD)",
+            "gpu_count": 4,
+            "parallel": {
+              "ulysses": 4
+            },
+            "interconnect": "nvlink, protected PCIe (GPU-to-GPU traffic not encrypted)",
+            "dev": false
+          },
+          {
+            "id": "C4.b200-180gb.x4.ulysses4",
+            "tier": "C4",
+            "gpu_sku": "NVIDIA B200 180GB (HGX B200; one of the two workers in a c8.b200-180gb.x8 TD)",
+            "gpu_count": 4,
+            "parallel": {
+              "ulysses": 4
+            },
+            "interconnect": "nvlink, multi-GPU passthrough CC (encrypted)",
+            "dev": false
+          },
+          {
+            "id": "C4.b300-288gb.x4.ulysses4",
+            "tier": "C4",
+            "gpu_sku": "NVIDIA B300 288GB (HGX B300; one of the two workers in a c8.b300-288gb.x8 TD)",
+            "gpu_count": 4,
+            "parallel": {
+              "ulysses": 4
+            },
+            "interconnect": "nvlink, multi-GPU passthrough CC (encrypted)",
+            "dev": false
+          },
+          {
+            "id": "dev-cpu",
+            "tier": "dev",
+            "gpu_sku": "none (toy denoiser on CPU)",
+            "gpu_count": 0,
+            "parallel": {},
+            "interconnect": null,
+            "dev": true
+          }
+        ],
+        "determinism": {
+          "use_deterministic_algorithms": true,
+          "cublas_workspace_config": ":4096:8",
+          "allow_tf32": false,
+          "cudnn_deterministic": true,
+          "cudnn_benchmark": false,
+          "float32_matmul_precision": "highest",
+          "torch_compile": false,
+          "kernel_autotuning": false,
+          "data_dependent_caching": false,
+          "attention_backend": "sdpa",
+          "noise": "torch-cpu-generator",
+          "latent_dtype": "bfloat16",
+          "env": {
+            "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+            "TORCHINDUCTOR_DETERMINISTIC": "1",
+            "PYTHONHASHSEED": "0",
+            "NCCL_ALGO": "Ring",
+            "NCCL_PROTO": "Simple",
+            "NCCL_NVLS_ENABLE": "0"
+          }
+        },
+        "retention_checkpoint_every": 1,
+        "audit_rate": 0.02
+      }
     },
     {
       "id": "h3-reference",
@@ -290,12 +448,91 @@
       },
       "vcu_weights": {
         "per_output_second": {
-          "768p": 90
+          "768p": 163
         },
         "duration_slope": 0.065,
-        "note": "PLACEHOLDER GPU-cost weights (research/pricing/costs.md 8.4), not benchmarked"
+        "note": "GPU-cost weights, measured 2026-09-15 (research/pricing/measured_2026-09-15.md): 5 s at 768p on 4x H200"
       },
-      "min_vram_gb": 80
+      "min_vram_gb": 80,
+      "verified": {
+        "variant": "deterministic",
+        "runtime": "diffusers-modular-h3/1",
+        "scheduler": "minimax-h3-flow (video shift 12, audio shift 3)",
+        "stage_steps": [
+          50
+        ],
+        "replayable_stages": [
+          0
+        ],
+        "hardware_classes": [
+          {
+            "id": "C4.h200-141gb.x4.ulysses4",
+            "tier": "C4",
+            "gpu_sku": "NVIDIA H200 141GB (HGX H200 8-GPU; one of the two workers in a c8.h200-141gb.x8 TD)",
+            "gpu_count": 4,
+            "parallel": {
+              "ulysses": 4
+            },
+            "interconnect": "nvlink, protected PCIe (GPU-to-GPU traffic not encrypted)",
+            "dev": false
+          },
+          {
+            "id": "C4.b200-180gb.x4.ulysses4",
+            "tier": "C4",
+            "gpu_sku": "NVIDIA B200 180GB (HGX B200; one of the two workers in a c8.b200-180gb.x8 TD)",
+            "gpu_count": 4,
+            "parallel": {
+              "ulysses": 4
+            },
+            "interconnect": "nvlink, multi-GPU passthrough CC (encrypted)",
+            "dev": false
+          },
+          {
+            "id": "C4.b300-288gb.x4.ulysses4",
+            "tier": "C4",
+            "gpu_sku": "NVIDIA B300 288GB (HGX B300; one of the two workers in a c8.b300-288gb.x8 TD)",
+            "gpu_count": 4,
+            "parallel": {
+              "ulysses": 4
+            },
+            "interconnect": "nvlink, multi-GPU passthrough CC (encrypted)",
+            "dev": false
+          },
+          {
+            "id": "dev-cpu",
+            "tier": "dev",
+            "gpu_sku": "none (toy denoiser on CPU)",
+            "gpu_count": 0,
+            "parallel": {},
+            "interconnect": null,
+            "dev": true
+          }
+        ],
+        "determinism": {
+          "use_deterministic_algorithms": true,
+          "cublas_workspace_config": ":4096:8",
+          "allow_tf32": false,
+          "cudnn_deterministic": true,
+          "cudnn_benchmark": false,
+          "float32_matmul_precision": "highest",
+          "torch_compile": false,
+          "kernel_autotuning": false,
+          "data_dependent_caching": false,
+          "attention_backend": "sdpa",
+          "noise": "torch-cpu-generator",
+          "latent_dtype": "bfloat16",
+          "env": {
+            "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+            "TORCHINDUCTOR_DETERMINISTIC": "1",
+            "PYTHONHASHSEED": "0",
+            "NCCL_ALGO": "Ring",
+            "NCCL_PROTO": "Simple",
+            "NCCL_NVLS_ENABLE": "0"
+          }
+        },
+        "retention_checkpoint_every": 1,
+        "audit_rate": 0.02
+      }
     },
     {
       "id": "ltx-2.5-fast",
@@ -427,9 +664,137 @@
           "48": 2,
           "50": 2
         },
-        "note": "PLACEHOLDER GPU-cost weights (research/pricing/costs.md 8.4), not benchmarked; the duration slope is provisional"
+        "note": "GPU-cost weights; 720p measured 2026-09-15 (research/pricing/measured_2026-09-15.md) and matched the estimate, 1080p and the duration slope are still estimates"
       },
-      "min_vram_gb": 80
+      "min_vram_gb": 80,
+      "verified": {
+        "variant": "deterministic",
+        "runtime": "diffusers-ltx2/1",
+        "scheduler": "flow-match-euler (distilled sigmas)",
+        "stage_steps": [
+          8,
+          3
+        ],
+        "replayable_stages": [
+          0
+        ],
+        "hardware_classes": [
+          {
+            "id": "C1.rtx-pro-6000-bw-se.x1",
+            "tier": "C1",
+            "gpu_sku": "NVIDIA RTX PRO 6000 Blackwell Server Edition 96GB",
+            "gpu_count": 1,
+            "parallel": {},
+            "interconnect": null,
+            "dev": false
+          },
+          {
+            "id": "C2.h200-141gb.x1",
+            "tier": "C2",
+            "gpu_sku": "NVIDIA H200 141GB",
+            "gpu_count": 1,
+            "parallel": {},
+            "interconnect": null,
+            "dev": false
+          },
+          {
+            "id": "C2.b200-180gb.x1",
+            "tier": "C2",
+            "gpu_sku": "NVIDIA B200 180GB",
+            "gpu_count": 1,
+            "parallel": {},
+            "interconnect": null,
+            "dev": false
+          },
+          {
+            "id": "C2.b300-288gb.x1",
+            "tier": "C2",
+            "gpu_sku": "NVIDIA B300 288GB",
+            "gpu_count": 1,
+            "parallel": {},
+            "interconnect": null,
+            "dev": false
+          },
+          {
+            "id": "O1.rtx-4090-24gb.x1.int8",
+            "tier": "O1",
+            "gpu_sku": "NVIDIA GeForce RTX 4090 24GB",
+            "gpu_count": 1,
+            "parallel": {},
+            "interconnect": null,
+            "dev": false,
+            "comparison": "tolerance",
+            "precision": "int8-wo",
+            "vram_gb": 24
+          },
+          {
+            "id": "O1.rtx-5090-32gb.x1.fp8-cast",
+            "tier": "O1",
+            "gpu_sku": "NVIDIA GeForce RTX 5090 32GB",
+            "gpu_count": 1,
+            "parallel": {},
+            "interconnect": null,
+            "dev": false,
+            "comparison": "tolerance",
+            "precision": "fp8-cast",
+            "vram_gb": 32
+          },
+          {
+            "id": "O1.rtx-pro-6000-bw-96gb.x1",
+            "tier": "O1",
+            "gpu_sku": "NVIDIA RTX PRO 6000 Blackwell 96GB (workstation or Server Edition without CC)",
+            "gpu_count": 1,
+            "parallel": {},
+            "interconnect": null,
+            "dev": false,
+            "comparison": "tolerance",
+            "precision": "bf16",
+            "vram_gb": 96
+          },
+          {
+            "id": "O1.h100-80gb.x1",
+            "tier": "O1",
+            "gpu_sku": "NVIDIA H100 80GB (CC off)",
+            "gpu_count": 1,
+            "parallel": {},
+            "interconnect": null,
+            "dev": false,
+            "comparison": "tolerance",
+            "precision": "bf16",
+            "vram_gb": 80
+          },
+          {
+            "id": "dev-cpu",
+            "tier": "dev",
+            "gpu_sku": "none (toy denoiser on CPU)",
+            "gpu_count": 0,
+            "parallel": {},
+            "interconnect": null,
+            "dev": true
+          }
+        ],
+        "determinism": {
+          "use_deterministic_algorithms": true,
+          "cublas_workspace_config": ":4096:8",
+          "allow_tf32": false,
+          "cudnn_deterministic": true,
+          "cudnn_benchmark": false,
+          "float32_matmul_precision": "highest",
+          "torch_compile": false,
+          "kernel_autotuning": false,
+          "data_dependent_caching": false,
+          "attention_backend": "sdpa",
+          "noise": "torch-cpu-generator",
+          "latent_dtype": "bfloat16",
+          "env": {
+            "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+            "TORCHINDUCTOR_DETERMINISTIC": "1",
+            "PYTHONHASHSEED": "0"
+          }
+        },
+        "retention_checkpoint_every": 1,
+        "audit_rate": 0.05
+      }
     },
     {
       "id": "ltx-2.5-pro",
@@ -551,17 +916,112 @@
       },
       "vcu_weights": {
         "per_output_second": {
-          "720p": 9,
-          "1080p": 20
+          "720p": 33,
+          "1080p": 73
         },
         "duration_slope": 0.03,
         "fps_multiplier": {
           "48": 2,
           "50": 2
         },
-        "note": "PLACEHOLDER GPU-cost weights (research/pricing/costs.md 8.4), not benchmarked; the duration slope is provisional"
+        "note": "GPU-cost weights; 720p measured 2026-09-15 (research/pricing/measured_2026-09-15.md) at 11x ltx-2.5-fast, 1080p scaled by the same factor, duration slope still an estimate"
       },
-      "min_vram_gb": 80
+      "min_vram_gb": 80,
+      "verified": {
+        "variant": "deterministic",
+        "runtime": "diffusers-ltx2/1",
+        "scheduler": "flow-match-euler (30 steps + distilled refine)",
+        "stage_steps": [
+          30,
+          3
+        ],
+        "replayable_stages": [
+          0
+        ],
+        "hardware_classes": [
+          {
+            "id": "C2.h200-141gb.x1",
+            "tier": "C2",
+            "gpu_sku": "NVIDIA H200 141GB",
+            "gpu_count": 1,
+            "parallel": {},
+            "interconnect": null,
+            "dev": false
+          },
+          {
+            "id": "C2.b200-180gb.x1",
+            "tier": "C2",
+            "gpu_sku": "NVIDIA B200 180GB",
+            "gpu_count": 1,
+            "parallel": {},
+            "interconnect": null,
+            "dev": false
+          },
+          {
+            "id": "C2.b300-288gb.x1",
+            "tier": "C2",
+            "gpu_sku": "NVIDIA B300 288GB",
+            "gpu_count": 1,
+            "parallel": {},
+            "interconnect": null,
+            "dev": false
+          },
+          {
+            "id": "O1.rtx-pro-6000-bw-96gb.x1",
+            "tier": "O1",
+            "gpu_sku": "NVIDIA RTX PRO 6000 Blackwell 96GB (workstation or Server Edition without CC)",
+            "gpu_count": 1,
+            "parallel": {},
+            "interconnect": null,
+            "dev": false,
+            "comparison": "tolerance",
+            "precision": "bf16",
+            "vram_gb": 96
+          },
+          {
+            "id": "O1.h100-80gb.x1",
+            "tier": "O1",
+            "gpu_sku": "NVIDIA H100 80GB (CC off)",
+            "gpu_count": 1,
+            "parallel": {},
+            "interconnect": null,
+            "dev": false,
+            "comparison": "tolerance",
+            "precision": "bf16",
+            "vram_gb": 80
+          },
+          {
+            "id": "dev-cpu",
+            "tier": "dev",
+            "gpu_sku": "none (toy denoiser on CPU)",
+            "gpu_count": 0,
+            "parallel": {},
+            "interconnect": null,
+            "dev": true
+          }
+        ],
+        "determinism": {
+          "use_deterministic_algorithms": true,
+          "cublas_workspace_config": ":4096:8",
+          "allow_tf32": false,
+          "cudnn_deterministic": true,
+          "cudnn_benchmark": false,
+          "float32_matmul_precision": "highest",
+          "torch_compile": false,
+          "kernel_autotuning": false,
+          "data_dependent_caching": false,
+          "attention_backend": "sdpa",
+          "noise": "torch-cpu-generator",
+          "latent_dtype": "bfloat16",
+          "env": {
+            "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+            "TORCHINDUCTOR_DETERMINISTIC": "1",
+            "PYTHONHASHSEED": "0"
+          }
+        },
+        "retention_checkpoint_every": 1,
+        "audit_rate": 0.03
+      }
     },
     {
       "id": "ltx-2.5-4k",
@@ -655,7 +1115,78 @@
         "note": "PLACEHOLDER GPU-cost weights (research/pricing/costs.md 8.4), not benchmarked; the duration slope is provisional"
       },
       "timeout_s": 3600,
-      "min_vram_gb": 141
+      "min_vram_gb": 141,
+      "verified": {
+        "variant": "deterministic",
+        "runtime": "diffusers-ltx2/1",
+        "scheduler": "flow-match-euler (distilled sigmas + DFR refine)",
+        "stage_steps": [
+          8,
+          3
+        ],
+        "replayable_stages": [
+          0
+        ],
+        "hardware_classes": [
+          {
+            "id": "C2.h200-141gb.x1",
+            "tier": "C2",
+            "gpu_sku": "NVIDIA H200 141GB",
+            "gpu_count": 1,
+            "parallel": {},
+            "interconnect": null,
+            "dev": false
+          },
+          {
+            "id": "C2.b200-180gb.x1",
+            "tier": "C2",
+            "gpu_sku": "NVIDIA B200 180GB",
+            "gpu_count": 1,
+            "parallel": {},
+            "interconnect": null,
+            "dev": false
+          },
+          {
+            "id": "C2.b300-288gb.x1",
+            "tier": "C2",
+            "gpu_sku": "NVIDIA B300 288GB",
+            "gpu_count": 1,
+            "parallel": {},
+            "interconnect": null,
+            "dev": false
+          },
+          {
+            "id": "dev-cpu",
+            "tier": "dev",
+            "gpu_sku": "none (toy denoiser on CPU)",
+            "gpu_count": 0,
+            "parallel": {},
+            "interconnect": null,
+            "dev": true
+          }
+        ],
+        "determinism": {
+          "use_deterministic_algorithms": true,
+          "cublas_workspace_config": ":4096:8",
+          "allow_tf32": false,
+          "cudnn_deterministic": true,
+          "cudnn_benchmark": false,
+          "float32_matmul_precision": "highest",
+          "torch_compile": false,
+          "kernel_autotuning": false,
+          "data_dependent_caching": false,
+          "attention_backend": "sdpa",
+          "noise": "torch-cpu-generator",
+          "latent_dtype": "bfloat16",
+          "env": {
+            "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+            "TORCHINDUCTOR_DETERMINISTIC": "1",
+            "PYTHONHASHSEED": "0"
+          }
+        },
+        "retention_checkpoint_every": 1,
+        "audit_rate": 0.03
+      }
     }
   ]
 }
