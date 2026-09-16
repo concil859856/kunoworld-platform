@@ -71,7 +71,7 @@ export const homeFaq: { q: string; a: string; link?: Destination }[] = [
   },
   {
     q: "How much does it cost?",
-    a: "You pay per second of video, by model, resolution and privacy mode, from credit you top up in advance. Standard costs less than Private, full MiniMax H3 and H3 Director are Private only, and every job costs at least $0.10. All prices shown today are placeholders until launch pricing is set. Credit never expires, and a job that fails, times out, is cancelled or is blocked by the safety checks is refunded automatically.",
+    a: "You pay per second of video, by model, resolution and privacy mode, from credit you top up in advance. Standard costs less than Private, long Private MiniMax H3 clips cost more per second, and every job costs at least $0.10. All prices shown today are placeholders until launch pricing is set. Credit never expires, and a job that fails, times out, is cancelled or is blocked by the safety checks is refunded automatically.",
     link: { href: "/models", label: "See placeholder rates" },
   },
   {

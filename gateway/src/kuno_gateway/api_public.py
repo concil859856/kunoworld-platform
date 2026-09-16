@@ -125,7 +125,7 @@ async def route(
         with state.session() as s:
             return bool(standard_jobs.enclaves_for(state, s, profile.id, privacy))
 
-    # Only profiles sold in this mode can serve it, as the request or as a fallback: full H3 and H3 Director are Private-only.
+    # Only profiles sold in this mode can serve it, as the request or as a fallback: a profile with no Standard price is Private-only.
     offered = {pid: p for pid, p in state.profiles.items() if p.offers(privacy)}
     requested = state.profiles.get(profile_id) if profile_id is not None else None
     if requested is not None and profile_id not in offered:

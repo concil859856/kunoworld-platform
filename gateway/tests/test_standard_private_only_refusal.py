@@ -1,5 +1,8 @@
-"""Full MiniMax H3 and H3 Director are sold in Private mode only. The gateway says so in /v1/models, routes Standard
-requests around them, and refuses a Standard job for them before anything is charged or counted as a strike."""
+"""A profile with no Standard price is sold in Private mode only. The gateway says so in /v1/models, routes Standard
+requests around it, and refuses a Standard job for it before anything is charged or counted as a strike.
+
+Every shipped profile has a Standard price since 2026-09-16 (H3's matches fal's list prices), so these tests take
+MiniMax H3 and H3 Director's Standard prices away in the gateway's profile table."""
 
 from __future__ import annotations
 
@@ -24,6 +27,7 @@ from kuno_gateway.settings import Settings
 
 # H3 is licensed in Japan, so nothing below is a region refusal.
 JP = {"x-kuno-country": "JP"}
+PRIVATE_ONLY = ("h3", "h3-reference")
 
 
 @pytest.fixture
@@ -32,6 +36,10 @@ def gw(tmp_path):
     settings = Settings.from_env({"KUNO_DATA_DIR": str(tmp_path / "data")})
     settings.allow_country_override = True
     app = create_app(settings)
+    profiles = app.state.gw.profiles
+    for profile_id in PRIVATE_ONLY:
+        shipped = profiles[profile_id]
+        profiles[profile_id] = shipped.model_copy(update={"pricing": shipped.pricing.model_copy(update={"standard_usd_per_second": None})})
     return SimpleNamespace(
         client=TestClient(app), state=app.state.gw, settings=settings,
         dev={"authorization": f"Bearer {settings.dev_api_key}", **JP},
@@ -59,7 +67,7 @@ def test_models_list_both_prices_and_the_modes_each_profile_is_sold_in(gw):
         "fps_multipliers": {"48": 1.5, "50": 1.5},
     }
     assert fast["limits"]["max_duration_s_by_fps"] == {"48": 10.0, "50": 10.0}
-    assert models["h3-turbo"]["pricing"]["long_clip"] == {"over_s": 10.0, "multiplier": 1.2}
+    assert models["h3-turbo"]["pricing"]["long_clip"] == {"over_s": 8.0, "multiplier": 1.4}
 
 
 def test_a_standard_route_to_a_private_only_profile_is_refused(gw):

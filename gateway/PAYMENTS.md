@@ -31,10 +31,12 @@ Prices are per output second, per resolution and per privacy mode, from each mod
 - `usd_per_second` is the **Private** price. Private is the default mode, so a client that reads only this field sees
   what a default job costs. `standard_usd_per_second` is the **Standard** price, or `null` where the profile is sold
   in Private mode only. `GET /v1/models` also lists each profile's `privacy_modes`.
-- **Private-only profiles:** full MiniMax H3 and H3 Director. A Standard job for either is refused with
-  `422 privacy_mode_unavailable` before anything is charged, and so is `GET /v1/route?privacy=standard` for them.
-- **Multipliers apply to the whole job:** `fps_multipliers` (LTX-2.5 at 48 or 50 fps costs 1.5x) and `long_clip`
-  (an H3 clip longer than 10 s costs 1.2x).
+- **Private-only profiles:** none today; every profile has a Standard price (MiniMax H3's match fal's list prices). A
+  Standard job for a profile without one is refused with `422 privacy_mode_unavailable` before anything is charged, and
+  so is `GET /v1/route?privacy=standard` for it.
+- **Multipliers apply to the whole job:** `fps_multipliers` (LTX-2.5 at 48 or 50 fps costs 1.5x) and, in Private mode
+  only, `long_clip` (a Private H3 clip over its threshold costs more per second, because longer H3 clips cost more to
+  render per second; Standard prices stay flat per second, like the market's).
 - **Minimum charge:** no job costs less than `min_job_usd`, $0.10.
 
 | Profile | Private, per second | Standard, per second |

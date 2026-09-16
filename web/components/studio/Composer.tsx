@@ -115,7 +115,7 @@ export function Composer({
   const prediction = predictRoute(models, profile, mode);
   const target = prediction.ok ? prediction.profile : profile;
   const reason = prediction.ok ? prediction.reason : null;
-  // Full MiniMax H3 and H3 Director are sold in Private mode only: there a remembered Standard choice runs as Private,
+  // A profile with no Standard price is sold in Private mode only: there a remembered Standard choice runs as Private,
   // and the choice itself is kept for the next model that offers Standard.
   const privateOnly = !offersStandard(profile) ? profile : !offersStandard(target) ? target : null;
   const takePrivacy: PrivacyMode = privateOnly ? "private" : privacy;

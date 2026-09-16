@@ -95,7 +95,7 @@ export function minRate(profile: ModelProfile, privacy: PrivacyMode = "private")
   return ratesOf(profile, privacy)[0]?.[1] ?? null;
 }
 
-/** Standard is sold only where a profile has a Standard price; full MiniMax H3 and H3 Director are Private-only. */
+/** Standard is sold only where a profile has a Standard price; a profile without one is Private-only. */
 export function offersStandard(profile: ModelProfile): boolean {
   return profile.privacy_modes ? profile.privacy_modes.includes("standard") : profile.pricing.standard_usd_per_second != null;
 }

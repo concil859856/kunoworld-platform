@@ -26,10 +26,10 @@ This is the contract the gateway, the website and both SDKs build against. Modes
   sealing it; Private prompts are checked inside the enclave, because the gateway can't read them.
 - **Prices.** Every price the gateway returns is a **placeholder**, to be set later. `GET /v1/models` says so with
   `pricing_placeholder: true`. Standard is priced below Private: a profile's `pricing.standard_usd_per_second` against
-  its `pricing.usd_per_second`, which is the Private price. Full MiniMax H3 and H3 Director are sold in Private mode
-  only (`standard_usd_per_second: null`, `privacy_modes: ["private"]`), and a Standard job for either is refused with
-  `422 privacy_mode_unavailable` before anything is charged. Every job costs at least $0.10. Prices, multipliers and
-  refunds: `PAYMENTS.md`.
+  its `pricing.usd_per_second`, which is the Private price. A profile without a Standard price
+  (`standard_usd_per_second: null`, `privacy_modes: ["private"]`) is sold in Private mode only, and a Standard job for
+  it is refused with `422 privacy_mode_unavailable` before anything is charged; every profile has a Standard price
+  today. Every job costs at least $0.10. Prices, multipliers and refunds: `PAYMENTS.md`.
 
 ## Credentials
 

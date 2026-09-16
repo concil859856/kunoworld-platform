@@ -140,7 +140,7 @@ The output key is in the job handle. A lost key means a lost video: KunoWorld ca
 | Which GPUs may serve it | confidential (TEE) workers only | any worker |
 | What KunoWorld sees | metadata: account, model, duration, resolution, aspect ratio, frame rate, input roles, sizes, timing, price, status, receipt | everything |
 | Storage | ciphertext on Cloudflare R2 until the owner deletes it | encrypted at rest on Cloudflare R2 until the owner deletes it |
-| Price | higher | lower; full MiniMax H3 and H3 Director are Private-only |
+| Price | higher; long MiniMax H3 clips cost more per second | lower, flat per second |
 
 In both modes:
 - **Access.** Only the account that made a video can open it, unless it creates a share link. KunoWorld operators may open content only for a report of child sexual abuse material or sexual content involving a minor, or under a legal preservation hold, and every view is logged. There is no sampled review. For a Private video they also need its output key, supplied with such a report.
