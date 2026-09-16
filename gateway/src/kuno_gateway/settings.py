@@ -59,6 +59,11 @@ class Settings:
     # Refuse to register an enclave offering a profile whose model licence bars the country it runs in
     # (MiniMax H3's Excluded Territories). Off only for local runs that cannot set a country.
     enforce_miner_region: bool = True
+    # The owner-signed landmark list (kuno_protocol.location), served to workers and used to check location proofs.
+    landmarks_path: Path | None = None
+    # Refuse territory-bound profiles (MiniMax H3) to an enclave whose landmark round trips don't rule out the excluded
+    # territory. Needs landmarks_path.
+    require_location_proof: bool = False
     cors_origins: list[str] = field(default_factory=lambda: ["http://localhost:3000"])
     max_blob_bytes: int = 512 * 1024 * 1024
     enclave_ttl_s: int = 1800
@@ -261,6 +266,8 @@ class Settings:
             database_url=env.get("KUNO_DATABASE_URL"),
             allow_country_override=env.get("KUNO_ALLOW_COUNTRY_OVERRIDE", "0") == "1",
             enforce_miner_region=env.get("KUNO_ENFORCE_MINER_REGION", "1") == "1",
+            landmarks_path=Path(env["KUNO_LANDMARKS"]) if env.get("KUNO_LANDMARKS") else None,
+            require_location_proof=env.get("KUNO_REQUIRE_LOCATION_PROOF", "0") == "1",
             cors_origins=[o for o in env.get("KUNO_CORS_ORIGINS", "http://localhost:3000").split(",") if o],
             site_url=env.get("KUNO_SITE_URL", "http://localhost:3000"),
             email_from=env.get("KUNO_EMAIL_FROM", "KunoWorld <signin@kunoworld.com>"),

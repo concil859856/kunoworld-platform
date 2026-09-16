@@ -10,7 +10,8 @@ import time
 from pathlib import Path
 
 from fastapi import Request
-from kuno_protocol.attestation import signed_manifest_in
+from kuno_protocol.attestation import ManifestError, signed_manifest_in
+from kuno_protocol.location import SignedLandmarks
 from kuno_protocol.canonical import b64d
 from kuno_protocol.policy import policy_from_env
 from kuno_protocol.profiles import ModelProfile, load_profiles
@@ -91,6 +92,9 @@ class GatewayState:
         # The owner-signed form (verified by load_manifest when an owner key is configured), served whole so clients that
         # pin the owner's key check the signature themselves. None when the manifest file is bare (development).
         self.signed_manifest = signed_manifest_in(manifest_path)
+        self.landmarks = load_landmarks(settings.landmarks_path, self.policy)
+        if settings.require_location_proof and self.landmarks is None:
+            raise RuntimeError("KUNO_REQUIRE_LOCATION_PROOF=1 needs KUNO_LANDMARKS, the owner-signed landmark list")
         self.quote_verifier = self.policy.quote_verifier
         self.gpu_verifier = self.policy.gpu_verifier
         self.claim_lock = threading.Lock()
@@ -488,6 +492,18 @@ def envelope_json(enclave: Enclave) -> dict | None:
     return stored(enclave)
 
 
+def load_landmarks(path, policy) -> SignedLandmarks | None:
+    """The landmark list, verified against the owner key when one is configured; production requires the signature."""
+    if path is None:
+        return None
+    signed = SignedLandmarks.model_validate_json(path.read_text())
+    if policy.owner_public_key is not None and not signed.verify(policy.owner_public_key):
+        raise ManifestError(f"{path}: the landmark list is not signed by the owner key")
+    if policy.production and policy.owner_public_key is None:
+        raise ManifestError("production needs the owner key to verify the landmark list")
+    return signed
+
+
 def enclave_public(enclave: Enclave, hardware: list[HardwareBinding] | None = None) -> dict:
     """`hardware` is self-reported and unverified; `hardware_ids` and `gpu_count` come from verified evidence.
     An open-tier enclave (`tier: "open"`) never has `hardware_ids`: nothing about its hardware is attested."""
@@ -504,6 +520,8 @@ def enclave_public(enclave: Enclave, hardware: list[HardwareBinding] | None = No
         "evidence": json.loads(enclave.evidence),
         # Intel collateral and NRAS answers for that evidence (kuno_protocol.endorsements); None for simulated enclaves.
         "endorsements": json.loads(enclave.endorsements) if enclave.endorsements else None,
+        # Signed landmark round trips from registration and what they showed (kuno_protocol.location); validators re-check.
+        "location": json.loads(enclave.location) if enclave.location else None,
         "capacity": enclave.capacity,
         "inflight": enclave.inflight,
         "status": enclave.status,

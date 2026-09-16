@@ -19,6 +19,7 @@ from kuno_protocol.envelope import normalize as normalize_envelope
 from kuno_protocol.hardware import capacity_limit
 from kuno_protocol.receipts import Receipt, verify_receipt
 from kuno_protocol.hotkey import verify_hotkey_proof
+from kuno_protocol.location import verify_location
 from kuno_protocol.regions import is_excluded
 from kuno_protocol.schemas import GenerationParams, JobState, MinerRegistration
 from kuno_protocol.tiers import OPEN, hotkey_proof_required, tier_for_tee, tier_serves
@@ -87,6 +88,33 @@ def _proven_hotkey(state, body: MinerRegistration, enclave_id: str) -> str | Non
     return body.miner_hotkey
 
 
+def _location_record(state, body: MinerRegistration, enclave_id: str) -> dict | None:
+    """Checks the location proof for profiles bound to territory; refuses them when proof is required and fails."""
+    evidence = body.evidence
+    policies = {state.profiles[p].license.region_policy for p in evidence.profiles} - {None}
+    if not policies or state.landmarks is None:
+        return None
+    verdicts = {
+        policy: verify_location(body.location, state.landmarks.landmarks, registration_nonce=evidence.nonce,
+                                enclave_id=enclave_id, region_policy=policy)
+        for policy in sorted(policies)
+    }
+    failed = {policy: v for policy, v in verdicts.items() if not v.ok}
+    if failed and state.settings.require_location_proof:
+        barred = sorted(p for p in evidence.profiles if state.profiles[p].license.region_policy in failed)
+        raise _error(
+            403, "location_unproven",
+            f"{', '.join(barred)} need proof that this machine is outside the licence's excluded territories: "
+            + "; ".join(v.detail for v in failed.values()),
+        )
+    return {
+        "nonce": evidence.nonce,
+        "proof": body.location.model_dump(mode="json") if body.location is not None else None,
+        "verdicts": {policy: {"ok": v.ok, "detail": v.detail, "landmark_id": v.landmark_id, "radius_km": v.radius_km,
+                              "clearance_km": v.clearance_km} for policy, v in verdicts.items()},
+    }
+
+
 @router.get("/nonce")
 async def nonce(request: Request):
     return {"nonce": gw(request).issue_nonce(), "expires_in": 300}
@@ -126,6 +154,7 @@ async def register_enclave(request: Request):
                 f"{', '.join(barred)} may not run in {country or 'an unknown country'} under the model's licence. "
                 "Register only the profiles you are licensed to serve, or run this worker in a licensed country.",
             )
+    location = _location_record(state, body, verdict.enclave_id)
     # Before anything is written: an open-tier registration without a valid hotkey proof never lands.
     miner_hotkey = _proven_hotkey(state, body, verdict.enclave_id)
     if verdict.gpu_count is not None:
@@ -160,6 +189,7 @@ async def register_enclave(request: Request):
         enclave.hardware = json.dumps(evidence.hardware)
         enclave.evidence = evidence.model_dump_json()
         enclave.endorsements = verdict.endorsements.model_dump_json() if verdict.endorsements is not None else None
+        enclave.location = json.dumps(location) if location is not None else None
         enclave.capacity = body.capacity
         enclave.status = "active"
         enclave.verified_at = enclave.last_seen = now

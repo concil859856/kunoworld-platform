@@ -240,6 +240,9 @@ class Enclave(Base):
     # What Intel and NVIDIA signed for the latest verified evidence, as JSON (kuno_protocol.endorsements), served next to
     # `evidence` so clients can check it without trusting the gateway. None: nothing third-party signed. Migration 0017.
     endorsements: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The registration's location proof and what it showed, as JSON: {"nonce", "proof", "verdicts": {policy: …}}.
+    # None where no profile is bound to territory or the gateway has no landmarks. Migration 0019.
+    location: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class HardwareBinding(Base):

@@ -65,6 +65,15 @@ async def manifest(request: Request):
     return gw(request).manifest.model_dump(mode="json")
 
 
+@router.get("/landmarks")
+async def landmarks(request: Request):
+    """The owner-signed landmark list workers ping to prove where they run (kuno_protocol.location)."""
+    signed = gw(request).landmarks
+    if signed is None:
+        raise _error(404, "no_landmarks", "This gateway has no landmark list.")
+    return signed.model_dump(mode="json")
+
+
 @router.get("/manifest/signed")
 async def signed_manifest(request: Request):
     """The manifest with the owner's signature, for clients that pin the owner key rather than trust this gateway."""
