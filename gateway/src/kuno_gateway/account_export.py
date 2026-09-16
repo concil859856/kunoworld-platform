@@ -321,10 +321,14 @@ def _standard_content(
     base = f"standard/{job.id}"
     inputs = standard_jobs.inputs_json(row)
     files = [f"{base}/request.json"]
-    archive.add_json(files[0], {
+    request = {
         "job_id": job.id, "prompt": row.prompt, "negative_prompt": row.negative_prompt, "seed": row.seed,
         "options": _loads(row.options) or {}, "inputs": inputs,
-    })
+    }
+    if row.shots is not None:
+        # A storyboard: `prompt` is the scene, and these are the shot prompts, in shot order.
+        request["shots"] = standard_jobs.shots_json(row)
+    archive.add_json(files[0], request)
     counts["standard_requests"] += 1
     if row.video_blob_id:
         try:
@@ -405,7 +409,7 @@ def readme(account_id: str, now: float, key_sync: bool) -> str:
         "  receipt, what happened to its content (stored, deleted, removed, or none if it never produced any) and the\n"
         "  files below that belong to it.\n\n"
         "standard/<job id>/request.json\n"
-        "  A Standard job's prompt, negative prompt, seed, options and input details.\n\n"
+        "  A Standard job's prompt, negative prompt, seed, options and input details, and a storyboard's shot prompts.\n\n"
         "standard/<job id>/video.mp4 and standard/<job id>/thumbnail.jpg\n"
         "  The Standard video and its preview, decrypted exactly as your own download is.\n\n"
         "standard/<job id>/inputs/\n"

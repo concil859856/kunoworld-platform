@@ -18,10 +18,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from kuno_protocol.canonical import sha256_hex
 from kuno_protocol.crypto import DecryptionError
 from kuno_protocol.media import ROLE_TYPES, sniff_mime
-from kuno_protocol.profiles import InputRole
+from kuno_protocol.profiles import InputRole, Mode, ModelProfile, shot_prompt
 from kuno_protocol.schemas import JOB_ID_RE, GenerationParams, JobState, JobStatus
 from kuno_protocol.sealed_payload import PayloadTooLarge
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from pydantic_core import PydanticCustomError
 from sqlalchemy import select
 
 from . import byte_ranges, holds, identity, moderation, standard_jobs
@@ -55,12 +56,19 @@ async def require_me_account(request: Request, who: SignedIn = Depends(require_u
 CONTENT_POLICY_MESSAGE = "This prompt isn't allowed. Sexual and NSFW content is not permitted."
 
 
-def check_content_policy(state, account: Account, prompt: str, negative_prompt: str | None) -> None:
-    """`kuno_protocol.content_policy.check_prompt`; a violation is `422 content_policy` and one `content_policy` strike."""
+def check_content_policy(state, account: Account, prompt: str, negative_prompt: str | None, shots: list[str] | None = None) -> None:
+    """`kuno_protocol.content_policy.check_prompt`; a violation is `422 content_policy` and one `content_policy` strike.
+
+    For a storyboard, `prompt` is the scene and `shots` its shot prompts. Each shot prompt is checked on its own and as the
+    model sees it (`shot_prompt(scene, shot)`, what the enclave checks): the policy weighs words by their neighbours, so a
+    scene and a shot can break it together while passing apart. Any violation is the same single refusal and strike."""
     from kuno_protocol.content_policy import ContentPolicyViolation, check_prompt
 
     try:
         check_prompt(prompt, negative_prompt)
+        for shot in shots or ():
+            check_prompt(shot, negative_prompt)
+            check_prompt(shot_prompt(prompt, shot), negative_prompt)
     except ContentPolicyViolation:
         with state.session() as s, s.begin():
             moderation.record_strike(s, state.settings, account.id, "content_policy")
@@ -89,16 +97,27 @@ class StandardInput(BaseModel):
     end_s: float | None = None
 
 
+class StandardShot(BaseModel):
+    """A storyboard shot's prompt: what happens in it. Paired by position with `params.shots`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    prompt: str = Field(max_length=20_000)
+
+
 class StandardJobCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     job_id: str | None = None
     params: GenerationParams
-    prompt: str = Field(min_length=1, max_length=20_000)
+    # For a storyboard, the scene every shot shares (PROTOCOL.md, "Storyboards"), which may be empty.
+    prompt: str = Field(max_length=20_000)
     negative_prompt: str | None = Field(default=None, max_length=20_000)
     seed: int | None = Field(default=None, ge=0, le=2**63 - 1)
     options: dict[str, Any] = Field(default_factory=dict)
     inputs: list[StandardInput] = Field(default_factory=list)
+    # Storyboard mode only: one prompt per `params.shots`, in order.
+    shots: list[StandardShot] | None = Field(default=None, max_length=64)
     webhook_url: str | None = None
 
     @field_validator("job_id")
@@ -106,6 +125,16 @@ class StandardJobCreate(BaseModel):
     def _uuid4(cls, value: str | None) -> str | None:
         if value is not None and not JOB_ID_RE.match(value):
             raise ValueError("job_id must be a lowercase UUIDv4")
+        return value
+
+    @field_validator("prompt")
+    @classmethod
+    def _prompt_unless_storyboard(cls, value: str, info: ValidationInfo) -> str:
+        """At least one character, as before storyboards, except for a storyboard's scene: its shots carry the prompts.
+        `params` is validated before `prompt`, so it is here when it is valid."""
+        params = info.data.get("params")
+        if not value and not (isinstance(params, GenerationParams) and params.mode is Mode.STORYBOARD):
+            raise PydanticCustomError("string_too_short", "String should have at least 1 character", {"min_length": 1})
         return value
 
 
@@ -187,6 +216,34 @@ async def my_upload(request: Request, role: InputRole, account: Account = Depend
 # ------------------------------------------------------------------ jobs
 
 
+def _storyboard_shots(body: StandardJobCreate, profile: ModelProfile) -> list[str] | None:
+    """A storyboard's shot prompts, checked against its public params (PROTOCOL.md, "Storyboards"); None for any other
+    job, which may not carry `shots`. `validate_params` has already checked `params.shots` against the profile."""
+    params = body.params
+    if params.mode is not Mode.STORYBOARD:
+        if body.shots is not None:
+            raise _error(422, "invalid_shots", "Only storyboard jobs take shots.")
+        return None
+    count = len(params.shots or [])
+    if body.shots is None or len(body.shots) != count:
+        raise _error(422, "invalid_shots", f"A storyboard needs one shot prompt for each of its {count} shots in params.shots, in order.")
+    if body.inputs:
+        raise _error(422, "invalid_inputs", "Storyboards take no inputs.")
+    shots = [shot.prompt for shot in body.shots]
+    limit = profile.limits.max_prompt_chars
+    for number, shot in enumerate(shots, start=1):
+        if not shot.strip():
+            raise _error(422, "invalid_shots", f"Shot {number} needs a prompt.")
+        # What the model sees for the shot: the scene, a blank line, then the shot's own prompt.
+        if len(shot_prompt(body.prompt, shot)) > limit:
+            raise _error(422, "prompt_too_long", f"Shot {number}'s prompt, with the scene before it, is over the {limit}-character limit.")
+    return shots
+
+
+def _is_storyboard(job: Job) -> bool:
+    return json.loads(job.params).get("mode") == Mode.STORYBOARD.value
+
+
 async def _create(body: StandardJobCreate, request: Request, account: Account) -> JobStatus:
     state = gw(request)
     store = _vault(state)
@@ -206,9 +263,11 @@ async def _create(body: StandardJobCreate, request: Request, account: Account) -
         raise _error(422, "prompt_too_long", f"Prompts are limited to {profile.limits.max_prompt_chars} characters.")
     if body.negative_prompt and not profile.limits.negative_prompt:
         raise _error(422, "unsupported_option", f"{profile.name} does not use negative prompts.")
+    # A storyboard's shape is checked before the content check too, so a malformed request is never a strike.
+    shots = _storyboard_shots(body, profile)
     # Sexual and NSFW content is banned in both modes. The gateway can read a Standard prompt, so it refuses one here,
     # before anything is sealed; private prompts are checked inside the enclave.
-    check_content_policy(state, account, body.prompt, body.negative_prompt)
+    check_content_policy(state, account, body.prompt, body.negative_prompt, shots)
     refs = sorted(body.inputs, key=lambda i: i.index)
     if (
         [r.index for r in refs] != list(range(len(refs)))
@@ -240,7 +299,7 @@ async def _create(body: StandardJobCreate, request: Request, account: Account) -
         fit = EnvelopeQuery.of(params)
         routable = standard_jobs.enclaves_for(state, s, profile.id, STANDARD, fit=fit)
         if not routable and (available := standard_jobs.enclaves_for(state, s, profile.id, STANDARD)):
-            raise no_fit_error(profile, fit, available)
+            raise no_fit_error(profile, fit, available, storyboard=params.shots is not None)
         # Open-tier miners get customer jobs only after passing validator probes, and validators' jobs reach
         # confidential miners that haven't served this family lately (admission.py).
         candidates = order_for_account(
@@ -259,6 +318,7 @@ async def _create(body: StandardJobCreate, request: Request, account: Account) -
         return standard_jobs.seal_job(
             state, job_id=job_id, enclave_id=enclave.id, hpke_public_key=enclave.hpke_public_key, params=params,
             prompt=body.prompt, negative_prompt=body.negative_prompt, seed=seed, options=body.options, inputs=inputs,
+            shots=shots,
         )
 
     try:
@@ -292,6 +352,7 @@ async def _create(body: StandardJobCreate, request: Request, account: Account) -
             s.add(
                 StandardJob(
                     job_id=job_id, account_id=account.id, prompt=body.prompt, negative_prompt=body.negative_prompt,
+                    shots=None if shots is None else json.dumps([{"prompt": shot} for shot in shots], separators=(",", ":")),
                     seed=seed, options=json.dumps(body.options, separators=(",", ":")),
                     inputs=json.dumps(
                         [{**ref.model_dump(mode="json"), "sha256": up.sha256, "size": up.size, "mime": up.mime}
@@ -335,6 +396,8 @@ def _list(request: Request, account: Account, limit: int) -> list[dict]:
             "params": json.loads(job.params),
             # Content a hold preserves after deletion stays hidden from its owner.
             "prompt": row.prompt if row.deleted_at is None else None,
+            # A storyboard's shot prompts, the same way; the key is there only for storyboards.
+            **({"shots": standard_jobs.shots_json(row) if row.deleted_at is None else None} if _is_storyboard(job) else {}),
             "created_at": job.created_at,
             "finished_at": job.finished_at,
             "has_video": row.video_blob_id is not None and row.deleted_at is None,

@@ -10,6 +10,7 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from . import standard_jobs
 from .auth import gw, require_validator
 from .db import Account, Job
 from .db_moderation import StandardJob
@@ -27,10 +28,11 @@ async def standard_job(job_id: str, request: Request, _validator: Account = Depe
     if row.deleted_at is not None:
         raise HTTPException(410, {"code": "content_deleted", "message": "This job's content was deleted."})
     inputs = json.loads(row.inputs) if row.inputs else []
-    return {
+    params = json.loads(job.params)
+    out = {
         "job_id": job.id,
         "privacy": "standard",
-        "params": json.loads(job.params),
+        "params": params,
         "prompt": row.prompt,
         "negative_prompt": row.negative_prompt,
         "seed": row.seed,
@@ -38,3 +40,9 @@ async def standard_job(job_id: str, request: Request, _validator: Account = Depe
         "inputs": [{k: i.get(k) for k in ("index", "role", "sha256", "size", "mime")} for i in inputs],
         "receipt": json.loads(job.receipt) if job.receipt else None,
     }
+    if params.get("shots") is not None:
+        # A storyboard: `prompt` is the scene, and these are its shot prompts in shot order, as sealed. Only storyboards
+        # carry the key, so every other job's record is as it was. Validators don't step-audit storyboards (they carry no
+        # step commitment); the record is here so they can read what was asked, as for any standard job.
+        out["shots"] = standard_jobs.shots_json(row)
+    return out

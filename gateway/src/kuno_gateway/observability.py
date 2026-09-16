@@ -88,7 +88,7 @@ SENSITIVE_FIELDS = frozenset(
     {
         "authorization", "proxy-authorization", "cookie", "cookies", "set-cookie", "headers",
         "body", "request_body", "content", "data", "payload", "ciphertext", "enc", "prompt",
-        "negative_prompt", "password", "secret", "token", "api_key", "x-api-key", "key",
+        "negative_prompt", "shots", "password", "secret", "token", "api_key", "x-api-key", "key",
     }
 )
 _MAX_FIELD_CHARS = 2000

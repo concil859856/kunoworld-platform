@@ -255,8 +255,8 @@ def expire_holds(state: GatewayState, s: Session, now: float) -> int:
 
 
 def _has_content(s: Session, row: StandardJob) -> bool:
-    if any(v is not None for v in (row.video_blob_id, row.thumbnail_blob_id, row.prompt, row.negative_prompt, row.options,
-                                   row.inputs, row.output_key)):
+    if any(v is not None for v in (row.video_blob_id, row.thumbnail_blob_id, row.prompt, row.negative_prompt, row.shots,
+                                   row.options, row.inputs, row.output_key)):
         return True
     return s.scalars(select(StandardUpload.id).where(StandardUpload.job_id == row.job_id).limit(1)).first() is not None
 

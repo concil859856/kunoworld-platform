@@ -22,6 +22,9 @@ class StandardJob(Base):
     # Cleared (null) when the content is deleted, expires or is removed by an operator.
     prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     negative_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # A storyboard's shot prompts, JSON `[{"prompt"}, ...]` in shot order (`SealedPayload.shots`); `prompt` is then the
+    # scene they share, possibly empty. NULL for every other job, and cleared with the prompt. Migration 0020.
+    shots: Mapped[str | None] = mapped_column(Text, nullable=True)
     seed: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     options: Mapped[str | None] = mapped_column(Text, nullable=True)
     # JSON list: index, role, upload_id, sha256, size, mime and the per-input hints.

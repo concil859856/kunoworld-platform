@@ -68,16 +68,18 @@ def longest_served(enclaves: Iterable[Any], profile: ModelProfile, query: Envelo
     return best
 
 
-def _request_text(query: EnvelopeQuery) -> str:
+def _request_text(query: EnvelopeQuery, storyboard: bool = False) -> str:
     parts = [f"{query.duration_s:g} s" if query.duration_s is not None else None, query.resolution, query.aspect_ratio]
     text = " ".join(p for p in parts if p) or "this"
-    return f"a {text} video" + (f" at {query.fps} fps" if query.fps is not None else "")
+    # A storyboard's query carries its longest shot, which is what a worker has to fit (kuno_protocol.envelope.fits).
+    return f"a {text} {'storyboard shot' if storyboard else 'video'}" + (f" at {query.fps} fps" if query.fps is not None else "")
 
 
-def no_fit_error(profile: ModelProfile, query: EnvelopeQuery, available: Iterable[Any]) -> HTTPException:
-    """503 no_capacity when workers serve the profile but none has room for this request."""
+def no_fit_error(profile: ModelProfile, query: EnvelopeQuery, available: Iterable[Any], storyboard: bool = False) -> HTTPException:
+    """503 no_capacity when workers serve the profile but none has room for this request. For a storyboard (`storyboard`),
+    the query's duration is its longest shot."""
     longest = longest_served(available, profile, query)
-    message = f"No worker serving {profile.name} right now can fit {_request_text(query)}."
+    message = f"No worker serving {profile.name} right now can fit {_request_text(query, storyboard)}."
     if longest is not None:
         message += f" The longest available at that size and frame rate is {longest:g} s."
     message += " Try a shorter or smaller video, or try again shortly."
@@ -89,13 +91,19 @@ def admission_refusal(enclave: Any, profile: ModelProfile, params: GenerationPar
     table = table_for(enclave, profile.id)
     if fits(table, params):
         return None
+    if params.shots:
+        # Shots render one at a time, so the longest one is what didn't fit.
+        refused = f"render this storyboard's {params.render_duration_s:g} s shot"
+        ask = "duration_s (a storyboard's longest shot)"
+    else:
+        refused, ask = f"make this {params.duration_s:g} s video", "duration_s"
     return HTTPException(
         409,
         {
             "code": ENVELOPE_EXCEEDED,
             "message": (
-                f"That worker's hardware {describe(table, params)}, so it can't make this {params.duration_s:g} s video. "
-                "Ask /v1/route again with resolution, aspect_ratio, fps and duration_s."
+                f"That worker's hardware {describe(table, params)}, so it can't {refused}. "
+                f"Ask /v1/route again with resolution, aspect_ratio, fps and {ask}."
             ),
             "max_duration_s": max_duration(table, params.resolution, params.aspect_ratio, params.fps),
         },

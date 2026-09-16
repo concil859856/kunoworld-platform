@@ -109,7 +109,10 @@ async def route(
     `resolution`, `aspect_ratio`, `fps` and `duration_s` are each optional: given, only enclaves whose serving envelope
     has room for such a request are listed (envelopes.py; an omitted field matches any value), and when workers serve the
     profile but none has room, the answer is 503 no_capacity with the longest duration available. Which profile serves
-    (fallbacks) still follows per-profile capacity."""
+    (fallbacks) still follows per-profile capacity.
+
+    For `mode=storyboard`, `duration_s` is the longest shot, not the stitched length: shots render one at a time, so that
+    is what a worker's envelope has to fit (`GenerationParams.render_duration_s`)."""
     from kuno_protocol.envelope import EnvelopeQuery
 
     from .envelopes import no_fit_error
@@ -144,7 +147,7 @@ async def route(
     with state.session() as s:
         candidates = standard_jobs.enclaves_for(state, s, chosen.profile.id, privacy, fit=None if fit.empty else fit)
         if not candidates and not fit.empty and (available := standard_jobs.enclaves_for(state, s, chosen.profile.id, privacy)):
-            raise no_fit_error(chosen.profile, fit, available)
+            raise no_fit_error(chosen.profile, fit, available, storyboard=mode is Mode.STORYBOARD)
         if account is not None:
             # A client seals to the first attested enclave listed, so the order is the routing (admission.py).
             candidates = admission.order_for_account(

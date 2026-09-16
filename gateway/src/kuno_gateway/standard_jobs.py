@@ -29,6 +29,7 @@ from kuno_protocol.schemas import (
     InputRef,
     JobState,
     SealedPayload,
+    ShotPrompt,
     input_label,
     job_aad,
     output_label,
@@ -116,8 +117,10 @@ class SealedJob:
 def seal_job(
     state: GatewayState, *, job_id: str, enclave_id: str, hpke_public_key: str, params: GenerationParams,
     prompt: str, negative_prompt: str | None, seed: int, options: dict[str, Any], inputs: list[tuple[dict, bytes]],
+    shots: list[str] | None = None,
 ) -> SealedJob:
-    """Seals a job to an enclave exactly as `KunoClient.prepare` does. `inputs` is (ref fields, plaintext) in index order.
+    """Seals a job to an enclave exactly as `KunoClient.prepare` does. `inputs` is (ref fields, plaintext) in index order;
+    `shots` is a storyboard's shot prompts in shot order (`SealedPayload.shots`), None for every other job.
 
     Sealed input blobs go into the blob store; on any failure they are deleted again.
     """
@@ -135,7 +138,10 @@ def seal_job(
                     start_s=spec.get("start_s"), end_s=spec.get("end_s"),
                 )
             )
-        payload = SealedPayload(prompt=prompt, negative_prompt=negative_prompt, seed=seed, inputs=refs, options=options)
+        payload = SealedPayload(
+            prompt=prompt, negative_prompt=negative_prompt, seed=seed, inputs=refs, options=options,
+            shots=None if shots is None else [ShotPrompt(prompt=shot) for shot in shots],
+        )
         ciphertext = seal_payload(session, payload, job_aad(job_id, enclave_id, params, sealed.blob_ids))  # padded, like the SDKs
         sealed.ciphertext = b64e(ciphertext)
     except BaseException:
@@ -305,7 +311,7 @@ def delete_content(state: GatewayState, s: Session, row: StandardJob, now: float
     tombstones.record(s, tombstones.STANDARD_CONTENT, row.job_id, row.account_id, now)
     discard_blobs(state, [b for b in (row.video_blob_id, row.thumbnail_blob_id) if b], s, row.account_id)
     row.video_blob_id = row.thumbnail_blob_id = None
-    row.prompt = row.negative_prompt = row.options = row.inputs = row.output_key = None
+    row.prompt = row.negative_prompt = row.shots = row.options = row.inputs = row.output_key = None
     labels = [video_label(row.job_id), thumbnail_label(row.job_id), output_key_label(row.job_id)]
     for upload in s.scalars(select(StandardUpload).where(StandardUpload.job_id == row.job_id)).all():
         if holds.upload_held(s, upload.id, now):
@@ -394,3 +400,8 @@ def delete_for_owner(state: GatewayState, s: Session, job: Job, now: float) -> N
 
 def inputs_json(row: StandardJob) -> list[dict]:
     return json.loads(row.inputs) if row.inputs else []
+
+
+def shots_json(row: StandardJob) -> list[dict] | None:
+    """A storyboard's stored shot prompts, `[{"prompt"}, ...]` in shot order; None for any other job or once deleted."""
+    return json.loads(row.shots) if row.shots is not None else None

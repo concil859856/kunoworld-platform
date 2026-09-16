@@ -22,8 +22,9 @@ This is the contract the gateway, the website and both SDKs build against. Modes
 - **How people sign in.** Customers sign in by email link; the website's server keeps the web session and forwards
   it to the gateway for everything, including the job API. The browser never holds a token. API keys are for
   developers' programs. Operators are ordinary users who sign in the same way and hold a `moderator` or `admin` role.
-- **What is banned.** Sexual and NSFW content, in both modes. The gateway checks every Standard prompt before
-  sealing it; Private prompts are checked inside the enclave, because the gateway can't read them.
+- **What is banned.** Sexual and NSFW content, in both modes. The gateway checks every Standard prompt (and every
+  storyboard shot prompt) before sealing it; Private prompts are checked inside the enclave, because the gateway can't
+  read them.
 - **Prices.** Every price the gateway returns is a **placeholder**, to be set later. `GET /v1/models` says so with
   `pricing_placeholder: true`. Standard is priced below Private: a profile's `pricing.standard_usd_per_second` against
   its `pricing.usd_per_second`, which is the Private price. A profile without a Standard price
@@ -54,9 +55,9 @@ accepting only the web session.
 | Method and path | Body / query | Response |
 |---|---|---|
 | `POST /v1/standard/uploads?role=<InputRole>` | raw bytes | `201 {upload_id, sha256, size, mime}`. Scanned before storage. An upload that no job uses expires after 24 h. |
-| `POST /v1/standard/videos` | `{job_id?, params: GenerationParams, prompt, negative_prompt?, seed?, options?, inputs: [{upload_id, index, role, time_s?, strength?, hint?, start_s?, end_s?}], webhook_url?}` | `201 JobStatus` with `privacy: "standard"`. The gateway checks the prompt, picks an enclave of any tier, sets an explicit seed when none is given, seals the payload and inputs to that enclave and charges like `/v1/videos`. |
+| `POST /v1/standard/videos` | `{job_id?, params: GenerationParams, prompt, negative_prompt?, seed?, options?, inputs: [{upload_id, index, role, time_s?, strength?, hint?, start_s?, end_s?}], shots?: [{prompt}], webhook_url?}` | `201 JobStatus` with `privacy: "standard"`. The gateway checks the prompt, picks an enclave of any tier, sets an explicit seed when none is given, seals the payload and inputs to that enclave and charges like `/v1/videos`. `shots` is for storyboards only ([Storyboards](#storyboards)). |
 | `GET /v1/videos/{job_id}` | | `JobStatus`, including `privacy` for every job |
-| `GET /v1/standard/videos?limit=50` | | `[{job_id, status, profile_id, params, prompt, created_at, finished_at, has_video, error_code, expires_at: null, deleted}]`, newest first |
+| `GET /v1/standard/videos?limit=50` | | `[{job_id, status, profile_id, params, prompt, shots?, created_at, finished_at, has_video, error_code, expires_at: null, deleted}]`, newest first. `shots` is there only for storyboards, `null` once deleted like `prompt` |
 | `GET /v1/standard/videos/{job_id}/video` | | `video/mp4`, owner only; `404 not_ready` until succeeded; `410 deleted` or `410 removed`. Answers byte ranges ([Byte ranges](#byte-ranges)) |
 | `GET /v1/standard/videos/{job_id}/thumbnail` | | `image/jpeg`, owner only |
 | `DELETE /v1/standard/videos/{job_id}` | | `204`, an alias of `DELETE /v1/videos/{job_id}` |
@@ -64,7 +65,8 @@ accepting only the web session.
 **Content policy.** Before sealing, the gateway runs `kuno_protocol.content_policy.check_prompt(prompt,
 negative_prompt)`. A violation answers `422 content_policy` with the message "This prompt isn't allowed. Sexual and
 NSFW content is not permitted." It creates no job, charges nothing, stores nothing, and records one strike with
-reason `content_policy`. The prompt is never logged.
+reason `content_policy`. The prompt is never logged. A storyboard's shot prompts are checked too
+([Storyboards](#storyboards)).
 
 **Output scanning.** When a Standard job succeeds, the gateway decrypts the video, checks the receipt, and runs the video
 through the upload matchers (exact SHA-256, PDQ per sampled frame) before storing anything. MODERATION.md, "Output
@@ -75,14 +77,37 @@ scanning", has the details.
 - **Scanning unavailable:** the job fails with `scan_unavailable`, is refunded, and gets no strike.
 - **Private jobs** are never scanned.
 
+### Storyboards
+
+A storyboard (mode `storyboard`, PROTOCOL.md "Storyboards") is one job of 2 or more shots, stitched into one video.
+`params.shots` lists each shot's `duration_s` and `join`, and `params.duration_s` must be the stitched length (`kuno_protocol.profiles.storyboard_duration_s`). The body adds `shots`, one `{prompt}` per `params.shots`, in
+the same order, and `prompt` is the scene every shot shares; it may be `""` for a storyboard only. Before anything is
+sealed or charged:
+
+1. `params` passes `validate_params` (`422 invalid_params`): shot count, durations, joins, stitched length.
+2. `shots` is present, has exactly one entry per `params.shots`, and no prompt is empty or only whitespace
+   (`422 invalid_shots`). A job of another mode with `shots` is refused the same way.
+3. A storyboard takes no `inputs` (`422 invalid_inputs`).
+4. Each shot's model prompt, `shot_prompt(prompt, shot) = prompt + "\n\n" + shot` (the shot alone when the scene is
+   empty), fits the profile's `max_prompt_chars` (`422 prompt_too_long`), as does `prompt` itself.
+5. The content policy runs on the scene, on every shot prompt, and on every shot's model prompt, which is what the
+   enclave checks: a scene and a shot can break the policy together while passing apart. Any violation is the one
+   `422 content_policy` above, with one strike.
+
+Steps 1 to 4 come before the content check, so a malformed request is never a strike. The gateway seals the shot prompts
+as `SealedPayload.shots` and stores them on the job (`standard_jobs.shots`, migration 0020) next to the prompt: they are
+returned wherever the prompt is (the owner's list, the validator record, an operator's review, the data export) and
+deleted with it. The price is the stitched `duration_s` at the Standard rate (`PAYMENTS.md`). The enclave is picked by
+the longest shot, since shots render one at a time; `503 no_capacity` then names that shot's length.
+
 ## Deleting a video (both modes)
 
 `DELETE /v1/videos/{job_id}` (API key or web session; owner only, else `404 not_found`) answers `204`.
 
 - A job still queued or running is canceled and refunded first.
 - **Private:** the job's sealed input and output blobs are deleted from storage.
-- **Standard:** the video, thumbnail, prompt, negative prompt, options, inputs and sealed blobs are deleted. The video
-  then answers `410 deleted`.
+- **Standard:** the video, thumbnail, prompt, negative prompt, shot prompts, options, inputs and sealed blobs are
+  deleted. The video then answers `410 deleted`.
 - Billing records (the job row, price, ledger entries) and the receipt stay. Deleting twice is harmless.
 - Under an active preservation hold (MODERATION.md) the content is hidden exactly as if deleted, but kept until the
   hold ends; then the gateway deletes it.
@@ -144,9 +169,10 @@ appeal is voided (`strikes.voided_at`) and no longer counts toward the rules or 
 - The zip: `README.txt`; `account.json` (email, account, balance, ledger, payments, wallets, API key names and
   prefixes, roles, strikes, restrictions, appeals, and reports filed with the account's address as the contact);
   `jobs.json` (every job's metadata, privacy mode, params, receipt, `content`: `stored`, `deleted`, `removed` or `none`,
-  and `files`); `standard/<job>/request.json`, `video.mp4`, `thumbnail.jpg` and `inputs/<index>-<role>.<ext>`,
-  decrypted as the owner's download is; `private/<job>/output.kunob`, the sealed output (ciphertext; the keys are the
-  customer's); `private/keys.json` from `key_vault.export_account` when key sync is installed.
+  and `files`); `standard/<job>/request.json` (with `shots` for a storyboard), `video.mp4`, `thumbnail.jpg` and
+  `inputs/<index>-<role>.<ext>`, decrypted as the owner's download is; `private/<job>/output.kunob`, the sealed output
+  (ciphertext; the keys are the customer's); `private/keys.json` from `key_vault.export_account` when key sync is
+  installed.
 - Never in it: content the owner deleted or moderation removed, even while a hold keeps it; anything about holds;
   secrets (API keys, the webhook secret); operators' identities or notes. `contents` counts `left_out_deleted` and
   `left_out_removed`.
@@ -198,10 +224,11 @@ customer is emailed the decision with the note. Audit actions: `appeal.create` (
 
 | Method and path | Response |
 |---|---|
-| `GET /validator/v1/standard-jobs/{job_id}` (`require_validator`) | `{job_id, privacy: "standard", params, prompt, negative_prompt, seed, options, inputs: [{index, role, sha256, size, mime}], receipt}`; `404` for private or unknown jobs; `410 content_deleted` once the owner or an operator deleted the content |
+| `GET /validator/v1/standard-jobs/{job_id}` (`require_validator`) | `{job_id, privacy: "standard", params, prompt, negative_prompt, seed, options, inputs: [{index, role, sha256, size, mime}], shots?, receipt}`; `shots` (`[{prompt}]`) only for storyboards; `404` for private or unknown jobs; `410 content_deleted` once the owner or an operator deleted the content |
 
 Validators never receive a video. Step-audit requests (`POST /validator/v1/audits`) are accepted for any standard
-job, and for private jobs only when the requesting validator created them.
+job, and for private jobs only when the requesting validator created them. Storyboards carry no step commitment, so
+an audit of one is `409 not_auditable` and validators don't request them.
 
 ## Operators
 
@@ -281,7 +308,8 @@ only: `prompt` and `negative_prompt` are `null` (`has_prompt` says whether one e
 When reviewable:
 
 - **Standard job:** the video route serves the stored video (also a hidden one kept by a hold). Item detail includes
-  the prompt, logged as `item.view_prompt`.
+  the prompt, and a storyboard's `shots`, logged as `item.view_prompt`. `has_prompt` is true for a storyboard with an
+  empty scene too.
 - **Private job:** the video is served only with a key: the report's `output_key`, or one a hold kept. Without a key:
   `403 private_content`; a key that doesn't open the receipted video: `422 key_mismatch`.
 - **Blocked upload:** the preserved file, with its own MIME type (`item.view_upload`).
@@ -413,7 +441,7 @@ answer HTTP byte ranges (RFC 9110), which iOS Safari needs to seek, and sometime
   `413 too_large`.
 - Standard job failures from output scanning: `safety_blocked` (a hash-list match; the video is held under
   `output_match`), `scan_unavailable` (not kept, refunded); a video that doesn't decode for scanning fails as `bad_output`.
-- Standard job creation errors beyond `/v1/videos`'s: `422 content_policy`, `422 invalid_inputs`,
+- Standard job creation errors beyond `/v1/videos`'s: `422 content_policy`, `422 invalid_inputs`, `422 invalid_shots`,
   `422 privacy_mode_unavailable` (a Private-only model), `422 prompt_too_long`, `422 unsupported_option`,
   `503 no_capacity`, `503 standard_unavailable` (storage keys not configured; a production gateway refuses to start
   without a key management service instead). `seed` is `0..2^63-1`.

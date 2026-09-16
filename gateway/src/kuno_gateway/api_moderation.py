@@ -212,10 +212,13 @@ def _job_json(s: Session, job: Job | None, report: Report | None, *, reviewable:
         out.update(
             prompt=row.prompt if (row and show_prompt) else None,
             negative_prompt=row.negative_prompt if (row and show_prompt) else None,
-            has_prompt=bool(row and row.prompt),
+            has_prompt=bool(row and (row.prompt or row.shots)),
             has_video=bool(reviewable and row and row.video_blob_id),
             deleted=row.delete_reason if row and row.deleted_at else None,
         )
+        if row is not None and row.shots is not None:
+            # A storyboard's shot prompts are part of its prompt: shown, and logged, exactly when the prompt is.
+            out["shots"] = standard_jobs.shots_json(row) if show_prompt else None
     else:
         # Private content is reviewable only through a key a report handed over (kept by a hold after resolution).
         has_key = bool(report and report.output_key) or any(

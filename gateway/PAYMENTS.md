@@ -51,6 +51,19 @@ Prices are per output second, per resolution and per privacy mode, from each mod
 These placeholders follow `research/research_pricing.md`. LTX-2.5 Fast renders up to 20 s at 24 or 25 fps and up to
 10 s at 48 or 50 fps (`limits.max_duration_s_by_fps`); Pro and 4K render up to 10 s.
 
+**Storyboards** (PROTOCOL.md, "Storyboards"; LTX-2.5 Fast only today, up to 12 shots and 120 s):
+
+- **The customer pays for the stitched video:** the profile's per-second rate for the job's `duration_s`, which for a
+  storyboard is the stitched length, with the fps multiplier and the minimum charge as for any job. The frames a joined
+  shot repeats from the shot before (17 per `continue` or `cut` join on LTX-2.5 Fast) are trimmed from the video and
+  not charged: three 5 s shots with two joins are 13.708 s, $0.6854 Private and $0.5483 Standard at 720p.
+- **Private long-clip multiplier:** it looks at the longest shot (`GenerationParams.render_duration_s`), not the
+  stitched length, because shots render one at a time. No LTX-2.5 profile has one today.
+- **Miners are paid for what they render:** validators credit a storyboard `Σ vcu_at(resolution, fps, shot.duration_s)`
+  over its shots, overlaps included (`ModelProfile.vcu_for`), each shot at its own duration factor. That is more
+  seconds than the customer pays for, at a lower per-second weight than one clip of the whole length would get.
+- The hold, the refund on failure and `billable_usd` work exactly as for any other job.
+
 **Refunds.** A job's price is charged when the gateway accepts it. If the job doesn't succeed, the price is refunded in
 full, automatically and once (key `refund:{job_id}`). That covers a failure, a timeout, a cancellation, a worker that
 went away, an output that didn't verify, and `safety_blocked`: a Private job the enclave's safety check blocked, or a
