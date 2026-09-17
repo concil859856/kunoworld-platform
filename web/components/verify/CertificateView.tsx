@@ -65,10 +65,13 @@ export function CertificateView({
       value: utcStamp(body.finished_at),
       note: `${seconds(body.finished_at - body.started_at)} in the stage · ${seconds(body.gpu_seconds)} of GPU time`,
     },
-    {
-      role: "Format",
-      value: `${video.width}×${video.height} · ${video.fps} fps · ${seconds(video.duration_s)}${video.audio ? " · stereo audio" : " · silent"}`,
-    },
+    // A plan's receipt describes a plan, not a video.
+    video
+      ? {
+          role: "Format",
+          value: `${video.width}×${video.height} · ${video.fps} fps · ${seconds(video.duration_s)}${video.audio ? " · stereo audio" : " · silent"}`,
+        }
+      : { role: "Format", value: body.plan ? `A plan: ${body.plan.shots} shots, ${seconds(body.plan.duration_s)}` : "—" },
     { role: "Job", value: body.job_id, mono: true },
   ];
   return <EndCredits lines={lines} variant={variant} id={id} />;

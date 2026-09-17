@@ -36,6 +36,8 @@ const RULES: Rule[] = [
   rule("POST", "v1/blobs"),
   rule("GET", `v1/blobs/${ID}`),
   rule("POST", "v1/videos"),
+  // Plans: a Private plan is sealed in the browser like any job (POST v1/videos, mode plan, or its v1/plans alias).
+  rule("POST", "v1/plans"),
   rule("GET", "v1/videos"),
   rule("GET", `v1/videos/${ID}`),
   rule("POST", `v1/videos/${ID}/cancel`),
@@ -44,6 +46,8 @@ const RULES: Rule[] = [
   rule("POST", "v1/standard/videos"),
   rule("GET", "v1/standard/videos"),
   rule("GET", `v1/standard/videos/${ID}/(video|thumbnail)`),
+  rule("POST", "v1/standard/plans"),
+  rule("GET", `v1/standard/plans/${ID}`),
   rule("DELETE", `v1/standard/videos/${ID}`),
   // Key sync. Everything sent is wrapped in the browser first (lib/keyvault.ts): the proxy relays ciphertext.
   rule("GET", "v1/me/keyvault"),

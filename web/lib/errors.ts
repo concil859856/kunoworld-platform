@@ -176,6 +176,13 @@ const COPY: Record<string, Copy | ((phase: Phase) => Copy)> = {
   internal_error: { title: "The render failed inside the stage", detail: "The stage reported an internal error." },
   timeout: { title: "Still rendering after 30 minutes", detail: "We stopped waiting. Reopen the studio later — the key for this film is still in this browser." },
   job_canceled: { title: "Canceled", detail: "You canceled this take." },
+  plan_failed: { title: "Couldn't plan this brief", detail: "You weren't charged. Try rephrasing it." },
+  plans_unavailable: {
+    title: "No worker can write plans right now",
+    detail: "Nothing was sent or charged. Try again later, or write the shots yourself.",
+  },
+  brief_required: { title: "Write a brief first", detail: "Say what the video is for, what happens and how it should feel." },
+  invalid_plan: { title: "Fix the shots first", detail: "" },
   canceled: { title: "Canceled", detail: "You canceled this take." },
   aborted: { title: "Stopped waiting", detail: "" },
   network: {

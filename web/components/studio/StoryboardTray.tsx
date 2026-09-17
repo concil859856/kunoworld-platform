@@ -1,11 +1,13 @@
 "use client";
 
-import { shotPrompt, type ShotJoin } from "@kunoworld/sdk";
-import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
-import { useEffect, useId, useRef, type KeyboardEvent } from "react";
+import { planPriceUsd, shotPrompt, type PrivacyMode, type ShotJoin } from "@kunoworld/sdk";
+import { ArrowDown, ArrowUp, Plus, Wand2, X } from "lucide-react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ComposerApi } from "@/lib/composerState";
+import { usd } from "@/lib/format";
+import type { PlannerApi } from "@/lib/plan";
 import { JOINS, durationOptions, makeShot, storyboardLength, type StoryboardShot } from "@/lib/shot";
 import type { Problem } from "@/lib/validation";
 
@@ -17,6 +19,9 @@ import styles from "./Trays.module.css";
  * The scene every shot shares is the composer's prompt box, above this tray. Each card here holds one shot: what
  * happens, how long it runs, and how it starts from the shot before. The first shot always starts fresh, whatever
  * join it holds, so a shot moved to the top and back keeps the join it had.
+ *
+ * After a plan from a brief (PlanPanel), each card shows its beat and can be rewritten in the enclave, with an optional
+ * instruction, from the cards as they are now.
  */
 
 /** 4 → "4", 13.708 → "13.7": lengths read better rounded to a tenth. */
@@ -97,13 +102,26 @@ function Strip({ shots, overlapS }: { shots: StoryboardShot[]; overlapS: number 
   );
 }
 
-export function StoryboardTray({ composer, problems }: { composer: ComposerApi; problems: Problem[] }) {
+export function StoryboardTray({
+  composer,
+  problems,
+  planner,
+  privacy = "private",
+}: {
+  composer: ComposerApi;
+  problems: Problem[];
+  /** Plans from a brief: once there is one, each card can be rewritten. */
+  planner?: PlannerApi;
+  privacy?: PrivacyMode;
+}) {
   const { state, profile, actions } = composer;
   const board = profile.limits.storyboard;
   const { shots, settings } = state;
   const ids = useId();
   const listRef = useRef<HTMLOListElement>(null);
   const focusShot = useRef<string | null>(null);
+  const [rewriteOpen, setRewriteOpen] = useState<string | null>(null);
+  const [instruction, setInstruction] = useState("");
 
   // A shot added from the button gets the cursor, so you can describe it straight away.
   useEffect(() => {
@@ -126,6 +144,8 @@ export function StoryboardTray({ composer, problems }: { composer: ComposerApi; 
   const lengths = durationOptions(profile, settings.fps);
   const maxChars = profile.limits.max_prompt_chars;
   const over = length !== null && length.stitchedS > board.max_total_s + 1e-6;
+  const canRewrite = Boolean(planner?.plan);
+  const planPrice = planPriceUsd(profile, privacy);
 
   const patch = (id: string, change: Partial<StoryboardShot>) =>
     actions.updateShots((list) => list.map((shot) => (shot.id === id ? { ...shot, ...change } : shot)));
@@ -174,8 +194,28 @@ export function StoryboardTray({ composer, problems }: { composer: ComposerApi; 
           return (
             <li key={shot.id} className={styles.shotCard} data-shot={shot.id} data-invalid={mine.length > 0 || undefined} aria-label={`Shot ${i + 1}`}>
               <div className={styles.shotHead}>
-                <strong className={styles.shotNumber}>Shot {i + 1}</strong>
+                <span className={styles.shotTitle}>
+                  <strong className={styles.shotNumber}>Shot {i + 1}</strong>
+                  {shot.beat && <span className={styles.shotBeat}>{shot.beat}</span>}
+                </span>
                 <span className={styles.shotTools}>
+                  {canRewrite && (
+                    <button
+                      type="button"
+                      className={`${styles.iconButton} ${styles.rewriteButton}`}
+                      onClick={() => {
+                        setInstruction("");
+                        setRewriteOpen((open) => (open === shot.id ? null : shot.id));
+                      }}
+                      disabled={planner?.busy}
+                      aria-expanded={rewriteOpen === shot.id}
+                      aria-label={`Rewrite ${name}`}
+                      title="Rewrite this shot"
+                    >
+                      <Wand2 size={12} aria-hidden />
+                      <span className={styles.rewriteLabel}>Rewrite</span>
+                    </button>
+                  )}
                   <button type="button" className={styles.iconButton} onClick={() => move(i, i - 1)} disabled={i === 0} aria-label={`Move ${name} earlier`} title="Earlier">
                     <ArrowUp size={13} aria-hidden />
                   </button>
@@ -196,6 +236,33 @@ export function StoryboardTray({ composer, problems }: { composer: ComposerApi; 
                 placeholder={i === 0 ? "What happens first: the action, the camera, the sound." : "What happens next."}
                 onChange={(e) => patch(shot.id, { prompt: e.target.value })}
               />
+              {canRewrite && rewriteOpen === shot.id && planner && (
+                <div className={styles.shotRewrite}>
+                  <input
+                    className={styles.planInput}
+                    aria-label={`What to change in ${name}`}
+                    value={instruction}
+                    placeholder="Optional: what to change, e.g. a close-up, darker"
+                    onChange={(e) => setInstruction(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className={styles.textButton}
+                    disabled={planner.busy}
+                    onClick={() => {
+                      setRewriteOpen(null);
+                      void planner.rewrite(i + 1, instruction, privacy);
+                    }}
+                  >
+                    Rewrite {name} · {usd(planPrice)}
+                  </button>
+                </div>
+              )}
+              {planner?.busy && planner.rewriting === i + 1 && (
+                <p className={styles.trayHint} role="status">
+                  Rewriting {name}…
+                </p>
+              )}
               <div className={styles.shotControls}>
                 <label className={styles.shotLength}>
                   <span className={styles.subhead}>Length</span>

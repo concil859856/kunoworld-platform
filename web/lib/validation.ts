@@ -27,6 +27,7 @@ export const MODE_ROLES: Record<Mode, { required: InputRole[]; allowed: InputRol
   audio_to_video: { required: ["source_audio"], allowed: ["source_audio", "first_frame", "reference_image"] },
   retake: { required: ["source_video"], allowed: ["source_video"] },
   storyboard: { required: [], allowed: [] },
+  plan: { required: [], allowed: [] },
 };
 
 export const VISUAL_ROLES: ReadonlySet<InputRole> = new Set<InputRole>([
@@ -51,6 +52,7 @@ export const MODE_LABEL: Record<Mode, string> = {
   audio_to_video: "Audio to video",
   retake: "Retake",
   storyboard: "Storyboard",
+  plan: "Plan",
 };
 
 const ROLE_NOUN: Record<InputRole, [string, string]> = {
@@ -203,6 +205,8 @@ export interface ShotDraft {
   prompt: string;
   durationS: number;
   join: ShotJoin;
+  /** A planned shot's label, shown as its card's title. */
+  beat?: string;
 }
 
 const n = (x: number) => x.toLocaleString("en-US");

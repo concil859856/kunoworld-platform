@@ -31,7 +31,7 @@ runs against the plain one.
 
 | Project | Port | Region | Specs |
 |---|---|---|---|
-| `unknown-region` | 3000 | none (H3 unlicensed) | `studio`, `modes`, `actions`, `validation`, `verify`, `responsive`, `storyboard`, `elements` |
+| `unknown-region` | 3000 | none (H3 unlicensed) | `studio`, `modes`, `actions`, `validation`, `verify`, `responsive`, `storyboard`, `plans`, `elements` |
 | `japan` | 3001 | `NEXT_PUBLIC_KUNO_DEV_COUNTRY=JP` | `h3-region`, `h3-director` |
 
 The studio has no API key: specs sign in through the gateway's email-link API and give the
@@ -85,6 +85,15 @@ The test tagged `@needs-storyboard-gateway` renders a storyboard for real, in bo
 and worker that serve storyboards (`subnet/PROTOCOL.md`, "Storyboards"; `POST /v1/standard/videos` taking `shots`). The
 rest of `storyboard.spec.ts` runs on any gateway: run it with `--grep-invert @needs-storyboard-gateway` until then.
 
+### `@needs-plan-gateway`
+
+The test tagged `@needs-plan-gateway` plans from a brief for real, so it needs a gateway that routes plans (`features`
+on `/v1/route` entries, `mode: "plan"` jobs, `/v1/standard/plans`; `subnet/PROTOCOL.md`, "Plans (Director)") and a worker
+that writes them: the mock worker's canned planner does, with no GPU. The rest of `plans.spec.ts` runs on any gateway,
+standing in plan limits, the `plan/1` feature and failed jobs where the gateway lacks them. A worker must be able to
+register: from an unknown country run it with `KUNO_PROFILES=ltx-2.5-fast,ltx-2.5-pro,ltx-2.5-4k` (or
+`KUNO_MINER_COUNTRY=JP`), since the gateway refuses MiniMax H3 profiles there.
+
 ## What each spec covers
 
 - **studio** — text to video, first + last frame, library reload, H3 → LTX fallback.
@@ -104,6 +113,12 @@ rest of `storyboard.spec.ts` runs on any gateway: run it with `--grep-invert @ne
   `params.shots` and ciphertext for Private — and that a `shot i/N` stage reads "Shot i of N" on the take and in the
   inspector. Those job calls, and `/v1/models`' storyboard limits on a gateway that predates them, are stood in with
   `page.route`; the Private test still routes to, and verifies, a real attested worker.
+- **plans** — "Plan from a brief" on the Storyboard tab: target-length chips kept to the plan limits, the flat plan
+  price in each mode, the privacy line, nothing sent without a brief, and the storyboard's own "Render storyboard"
+  button; `plan_failed`, `safety_blocked` and no plan worker read plainly (job calls stood in), with the gateway seeing
+  only the frame, the target and ciphertext; the panel at 320 px. Tagged `@needs-plan-gateway`: a Private plan fills the
+  scene and five shot cards with beats and repair notices, a notice is dismissed, shot 1 is edited and only shot 2 is
+  rewritten, the cards fit 320 px, the storyboard renders; then a Standard plan goes through `/v1/standard/plans`.
 - **elements** — the Elements page asking for key sync first, then a character saved with two pictures and a consent
   record (the form's problems before it's complete, the card's "which models" line, and the gateway holding no name,
   description or kind); "Use in a video" putting its line in the prompt and picture 2 in the first frame, then a Private

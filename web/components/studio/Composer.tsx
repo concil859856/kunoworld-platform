@@ -26,9 +26,11 @@ import {
 import { MODE_LABEL, validateParams, validatePrompt, validateStoryboard, type Problem } from "@/lib/validation";
 import { NSFW_SENTENCE, PRIVACY_COPY } from "@/lib/privacy-copy";
 import type { ElementsLibrary } from "@/lib/useElements";
+import type { PlannerApi } from "@/lib/plan";
 import { setPrivacyChoice, usePrivacyChoice } from "@/lib/usePrivacyChoice";
 
 import { ElementPicker } from "./ElementPicker";
+import { PlanPanel } from "./PlanPanel";
 import { StoryboardTray } from "./StoryboardTray";
 import { EditTray, FramesTray, KeyframesTray, ReferencesTray } from "./Trays";
 
@@ -105,6 +107,7 @@ export function Composer({
   elementFocus,
   onElementFocusDone,
   onOpenElements,
+  planner,
 }: {
   composer: ComposerApi;
   /** From the connected gateway, so routing predictions match where jobs actually go. */
@@ -119,6 +122,8 @@ export function Composer({
   elementFocus?: string | null;
   onElementFocusDone?: () => void;
   onOpenElements?: () => void;
+  /** Plans from a brief, for the Storyboard tab. */
+  planner?: PlannerApi;
 }) {
   const { state, profile, actions } = composer;
   const profiles = models?.models ?? [profile];
@@ -246,6 +251,7 @@ export function Composer({
         {state.tab === "keyframes" && <KeyframesTray composer={composer} problems={trayProblems} />}
         {state.tab === "references" && <ReferencesTray composer={composer} problems={trayProblems} onInsert={insertToken} />}
         {state.tab === "edit" && <EditTray composer={composer} problems={trayProblems} />}
+        {state.tab === "storyboard" && planner && <PlanPanel composer={composer} planner={planner} privacy={takePrivacy} />}
       </div>
 
       {elements && onOpenElements && (
@@ -301,7 +307,7 @@ export function Composer({
         </div>
       </div>
 
-      {state.tab === "storyboard" && <StoryboardTray composer={composer} problems={trayProblems} />}
+      {state.tab === "storyboard" && <StoryboardTray composer={composer} problems={trayProblems} planner={planner} privacy={takePrivacy} />}
 
       <div className="settings-row">
         <Picker
@@ -447,7 +453,7 @@ export function Composer({
         </label>
         <button className="generate-button" onClick={submit} disabled={busy} aria-disabled={blocked} title={blocked ? problems[0]?.message : undefined}>
           {busy ? <LoaderCircle size={16} className="spin" /> : <Sparkles size={16} />}
-          {busy ? "Creating…" : estimate === null ? "Generate video" : `Generate video · ${usd(estimate)}`}
+          {busy ? "Creating…" : `${storyboard ? "Render storyboard" : "Generate video"}${estimate === null ? "" : ` · ${usd(estimate)}`}`}
           <ArrowRight size={16} />
         </button>
       </div>

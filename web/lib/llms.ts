@@ -12,7 +12,7 @@ import type { ModelProfile } from "@kunoworld/sdk";
 import { CATALOG, durationRange, fpsRange, isH3, offersStandard, resolutionRange, variantLabel } from "./catalog";
 import { SITE } from "./config";
 
-const UPDATED = "2026-09-16";
+const UPDATED = "2026-09-17";
 const url = (path: string) => `${SITE.url}${path}`;
 
 const MODE_NAMES: Record<string, string> = {
@@ -27,6 +27,7 @@ const MODE_NAMES: Record<string, string> = {
   video_edit: "video edit",
   extend_video: "extend video",
   storyboard: "storyboard",
+  plan: "plan from a brief",
 };
 
 const SUMMARY =
@@ -56,7 +57,7 @@ export function llmsTxt(): string {
 Key facts:
 - Every video has a privacy mode. **Private** (the default) is end-to-end encrypted and runs only on confidential GPUs. **Standard** lets KunoWorld and the GPU provider read the job, so it can run on any GPU and costs less.
 - Before a client sends anything to a worker, it checks the worker itself: the worker's Intel TDX quote against Intel's root, its GPUs' NVIDIA attestation, and an owner-signed list of approved software images. None of these checks trusts KunoWorld's servers.
-- Creation modes: text, image and first/last frame to video, keyframes, references, video edit and extend, retake, audio to video, and storyboards (2 to 12 chained shots delivered as one video, on LTX-2.5 Fast).
+- Creation modes: text, image and first/last frame to video, keyframes, references, video edit and extend, retake, audio to video, and storyboards (2 to 12 chained shots delivered as one video, on LTX-2.5 Fast), which a confidential worker can plan from a written brief.
 - Sexual and explicit content is banned in both modes. Videos are stored until their owner deletes them.
 - The MiniMax H3 licence excludes the United States, the European Union, the United Kingdom and South Korea; requests from there are served by LTX-2.5.
 - The whole project, explained in one file: ${url("/llms-full.txt")}
@@ -171,7 +172,8 @@ MiniMax H3 (MiniMax; MiniMax H3 Community License):
 ${h3.map(modelLine).join("\n")}
 
 - **Storyboards.** LTX-2.5 Fast chains 2 to 12 shots into one video of at most 120 seconds, rendered one shot after another by one worker inside one enclave, with one receipt. The scene is written once and each shot has its own prompt and length. A shot either continues the one before (one unbroken take), cuts to a new picture over the same sound, or starts fresh. Each joined shot repeats the previous shot's last 17 frames, which are trimmed, so the video is a little shorter than its shots added up. The price is per stitched second. Storyboards run only on confidential GPUs, in both privacy modes, because validators don't step-audit them yet. In the JavaScript SDK pass \`shots\` (the scene goes in \`prompt\`); in the Python SDK, \`generate(prompt=scene, shots=[Shot(...)])\`; over HTTP, \`params.shots\` lists each shot's \`duration_s\` and \`join\`, and a Standard request adds \`shots: [{prompt}]\`.
-- **Prices.** The live profiles, limits and placeholder prices are at ${url("/models")} and \`GET /v1/models\`, which returns \`pricing_placeholder: true\` while they are placeholders. Every job costs at least $0.10. The gateway holds the price when a job is submitted and refunds it automatically if the job fails, is blocked, is canceled or times out.
+- **Plans (Director).** LTX-2.5 Fast can write a storyboard from a brief inside the enclave: a scene and 2 to 12 shots, each with a prompt, a length and a join, fitted to a target length of 4 to 120 seconds. Nothing is rendered; the customer edits the plan (or has single shots rewritten) and renders it as an ordinary storyboard. The planner is the small language model bundled with LTX-2.5, so a plan is a first draft, and every change code made to what it wrote is listed in the plan's \`repairs\`. A plan costs a flat placeholder price whatever its length (\`pricing.plan_usd\`, and \`standard_plan_usd\` in Standard mode), runs only on confidential GPUs whose workers advertise the \`plan/1\` feature, and is refunded if the planner writes nothing usable (\`plan_failed\`). In Private mode the brief is sealed on the customer's device and the plan is opened there: the gateway sees the target length, the frame, the price, the status and the receipt, never the brief or the plan. In Standard mode KunoWorld reads both, checks them against the content policy and stores the plan until the owner deletes it. SDKs: \`kuno.plan\` and \`kuno.revisePlan\` (JavaScript), \`client.plan\`, \`client.revise_plan\` and \`generate(plan=...)\` (Python). Over HTTP: Private, a sealed job with \`params.mode\` \`"plan"\` to \`POST /v1/plans\` (or \`/v1/videos\`), whose output blob is the sealed plan JSON and whose receipt carries \`plan\` instead of \`video\`; Standard, \`POST /v1/standard/plans\` \`{params, brief, style?, options?}\`, then \`GET /v1/standard/plans/{job_id}\`.
+- **Prices.** The live profiles, limits and placeholder prices are at ${url("/models")} and \`GET /v1/models\`, which returns \`pricing_placeholder: true\` while they are placeholders. Every video job costs at least $0.10; a plan costs its flat price. The gateway holds the price when a job is submitted and refunds it automatically if the job fails, is blocked, is canceled or times out.
 
 ## 7. Content policy and safety
 
@@ -200,6 +202,7 @@ ${h3.map(modelLine).join("\n")}
   - \`POST /v1/quote\`: the exact price a job would be charged now (the model after routing, the params, a breakdown, and the balance with a key), before anything is encrypted; send the job's shape, never a prompt.
   - Elements (encrypted characters, products, locations, styles and voices): \`/v1/elements\`. Everything describing an Element is encrypted on the customer's device under a key derived from key sync; the gateway stores ciphertext only.
   - Private jobs: \`POST /v1/blobs\` and \`POST /v1/videos\`, then \`GET /v1/videos/{job_id}\`, \`POST /v1/videos/{job_id}/cancel\` and \`DELETE /v1/videos/{job_id}\`.
+  - Plans: \`POST /v1/plans\` (sealed, mode plan) and \`GET /v1/plans/{job_id}\`; Standard plans at \`/v1/standard/plans\`. Quote a plan with \`POST /v1/quote\` and \`mode: "plan"\`.
   - Standard jobs live under \`/v1/standard/…\`.
   - Provenance lookup: \`GET /v1/provenance/{content_digest}\`.
   - Share links: \`/v1/account/shares\` and \`/v1/shares/{token}\`.
@@ -208,12 +211,12 @@ ${h3.map(modelLine).join("\n")}
 
 ### For AI agents
 
-- **Local MCP server.** \`kunoworld-mcp\` (Python package \`kunoworld\`, extra \`mcp\`; not yet on PyPI) runs on the user's computer over stdio for Claude Code, Claude Desktop, Cursor and other MCP clients. Tools: list_models, quote_price, generate_video, get_job, download_video, cancel_job, list_jobs.
+- **Local MCP server.** \`kunoworld-mcp\` (Python package \`kunoworld\`, extra \`mcp\`; not yet on PyPI) runs on the user's computer over stdio for Claude Code, Claude Desktop, Cursor and other MCP clients. Tools: list_models, quote_price, generate_video, plan_video, revise_plan, get_job, download_video, cancel_job, list_jobs. plan_video writes an editable storyboard from a brief (a flat price, nothing rendered), revise_plan rewrites some or all of its shots, and generate_video renders it by its plan_id; plans stay in the local job store.
 - **Why local.** Private jobs are encrypted and decrypted on the user's computer, so the server must run there. KunoWorld runs no hosted MCP server: a hosted one would receive prompts readable, and could only ever offer Standard mode.
 - **What the assistant sees.** Private mode keeps prompts and videos from KunoWorld and GPU operators, not from the AI assistant or its provider, which see what the user types and what the tools return.
 - **Spending.** generate_video quotes first and refuses, creating and charging nothing, over max_price_usd or the server's KUNOWORLD_MAX_JOB_USD cap. Quote and agree the price with the user before generating.
 - **Handles.** Private job keys stay in local files readable only by the user; no tool returns a key.
-- **Skill.** The \`kunoworld-video\` Agent Skill (in the SDK repository, \`skills/kunoworld-video\`) covers when to use KunoWorld, Private vs Standard, quoting, LTX-2.5 and MiniMax H3 prompts, storyboards and the content rules.
+- **Skill.** The \`kunoworld-video\` Agent Skill (in the SDK repository, \`skills/kunoworld-video\`) covers when to use KunoWorld, Private vs Standard, quoting, LTX-2.5 and MiniMax H3 prompts, storyboards, plans from a brief and the content rules.
 
 ## 10. For miners
 

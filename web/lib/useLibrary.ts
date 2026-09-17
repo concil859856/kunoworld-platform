@@ -254,8 +254,9 @@ export function useLibrary(client: KunoClient | null, accountId: string | null) 
     client.listStandard(100).then(
       (rows) => {
         if (!alive) return;
-        // Deleted rows stay in the gateway's list for billing; they're gone from the shelf.
-        const listed = rows.filter((row) => !row.deleted).map((row) => standardEntry(client, row));
+        // Deleted rows stay in the gateway's list for billing; they're gone from the shelf. Plans aren't videos: they load
+        // into the Storyboard tab instead, so a gateway that lists them here doesn't put them on the shelf.
+        const listed = rows.filter((row) => !row.deleted && row.params?.mode !== "plan").map((row) => standardEntry(client, row));
         const known = new Set(entriesRef.current.map((e) => e.id));
         const fresh = listed.filter((e) => !known.has(e.id));
         if (!fresh.length) return;

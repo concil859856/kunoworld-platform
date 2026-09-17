@@ -253,8 +253,9 @@ export async function pickEditOp(page: Page, name: string): Promise<void> {
   await expect(op).toHaveAttribute("aria-checked", "true");
 }
 
+/** The composer's main button: "Generate video", or "Render storyboard" on the Storyboard tab. */
 export function generateButton(page: Page): Locator {
-  return page.getByRole("button", { name: /^Generate/ });
+  return page.getByRole("button", { name: /^(Generate video|Render storyboard)/ });
 }
 
 /** The film-stock button, which names the stock currently loaded. */
