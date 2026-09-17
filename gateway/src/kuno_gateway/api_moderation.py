@@ -442,6 +442,8 @@ async def item_video(item_id: str, request: Request):
         else:
             raise _error(403, "private_content", "Private videos can only be reviewed with a key supplied in a report.")
         loader = lambda: standard_jobs.open_private_output(state, job, key)
+        if standard_jobs.is_plan_job(job):
+            media_type, action = "application/json", "item.view_plan"
     try:
         data = await asyncio.to_thread(loader)
     except KeyError:
@@ -449,7 +451,7 @@ async def item_video(item_id: str, request: Request):
     except DecryptionError:
         if kind in ("held_upload", "held_output"):
             raise _error(422, "integrity_error", "The stored content does not match its recorded digest.") from None
-        raise _error(422, "key_mismatch", "The reported key does not open this job's video.") from None
+        raise _error(422, "key_mismatch", "The reported key does not open this job's output.") from None
     with state.session() as s, s.begin():
         moderation.log_action(
             s, by, action, "moderation_item", item_id, None,

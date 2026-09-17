@@ -17,6 +17,7 @@ from kuno_protocol import devkit
 from kuno_protocol.attestation import MockTEE, OpenTEE, build_evidence, enclave_id_for
 from kuno_protocol.canonical import b64d, b64e, sha256_hex
 from kuno_protocol.crypto import (
+    DecryptionError,
     RecipientSession,
     SenderSession,
     generate_hpke_keypair,
@@ -34,7 +35,7 @@ from kuno_protocol.schemas import GenerationParams, JobCreate, SealedPayload, jo
 from kuno_protocol.sealed_payload import open_payload, seal_payload
 from plan_helpers import FAST, plan_params, plan_receipt, sealed_plan, write_plan
 
-from kuno_gateway import identity, ledger
+from kuno_gateway import identity, ledger, standard_jobs
 from kuno_gateway.app import create_app
 from kuno_gateway.db import Account, Enclave, Job
 from kuno_gateway.db_moderation import Strike
@@ -284,6 +285,12 @@ def test_a_private_plan_runs_end_to_end_and_its_receipt_carries_the_plan_and_no_
     [row] = [r for r in gw.client.get("/validator/v1/ledger", headers=gw.validator).json() if r["job_id"] == job.job_id]
     assert (row["status"], row["params"]["mode"], row["billable_usd"]) == ("succeeded", "plan", 0.1)
     assert row["receipt"]["body"]["plan"] == receipt.body.plan.model_dump(mode="json") and "video" not in row["receipt"]["body"]
+    # A report's key opens it for an operator as the receipted plan JSON; any other key doesn't.
+    with gw.state.session() as s:
+        stored = s.get(Job, job.job_id)
+        assert standard_jobs.open_private_output(gw.state, stored, output_key) == data
+        with pytest.raises(DecryptionError):
+            standard_jobs.open_private_output(gw.state, stored, bytes(32))
     # Nothing to share: a plan isn't a video.
     share = gw.client.post(f"/v1/videos/{job.job_id}/shares", headers=gw.dev)
     assert (share.status_code, share.json()["detail"]["code"]) == (409, "share_unavailable"), share.text

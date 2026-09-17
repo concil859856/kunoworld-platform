@@ -87,7 +87,7 @@ INDUSTRY_CLASSIFICATIONS = ("A1", "A2", "B1", "B2")
 REPORT_HOLD_REASONS = ("report_csam", "report_sexual_minor")
 MATCH_HOLD_REASONS = ("upload_match", "output_match")
 CHILD_SAFETY_CATEGORIES = ("csam", "sexual_minor")
-VIEW_ACTIONS = ("item.view_video", "item.view_upload")
+VIEW_ACTIONS = ("item.view_video", "item.view_upload", "item.view_plan")
 
 DRAFT, DRY_RUN, SUBMITTING, SUBMITTED, FAILED, CANCELED = "draft", "dry_run", "submitting", "submitted", "failed", "canceled"
 STATUSES = (DRAFT, DRY_RUN, SUBMITTING, SUBMITTED, FAILED, CANCELED)

@@ -23,6 +23,8 @@ from typing import TYPE_CHECKING, Any
 from kuno_protocol.blobs import decrypt_blob, encrypt_blob
 from kuno_protocol.canonical import b64d, b64e, sha256_hex
 from kuno_protocol.crypto import DecryptionError, SenderSession
+from kuno_protocol.plans import PlanError, open_plan
+from kuno_protocol.profiles import Mode
 from kuno_protocol.receipts import Receipt, verify_receipt
 from kuno_protocol.schemas import (
     GenerationParams,
@@ -480,13 +482,27 @@ def remove_job_blobs(state: GatewayState, s: Session, job_id: str, now: float | 
 
 
 def open_private_output(state: GatewayState, job: Job, output_key: bytes) -> bytes:
-    """Decrypts a private job's output with a key a report supplied, and checks it is the receipted video."""
+    """Decrypts a private job's output with a key a report supplied, and checks it is what the receipt certified: the
+    video, or for a plan job the plan JSON (sealed under its own label and padded, `kuno_protocol.plans.open_plan`)."""
     if not job.output_blob_id:
         raise KeyError(job.id)
-    video = decrypt_blob(output_key, output_label(job.id), state.blobs.get(job.output_blob_id))
-    if job.content_digest and sha256_hex(video) != job.content_digest:
-        raise DecryptionError("the decrypted video does not match the job's receipt")
-    return video
+    blob = state.blobs.get(job.output_blob_id)
+    if is_plan_job(job):
+        try:
+            _, data = open_plan(output_key, job.id, blob)
+        except PlanError:
+            # Authenticated under this key, so the key is right, but not a plan: a worker bug, reported as a mismatch.
+            raise DecryptionError("the decrypted output is not a plan") from None
+    else:
+        data = decrypt_blob(output_key, output_label(job.id), blob)
+    if job.content_digest and sha256_hex(data) != job.content_digest:
+        raise DecryptionError("the decrypted output does not match the job's receipt")
+    return data
+
+
+def is_plan_job(job: Job) -> bool:
+    """Whether a job is a plan (PROTOCOL.md "Plans (Director)"): its output is plan JSON, not a video."""
+    return GenerationParams.model_validate_json(job.params).mode is Mode.PLAN
 
 
 def expire_unused_uploads(state: GatewayState, s: Session, now: float | None = None) -> int:
