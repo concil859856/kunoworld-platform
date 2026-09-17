@@ -45,4 +45,9 @@ async def standard_job(job_id: str, request: Request, _validator: Account = Depe
         # carry the key, so every other job's record is as it was. Validators don't step-audit storyboards (they carry no
         # step commitment); the record is here so they can read what was asked, as for any standard job.
         out["shots"] = standard_jobs.shots_json(row)
+    if params.get("mode") == "plan":
+        # A plan: `prompt` is the brief, `options.plan` what was sealed with it, and `plan` the delivered Plan v1 (None until
+        # it arrives), byte for byte what the receipt's content_digest covers once re-encoded canonically. Only plans carry
+        # the key. Plans carry no step commitment either.
+        out["plan"] = standard_jobs.plan_json(row)
     return out

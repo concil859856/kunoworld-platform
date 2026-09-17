@@ -88,23 +88,51 @@ def serves(enclave: Enclave, privacy: str) -> bool:
 
 
 def routing_tier(privacy: str, mode) -> str:
-    """The privacy mode whose tier a job is routed by. A storyboard carries no step commitment, and step audits are the
-    only integrity check on open-tier miners, so a Standard storyboard goes only where a Private job could: confidential
-    enclaves."""
+    """The privacy mode whose tier a job is routed by. Storyboards and plans carry no step commitment, and step audits are
+    the only integrity check on open-tier miners, so a Standard storyboard or plan goes only where a Private job could:
+    confidential enclaves."""
     from kuno_protocol.profiles import Mode
 
-    return "private" if mode == Mode.STORYBOARD else privacy
+    return "private" if mode in (Mode.STORYBOARD, Mode.PLAN) else privacy
 
 
-def enclaves_for(state: GatewayState, s: Session, profile_id: str, privacy: str, fit=None) -> list[Enclave]:
+def required_feature(mode) -> str | None:
+    """The `MinerRegistration.features` entry an enclave must list to be sent a job of this mode, or None. A worker from
+    before plans can't parse `mode: "plan"` and would leave the job to time out, so plans need `plan/1`."""
+    from kuno_protocol.plans import PLAN_FEATURE
+    from kuno_protocol.profiles import Mode
+
+    return PLAN_FEATURE if mode == Mode.PLAN else None
+
+
+def enclave_features(enclave: Enclave) -> list[str]:
+    """What the enclave listed at registration (migration 0022); empty for an enclave that listed nothing."""
+    raw = getattr(enclave, "features", None)
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except ValueError:
+        return []
+    return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
+
+
+def has_feature(enclave: Enclave, feature: str | None) -> bool:
+    return feature is None or feature in enclave_features(enclave)
+
+
+def enclaves_for(state: GatewayState, s: Session, profile_id: str, privacy: str, fit=None, feature: str | None = None) -> list[Enclave]:
     """Fresh enclaves for a profile that may run a job in this mode, least loaded first. `fit`
-    (kuno_protocol.envelope.EnvelopeQuery) keeps only those whose serving envelope has room for the request."""
+    (kuno_protocol.envelope.EnvelopeQuery) keeps only those whose serving envelope has room for the request, and
+    `feature` (`required_feature`) only those that listed it at registration."""
     routable = getattr(state, "routable_enclaves", None)
     if routable is not None:
-        return routable(s, profile_id, privacy) if fit is None else routable(s, profile_id, privacy, fit=fit)
-    from .envelopes import envelope_serves
+        enclaves = routable(s, profile_id, privacy) if fit is None else routable(s, profile_id, privacy, fit=fit)
+    else:
+        from .envelopes import envelope_serves
 
-    return [e for e in state.fresh_enclaves(s, profile_id) if serves(e, privacy) and envelope_serves(e, profile_id, fit)]
+        enclaves = [e for e in state.fresh_enclaves(s, profile_id) if serves(e, privacy) and envelope_serves(e, profile_id, fit)]
+    return [e for e in enclaves if has_feature(e, feature)]
 
 
 # ------------------------------------------------------------------ sealing
@@ -206,7 +234,7 @@ def ingest_output(state: GatewayState, s: Session, job: Job, now: float) -> str 
     if row.deleted_at is not None:
         return None  # deleted while it ran: nothing to keep
     if row.output_key is None:
-        return None if row.video_blob_id else "the job's output key is gone"
+        return None if (row.video_blob_id or row.plan is not None) else "the job's output key is gone"
     blob = s.get(Blob, job.output_blob_id) if job.output_blob_id else None
     enclave = s.get(Enclave, job.enclave_id)
     if blob is None or not job.receipt or enclave is None:
@@ -221,6 +249,8 @@ def ingest_output(state: GatewayState, s: Session, job: Job, now: float) -> str 
     if sha256_hex(sealed) != receipt.body.output_digest:
         return "output digest does not match the receipt"
     store = vault(state)
+    if is_plan(job):
+        return ingest_plan(state, s, job, row, receipt, sealed)
     try:
         video = decrypt_blob(store.open_secret(output_key_label(job.id), row.output_key), output_label(job.id), sealed)
     except DecryptionError:
@@ -236,6 +266,98 @@ def ingest_output(state: GatewayState, s: Session, job: Job, now: float) -> str 
         return refused
     blob_id, _, _ = state.blobs.put(store.seal(video_label(job.id), video, s))
     row.video_blob_id, row.video_sha256, row.video_bytes = blob_id, digest, len(video)
+    row.output_key = None
+    return None
+
+
+PLAN_BLOCKED_MESSAGE = "The plan the worker wrote isn't allowed under the content policy. Your credit was refunded."
+
+
+def job_mode(job: Job) -> str | None:
+    """The job's mode from its stored public params."""
+    try:
+        return json.loads(job.params).get("mode")
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def is_plan(job: Job) -> bool:
+    from kuno_protocol.profiles import Mode
+
+    return job_mode(job) == Mode.PLAN.value
+
+
+def plan_options(row: StandardJob):
+    """The `options.plan` the gateway sealed for a Standard plan job (kuno_protocol.plans.PlanOptions)."""
+    from kuno_protocol.plans import PLAN_OPTION, PlanOptions
+
+    options = json.loads(row.options) if row.options else {}
+    return PlanOptions.model_validate(options.get(PLAN_OPTION) or {})
+
+
+def plan_texts(plan) -> list[str]:
+    """Every text of a plan the content policy reads: the scene, each shot prompt on its own and as the video model sees it
+    (`shot_prompt(scene, prompt)`, since the policy weighs words by their neighbours), the title, the notes and the beats.
+    The enclave checked the same texts before it delivered the plan."""
+    from kuno_protocol.profiles import shot_prompt
+
+    texts = [plan.scene, plan.title, plan.notes]
+    for shot in plan.shots:
+        texts += [shot.prompt, shot_prompt(plan.scene, shot.prompt), shot.beat]
+    return [text for text in texts if text.strip()]
+
+
+def plan_policy_violation(plan) -> bool:
+    from kuno_protocol.content_policy import ContentPolicyViolation, check_prompt
+
+    try:
+        for text in plan_texts(plan):
+            check_prompt(text)
+    except ContentPolicyViolation:
+        return True
+    return False
+
+
+def ingest_plan(state: GatewayState, s: Session, job: Job, row: StandardJob, receipt: Receipt, sealed: bytes) -> str | None:
+    """A Standard plan job's output (PROTOCOL.md "Plans (Director)"): decrypted and unpadded (`open_plan`), checked against
+    the receipt's `content_digest` and `plan` block and against the protocol's rules for this job (`validate`), then run
+    through the content policy, and kept readable in `standard_jobs.plan`. A plan the policy refuses fails the job as
+    `safety_blocked` without a strike: the brief passed the same check before it was sealed, and the text in question is
+    the planner's."""
+    from kuno_protocol.plans import PlanError, open_plan, plan_context, validate
+
+    from .output_scan import OutputRefused
+
+    info = receipt.body.plan
+    if info is None:
+        return "the receipt describes no plan"
+    try:
+        plan, data = open_plan(vault(state).open_secret(output_key_label(job.id), row.output_key), job.id, sealed)
+    except DecryptionError:
+        return "output did not decrypt with the job's output key"
+    except PlanError as exc:
+        return f"the output is not a plan: {exc}"
+    if sha256_hex(data) != receipt.body.content_digest:
+        return "decrypted plan does not match the receipt's content digest"
+    if (info.shots, info.planner, info.prompt_version) != (len(plan.shots), plan.planner.model, plan.planner.prompt_version) or abs(
+        info.duration_s - plan.duration_s
+    ) > 1e-6:
+        return "the receipt misreports the plan it certifies"
+    profile = state.profiles.get(job.profile_id)
+    if profile is None:
+        return "unknown profile"
+    try:
+        # Without the client's max_shot_s the worker planned to its own envelope, which the profile's limit already caps.
+        validate(plan, profile, context=plan_context(profile, GenerationParams.model_validate_json(job.params), plan_options(row)))
+    except (PlanError, ValueError) as exc:
+        return f"the plan breaks the protocol's rules: {exc}"
+    if plan_policy_violation(plan):
+        # The plan text is never logged.
+        log.warning("refused a standard plan under the content policy: job=%s account=%s", job.id, job.account_id)
+        refused = OutputRefused("the plan's text breaks the content policy", "safety_blocked", PLAN_BLOCKED_MESSAGE)
+        refused.strike = False
+        return refused
+    row.plan = data.decode("utf-8")
     row.output_key = None
     return None
 
@@ -320,7 +442,7 @@ def delete_content(state: GatewayState, s: Session, row: StandardJob, now: float
     tombstones.record(s, tombstones.STANDARD_CONTENT, row.job_id, row.account_id, now)
     discard_blobs(state, [b for b in (row.video_blob_id, row.thumbnail_blob_id) if b], s, row.account_id)
     row.video_blob_id = row.thumbnail_blob_id = None
-    row.prompt = row.negative_prompt = row.shots = row.options = row.inputs = row.output_key = None
+    row.prompt = row.negative_prompt = row.shots = row.plan = row.options = row.inputs = row.output_key = None
     labels = [video_label(row.job_id), thumbnail_label(row.job_id), output_key_label(row.job_id)]
     for upload in s.scalars(select(StandardUpload).where(StandardUpload.job_id == row.job_id)).all():
         if holds.upload_held(s, upload.id, now):
@@ -409,6 +531,11 @@ def delete_for_owner(state: GatewayState, s: Session, job: Job, now: float) -> N
 
 def inputs_json(row: StandardJob) -> list[dict]:
     return json.loads(row.inputs) if row.inputs else []
+
+
+def plan_json(row: StandardJob) -> dict | None:
+    """A plan job's stored plan (Plan v1 JSON); None for any other job, before it arrives, or once deleted."""
+    return json.loads(row.plan) if row.plan is not None else None
 
 
 def shots_json(row: StandardJob) -> list[dict] | None:

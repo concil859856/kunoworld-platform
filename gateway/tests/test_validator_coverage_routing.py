@@ -76,3 +76,16 @@ def test_open_tier_work_covers_nothing_and_unadmitted_open_tier_miners_still_com
         s.add(enclave("newbie", "open", "5Newbie"))
     assert order(world, "validator", ["busy", "idle", "newbie"]) == ["newbie", "idle", "busy"]
     assert order(world, "customer", ["busy", "idle", "newbie"]) == ["busy", "idle"]
+
+
+def test_a_plan_does_not_cover_a_miner(world):
+    """Validators' capacity gate doesn't count plans (they render nothing), so neither does this ordering."""
+    from kuno_protocol.profiles import Mode
+    from kuno_protocol.schemas import GenerationParams
+
+    plan = GenerationParams(profile_id="ltx-2.5-fast", mode=Mode.PLAN, duration_s=30, resolution="720p", aspect_ratio="16:9", fps=24)
+    with world.session() as s, s.begin():
+        job = finished("plan", "idle", profile_id="ltx-2.5-fast")
+        job.params = plan.model_dump_json()
+        s.add(job)
+    assert order(world, "validator", ["busy", "idle"]) == ["idle", "busy"]

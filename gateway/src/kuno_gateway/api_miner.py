@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from functools import partial
 
@@ -20,6 +21,7 @@ from kuno_protocol.hardware import capacity_limit
 from kuno_protocol.receipts import Receipt, verify_receipt
 from kuno_protocol.hotkey import verify_hotkey_proof
 from kuno_protocol.location import verify_location
+from kuno_protocol.profiles import Mode
 from kuno_protocol.regions import is_excluded
 from kuno_protocol.schemas import GenerationParams, JobState, MinerRegistration
 from kuno_protocol.tiers import OPEN, hotkey_proof_required, tier_for_tee, tier_serves
@@ -115,6 +117,20 @@ def _location_record(state, body: MinerRegistration, enclave_id: str) -> dict | 
     }
 
 
+# A feature names a job kind and its version, e.g. "plan/1" (kuno_protocol.plans.PLAN_FEATURE).
+FEATURE_RE = re.compile(r"[a-z0-9][a-z0-9_.-]{0,47}/[0-9]{1,6}")
+
+
+def _features(body: MinerRegistration) -> list[str]:
+    """The optional job kinds a registration lists, deduplicated and sorted. Unknown kinds are kept (a newer worker may
+    list what this gateway doesn't route yet); a malformed entry refuses the registration."""
+    features = body.features or []
+    bad = [item for item in features if not FEATURE_RE.fullmatch(item)]
+    if bad:
+        raise _error(422, "invalid_features", f"Features are written as <kind>/<version>, e.g. plan/1; not {bad[0][:64]!r}.")
+    return sorted(set(features))
+
+
 @router.get("/nonce")
 async def nonce(request: Request):
     return {"nonce": gw(request).issue_nonce(), "expires_in": 300}
@@ -136,6 +152,7 @@ async def register_enclave(request: Request):
         envelope = normalize_envelope(body.envelope, state.profiles, evidence.profiles)
     except EnvelopeError as exc:
         raise _error(422, "invalid_envelope", str(exc)) from None
+    features = _features(body)
     # DCAP collateral and NRAS are network calls; keep them off the event loop. Open-tier evidence is accepted only
     # where the owner-signed manifest's open_tier policy allows the image (refused by default, production included).
     verdict = await asyncio.to_thread(
@@ -196,6 +213,8 @@ async def register_enclave(request: Request):
         enclave.gpu_count = verdict.gpu_count
         # Replaced at every registration: one without an envelope serves its profiles' full limits.
         enclave.envelope = json.dumps(envelope, separators=(",", ":"), sort_keys=True) if envelope else None
+        # Replaced at every registration too: a worker restarted without a planner stops being sent plans.
+        enclave.features = json.dumps(features, separators=(",", ":")) if features else None
         try:
             replaced = state.bind_hardware(s, enclave, verdict.hardware, now)
         except HardwareInUse as exc:
@@ -356,10 +375,13 @@ def _complete(state, job_id: str, enclave, body, receipt) -> None:
             problems.append("receipt params digest mismatch")
         if blob is not None and (r.output_digest != blob.sha256 or r.output_bytes != blob.size):
             problems.append("receipt output digest mismatch")
+        # A plan job's receipt describes a plan and no video; every other job's, a video (PROTOCOL.md "Plans (Director)").
+        if (params.mode is Mode.PLAN) != (r.plan is not None):
+            problems.append("receipt describes a plan for a video job" if r.plan is not None else "receipt describes a video for a plan job")
         if problems:
             raise _error(422, "bad_receipt", "; ".join(problems))
         job.output_blob_id = blob.id
-        # The video stays until its owner deletes it.
+        # The video (or a plan's sealed JSON) stays until its owner deletes it.
         blob.expires_at = NEVER_EXPIRES
         job.receipt = receipt.model_dump_json()
         job.content_digest = r.content_digest

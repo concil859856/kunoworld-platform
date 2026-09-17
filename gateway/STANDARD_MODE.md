@@ -26,15 +26,16 @@ This is the contract the gateway, the website and both SDKs build against. Modes
   it to the gateway for everything, including the job API. The browser never holds a token. API keys are for
   developers' programs. Operators are ordinary users who sign in the same way and hold a `moderator` or `admin` role.
 - **What is banned.** Sexual and NSFW content, in both modes. The gateway checks every Standard prompt (and every
-  storyboard shot prompt) before sealing it; Private prompts are checked inside the enclave, because the gateway can't
-  read them.
+  storyboard shot prompt, and a plan's brief, style and revision) before sealing it, and a Standard plan's text again when
+  it arrives; Private prompts and briefs are checked inside the enclave, because the gateway can't read them.
 - **Prices.** Every price the gateway returns is a **placeholder**, to be set later. `GET /v1/models` says so with
   `pricing_placeholder: true`. Standard is priced below Private: a profile's `pricing.standard_usd_per_second` against
   its `pricing.usd_per_second`, which is the Private price. A profile without a Standard price
   (`standard_usd_per_second: null`, `privacy_modes: ["private"]`) is sold in Private mode only, and a Standard job for
   it is refused with `422 privacy_mode_unavailable` before anything is charged; every profile has a Standard price
-  today. Every job costs at least $0.10. `POST /v1/quote` returns the exact price of a job before it is sent. Prices,
-  multipliers, quotes and refunds: `PAYMENTS.md`.
+  today. Every video job costs at least $0.10; a plan costs a flat `pricing.plan_usd` or `standard_plan_usd`.
+  `POST /v1/quote` returns the exact price of a job before it is sent. Prices, multipliers, quotes and refunds:
+  `PAYMENTS.md`.
 
 ## Credentials
 
@@ -63,10 +64,15 @@ accepting only the web session.
 | `POST /v1/standard/uploads?role=<InputRole>` | raw bytes | `201 {upload_id, sha256, size, mime}`. Scanned before storage. An upload that no job uses expires after 24 h. |
 | `POST /v1/standard/videos` | `{job_id?, params: GenerationParams, prompt, negative_prompt?, seed?, options?, inputs: [{upload_id, index, role, time_s?, strength?, hint?, start_s?, end_s?}], shots?: [{prompt}], webhook_url?}` | `201 JobStatus` with `privacy: "standard"`. The gateway checks the prompt, picks an enclave of any tier, sets an explicit seed when none is given, seals the payload and inputs to that enclave and charges like `/v1/videos`. `shots` is for storyboards only ([Storyboards](#storyboards)). |
 | `GET /v1/videos/{job_id}` | | `JobStatus`, including `privacy` for every job |
-| `GET /v1/standard/videos?limit=50` | | `[{job_id, status, profile_id, params, prompt, shots?, created_at, finished_at, has_video, error_code, expires_at: null, deleted}]`, newest first. `shots` is there only for storyboards, `null` once deleted like `prompt` |
-| `GET /v1/standard/videos/{job_id}/video` | | `video/mp4`, owner only; `404 not_ready` until succeeded; `410 deleted` or `410 removed`. Answers byte ranges ([Byte ranges](#byte-ranges)) |
+| `GET /v1/standard/videos?limit=50` | | `[{job_id, status, profile_id, params, prompt, shots?, created_at, finished_at, has_video, error_code, expires_at: null, deleted}]`, newest first. `shots` is there only for storyboards, `null` once deleted like `prompt`. Plan jobs are left out: they are listed at `GET /v1/standard/plans` |
+| `GET /v1/standard/videos/{job_id}/video` | | `video/mp4`, owner only; `404 not_ready` until succeeded; `410 deleted` or `410 removed`; `404 not_a_video` for a plan job. Answers byte ranges ([Byte ranges](#byte-ranges)) |
 | `GET /v1/standard/videos/{job_id}/thumbnail` | | `image/jpeg`, owner only |
 | `DELETE /v1/standard/videos/{job_id}` | | `204`, an alias of `DELETE /v1/videos/{job_id}` |
+| `POST /v1/standard/plans` | `{job_id?, params: GenerationParams (mode plan), brief, style?, options?: PlanOptions, seed?, webhook_url?}` | `201 JobStatus` with `privacy: "standard"`, `params.mode: "plan"`. [Plans](#plans) |
+| `GET /v1/plans/{job_id}` | | `JobStatus` of a plan job, either mode (`GET /v1/videos/{job_id}` for plans only); `404 not_found` for any other job |
+| `GET /v1/standard/plans?limit=50` | | `[{job_id, status, profile_id, params, brief, style, plan, created_at, finished_at, error_code, deleted}]`, newest first. `plan` is the Plan v1 object once it arrived; `brief`, `style` and `plan` are `null` once deleted |
+| `GET /v1/standard/plans/{job_id}` | | `application/json`: the Plan v1 JSON, byte for byte the JSON whose SHA-256 is the receipt's `content_digest`. Owner only; `404 not_ready` until succeeded (and for a failed job); `410 deleted` or `410 removed`; `404 not_found` for a job that isn't a plan |
+| `DELETE /v1/standard/plans/{job_id}` | | `204`, an alias of `DELETE /v1/videos/{job_id}` |
 
 **Content policy.** Before sealing, the gateway runs `kuno_protocol.content_policy.check_prompt(prompt,
 negative_prompt)`. A violation answers `422 content_policy` with the message "This prompt isn't allowed. Sexual and
@@ -108,14 +114,66 @@ the longest shot, since shots render one at a time; `503 no_capacity` then names
 enclaves take storyboards (`standard_jobs.routing_tier`): a storyboard carries no step commitment, and step audits are
 the only integrity check on open-tier miners.
 
+### Plans
+
+A plan (mode `plan`, PROTOCOL.md "Plans (Director)") is a storyboard written from a brief inside the enclave: a scene and
+2 to 12 shots, each with a prompt, a length and a join, fitted to the target length in `params.duration_s`. Nothing
+renders. The customer edits the plan and renders it through `POST /v1/standard/videos` as a storyboard: `params` from the
+plan (`Plan.storyboard_params()`: mode `storyboard`, the plan's `duration_s` and each shot's `duration_s` and `join`), the
+plan's `scene` as `prompt`, and one `{prompt}` per shot as `shots`.
+
+`POST /v1/standard/plans` takes:
+
+| Field | Meaning |
+|---|---|
+| `params` | `GenerationParams` with `mode: "plan"`: the frame of the storyboard to be (profile, resolution, aspect ratio, fps, audio) and the target in `duration_s`, from `limits.plan.min_target_s` (4) to `limits.storyboard.max_total_s` (120). No `shots`, no inputs |
+| `brief` | what the video is about, at most `limits.plan.max_brief_chars` (4,000). Empty only in a revision |
+| `style` | optional: a look to keep to, at most `limits.plan.max_style_chars` (500). Also accepted as `options.style`, but not both |
+| `options` | optional `PlanOptions` (`kuno_protocol.plans`): `max_shot_s`, `min_shots`, `max_shots`, and `revise: {plan, instruction, shots?}` to rewrite an earlier plan (only the listed shots, numbered from 1, when `shots` is given). Unknown fields are refused |
+| `seed` | optional; the gateway sets one when none is given |
+
+Before anything is sealed or charged:
+
+1. `params` passes `validate_params` (`422 invalid_params`); other modes are refused here, and plans are refused on
+   `POST /v1/standard/videos` (`422 invalid_params`). A profile without a Standard plan price is `422 invalid_params`.
+2. `brief` and `style` fit their limits (`422 prompt_too_long`); an empty brief without `options.revise` is
+   `422 invalid_brief`; options that leave no plan possible (`kuno_protocol.plans.plan_context`), or a revision whose
+   plan has another frame or breaks the protocol's rules (`check_revision`), are `422 invalid_options`.
+3. The content policy runs on the brief, the style, a revision's instruction, and every text of a revision's earlier plan
+   (scene, title, notes, beats, each shot prompt on its own and after the scene). Any violation is the one
+   `422 content_policy` above, with one strike.
+
+Steps 1 and 2 come first, so a malformed request is never a strike. The gateway seals `brief` as the prompt and
+`options` (with `style`) as `options.plan`, exactly as a client seals a private plan, to a **confidential** enclave that
+registered the `plan/1` feature (`standard_jobs.routing_tier`, `standard_jobs.required_feature`): plans carry no step
+commitment, and a worker from before plans can't parse the job. None fresh: `503 no_capacity`. Any enclave serving the
+plan's size and frame rate fits it, whatever the target: nothing renders. It charges the flat `standard_plan_usd` and
+stores the brief as the job's `prompt` and the options as its `options`.
+
+When the job succeeds (`standard_jobs.ingest_plan`), the gateway opens the sealed plan with the job's output key and
+checks, before keeping anything:
+
+- the plan JSON's SHA-256 is the receipt's `content_digest`, and the receipt's `plan` block (shot count, stitched length,
+  planner, prompt version) describes it; otherwise the job fails `bad_output`, refunded;
+- the plan passes `kuno_protocol.plans.validate` for the job's params and options; otherwise `bad_output`;
+- the content policy passes on the scene, the title, the notes, every beat and every shot prompt, on its own and after
+  the scene. Otherwise the job fails `safety_blocked` with "The plan the worker wrote isn't allowed under the content
+  policy. Your credit was refunded.", refunded **without a strike**: the brief already passed, and the text is the
+  planner's.
+
+The plan is then stored readable (`standard_jobs.plan`, migration 0022), like the prompt: returned by
+`GET /v1/standard/plans/{job_id}`, in the owner's list, the validator record, an operator's review and the data export
+(`plan.json`), and deleted with the prompt. No C2PA manifest, thumbnail or output scan: a plan isn't media. A plan job
+can't be shared. `plan_failed` (the planner wrote nothing usable) fails the job, refunded, and is not a strike.
+
 ## Deleting a video (both modes)
 
 `DELETE /v1/videos/{job_id}` (API key or web session; owner only, else `404 not_found`) answers `204`.
 
 - A job still queued or running is canceled and refunded first.
 - **Private:** the job's sealed input and output blobs are deleted from storage.
-- **Standard:** the video, thumbnail, prompt, negative prompt, shot prompts, options, inputs and sealed blobs are
-  deleted. The video then answers `410 deleted`.
+- **Standard:** the video, thumbnail, prompt, negative prompt, shot prompts, plan, options, inputs and sealed blobs are
+  deleted. The video (or plan) then answers `410 deleted`.
 - Billing records (the job row, price, ledger entries) and the receipt stay. Deleting twice is harmless.
 - Under an active preservation hold (MODERATION.md) the content is hidden exactly as if deleted, but kept until the
   hold ends; then the gateway deletes it.
@@ -135,7 +193,13 @@ the only integrity check on open-tier miners.
 - Private eligibility (configurable): a credited top-up (card, USDT, TAO or alpha) or an operator credit; no active
   restriction; fewer than 2 strikes in 30 days. Validators and the seeded dev and validator accounts are exempt.
   Private jobs have a tighter per-minute limit (`KUNO_PRIVATE_JOBS_PER_MINUTE`, default 10; `429 rate_limited`).
+- Plans, in either mode, have their own per-minute limit on top of the others (`KUNO_PLANS_PER_MINUTE`, default 10;
+  `429 rate_limited`), and count toward `KUNO_MAX_ACTIVE_JOBS` like any job.
 - Private jobs are accepted for, and routed to, confidential-tier enclaves only: `409 enclave_unavailable` otherwise.
+- Private plans (`POST /v1/videos` or its alias `POST /v1/plans` with `mode: "plan"`) are accepted only for an enclave
+  that registered `plan/1`: `409 enclave_unavailable` ("That worker doesn't write plans") otherwise. The output blob
+  (`GET /v1/blobs/{output_blob_id}`) is the sealed plan (`kuno_protocol.plans.open_plan`), and the receipt carries `plan`
+  instead of `video`.
 
 **Strikes.** One strike for each job that fails with `safety_blocked` (either mode), each blocked Standard upload
 (`upload_blocked`) and each refused Standard prompt (`content_policy`). Defaults: 3 strikes in 24 h restrict the
@@ -177,7 +241,8 @@ appeal is voided (`strikes.voided_at`) and no longer counts toward the rules or 
 - The zip: `README.txt`; `account.json` (email, account, balance, ledger, payments, wallets, API key names and
   prefixes, roles, strikes, restrictions, appeals, and reports filed with the account's address as the contact);
   `jobs.json` (every job's metadata, privacy mode, params, receipt, `content`: `stored`, `deleted`, `removed` or `none`,
-  and `files`); `standard/<job>/request.json` (with `shots` for a storyboard), `video.mp4`, `thumbnail.jpg` and
+  and `files`); `standard/<job>/request.json` (with `shots` for a storyboard; for a plan, `prompt` is the brief),
+  `plan.json` (a plan job's delivered plan, as stored), `video.mp4`, `thumbnail.jpg` and
   `inputs/<index>-<role>.<ext>`, decrypted as the owner's download is; `private/<job>/output.kunob`, the sealed output
   (ciphertext; the keys are the customer's); `private/keys.json` from `key_vault.export_account` when key sync is
   installed; `elements/elements.json` and `elements/<element_id>/<position>.kunob`, every Element as stored (ciphertext,
@@ -233,11 +298,17 @@ customer is emailed the decision with the note. Audit actions: `appeal.create` (
 
 | Method and path | Response |
 |---|---|
-| `GET /validator/v1/standard-jobs/{job_id}` (`require_validator`) | `{job_id, privacy: "standard", params, prompt, negative_prompt, seed, options, inputs: [{index, role, sha256, size, mime}], shots?, receipt}`; `shots` (`[{prompt}]`) only for storyboards; `404` for private or unknown jobs; `410 content_deleted` once the owner or an operator deleted the content |
+| `GET /validator/v1/standard-jobs/{job_id}` (`require_validator`) | `{job_id, privacy: "standard", params, prompt, negative_prompt, seed, options, inputs: [{index, role, sha256, size, mime}], shots?, plan?, receipt}`; `shots` (`[{prompt}]`) only for storyboards; `plan` (the Plan v1 object, `null` until it arrives) only for plans, whose `prompt` is the brief; `404` for private or unknown jobs; `410 content_deleted` once the owner or an operator deleted the content |
 
 Validators never receive a video. Step-audit requests (`POST /validator/v1/audits`) are accepted for any standard
-job, and for private jobs only when the requesting validator created them. Storyboards carry no step commitment, so
-an audit of one is `409 not_auditable` and validators don't request them.
+job, and for private jobs only when the requesting validator created them. Storyboards and plans carry no step
+commitment, so an audit of one is `409 not_auditable` and validators don't request them.
+
+`GET /validator/v1/enclaves` and `/v1/route` list each enclave's `features` (`MinerRegistration.features`, e.g.
+`["plan/1"]`; `[]` when it listed none), stored at registration (migration 0022) and replaced at every registration. A
+malformed feature (not `<kind>/<version>`) refuses the registration with `422 invalid_features`. The ledger feed carries
+plan jobs like any job: the receipt has `plan` and no `video`, and `plan_failed` is recorded as it is (validators don't
+count it against the miner).
 
 ## Operators
 
@@ -317,8 +388,8 @@ only: `prompt` and `negative_prompt` are `null` (`has_prompt` says whether one e
 When reviewable:
 
 - **Standard job:** the video route serves the stored video (also a hidden one kept by a hold). Item detail includes
-  the prompt, and a storyboard's `shots`, logged as `item.view_prompt`. `has_prompt` is true for a storyboard with an
-  empty scene too.
+  the prompt, a storyboard's `shots` and a plan job's `plan`, logged as `item.view_prompt`. `has_prompt` is true for a
+  storyboard with an empty scene, and for a plan, too.
 - **Private job:** the video is served only with a key: the report's `output_key`, or one a hold kept. Without a key:
   `403 private_content`; a key that doesn't open the receipted video: `422 key_mismatch`.
 - **Blocked upload:** the preserved file, with its own MIME type (`item.view_upload`).
@@ -452,6 +523,9 @@ answer HTTP byte ranges (RFC 9110), which iOS Safari needs to seek, and sometime
   `413 too_large`.
 - Standard job failures from output scanning: `safety_blocked` (a hash-list match; the video is held under
   `output_match`), `scan_unavailable` (not kept, refunded); a video that doesn't decode for scanning fails as `bad_output`.
+- Standard plan failures: `plan_failed` (refunded, no strike), `safety_blocked` (the gateway's content policy refused the
+  delivered plan; refunded, no strike), `bad_output` (the plan doesn't match its receipt or the protocol's rules).
+- Standard plan creation errors beyond the ones below: `422 invalid_brief`, `422 invalid_options`.
 - Standard job creation errors beyond `/v1/videos`'s: `422 content_policy`, `422 invalid_inputs`, `422 invalid_shots`,
   `422 privacy_mode_unavailable` (a Private-only model), `422 prompt_too_long`, `422 unsupported_option`,
   `503 no_capacity`, `503 standard_unavailable` (storage keys not configured; a production gateway refuses to start
@@ -466,7 +540,7 @@ answer HTTP byte ranges (RFC 9110), which iOS Safari needs to seek, and sometime
 
 `KUNO_ENV`, `KUNO_BLOB_BACKEND` (`s3` in production), `KUNO_S3_*` (deploy/README.md), `KUNO_STORAGE_KEK_PROVIDER` and `KUNO_STORAGE_*` (deploy/README.md, "Storage keys"; `KUNO_STANDARD_STORAGE_KEY` is legacy),
 `KUNO_STANDARD_UPLOAD_TTL_S` (86400), `KUNO_UPLOAD_TTL_S` (86400, unused private blobs), `KUNO_PRIVATE_JOBS_PER_MINUTE`
-(10), `KUNO_PRIVATE_REQUIRES_PAYMENT` (1), `KUNO_PRIVATE_MAX_STRIKES_30D` (2), `KUNO_STRIKE_RULES`
+(10), `KUNO_PLANS_PER_MINUTE` (10), `KUNO_PRIVATE_REQUIRES_PAYMENT` (1), `KUNO_PRIVATE_MAX_STRIKES_30D` (2), `KUNO_STRIKE_RULES`
 (`3/86400/3600,5/604800/604800,10/2592000/review`), `KUNO_REPORTS_PER_HOUR_PER_IP` (10), `KUNO_BLOCKED_HASHES_FILE`,
 `KUNO_FFMPEG`, `KUNO_PRESERVATION_DAYS` (365), `KUNO_ALLOW_ADMIN_TOKEN` (0; ignored in production),
 `KUNO_PERCEPTUAL_HASH_FILES`, `KUNO_PDQ_MATCH_DISTANCE` (31), `KUNO_PDQ_MIN_QUALITY` (50),

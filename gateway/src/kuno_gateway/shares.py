@@ -99,6 +99,11 @@ def video_problem(s: Session, job: Job | None, now: float) -> str | None:
     """Why a job's video can't be shared or served now, or None when it can."""
     if job is None or job.status != JobState.SUCCEEDED.value or not job.receipt or not job.content_digest:
         return UNAVAILABLE
+    from .standard_jobs import is_plan
+
+    if is_plan(job):
+        # A plan job delivered JSON, not a video: there is nothing to share.
+        return UNAVAILABLE
     if (job.privacy or "private") == "standard":
         row = s.get(StandardJob, job.id)
         if row is not None and row.deleted_at is not None:

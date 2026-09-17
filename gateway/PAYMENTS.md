@@ -64,10 +64,29 @@ These placeholders follow `research/research_pricing.md`. LTX-2.5 Fast renders u
   seconds than the customer pays for, at a lower per-second weight than one clip of the whole length would get.
 - The hold, the refund on failure and `billable_usd` work exactly as for any other job.
 
+**Plans** (PROTOCOL.md "Plans (Director)"; LTX-2.5 Fast only today):
+
+- **A flat price per plan**, whatever its target length: `pricing.plan_usd` in Private mode and `standard_plan_usd` in
+  Standard, with no fps or long-clip multiplier and not subject to `min_job_usd`. A profile without the price refuses
+  the plan (`422 invalid_params`).
+
+  | Profile | Private | Standard |
+  | --- | --- | --- |
+  | `ltx-2.5-fast` | $0.10 | $0.08 |
+
+- **Rendering the plan is a separate job:** a storyboard, priced by its stitched seconds as above.
+- **Miners are paid a flat `vcu_weights.plan`** (27 VCU on LTX-2.5 Fast), whatever the target. Both it and the prices are
+  placeholders until `kuno-bench` measures plan GPU time; the 2026-09-16 GPU spike took 7.6-18.6 s per plan on an RTX
+  PRO 6000.
+- The hold, the refund on failure (`plan_failed` included) and `billable_usd` work as for any other job. Plans have
+  their own rate limit, `KUNO_PLANS_PER_MINUTE` (10), on top of the job limits.
+
 **Refunds.** A job's price is charged when the gateway accepts it. If the job doesn't succeed, the price is refunded in
 full, automatically and once (key `refund:{job_id}`). That covers a failure, a timeout, a cancellation, a worker that
-went away, an output that didn't verify, and `safety_blocked`: a Private job the enclave's safety check blocked, or a
-Standard output that matched a hash list. A blocked job still counts as a strike (`MODERATION.md`). A Standard prompt
+went away, an output that didn't verify, `plan_failed` (the planner wrote nothing usable), and `safety_blocked`: a
+Private job the enclave's safety check blocked, a Standard output that matched a hash list, or a Standard plan the
+gateway's content policy refused. A blocked job still counts as a strike (`MODERATION.md`), except that refused plan,
+whose text the planner wrote. A Standard prompt
 refused with `422 content_policy` is refused before anything is charged.
 
 ## Quotes
@@ -80,13 +99,17 @@ if the job were submitted now. It takes only what a client knows beforehand, nev
  input_roles?: [InputRole], shots?: [{duration_s?, join?}]}
 ```
 
+A plan is quoted with `mode: "plan"` and its target length as `duration_s` (required).
+
 **What it does, in the order a job goes:**
 1. **Shape checks.** `shots` makes the mode `storyboard`. With shots, `duration_s`, another `mode` or `input_roles` is
    refused (`422 invalid_params`, `invalid_shots`, `invalid_inputs`), and so is `mode: "storyboard"` without shots.
    Without `mode`, the mode comes from `input_roles` as the SDKs infer it from the inputs; without `input_roles`, the
    inputs are the ones the mode needs (`profiles.example_roles`). A shot with a `prompt` field is refused (`422`).
+   `mode: "plan"` without `duration_s` is `422 invalid_params`, and with `input_roles`, `422 invalid_inputs`.
 2. **Routing, exactly as `GET /v1/route`.** The owner's switch, licence regions, capacity and fallbacks. The size, frame
-   rate and duration given (a storyboard's longest shot) filter workers by their serving envelopes. With a credential
+   rate and duration given (a storyboard's longest shot; nothing for a plan, which renders nothing) filter workers by
+   their serving envelopes. A plan, in either mode, is routed only to confidential workers that registered `plan/1`. With a credential
    that works, the account's standing is checked too. Refusals are the route's: `404 unknown_model`,
    `422 mode_unsupported`, `422 privacy_mode_unavailable`, `451 region_restricted`, `409 model_disabled`,
    `503 no_capacity`, `403 private_mode_not_eligible`, `403 account_restricted`. A key that doesn't work quotes as
@@ -106,7 +129,7 @@ if the job were submitted now. It takes only what a client knows beforehand, nev
 | `privacy` | the mode priced |
 | `profile_id`, `profile_name`, `requested_profile_id`, `fallback_reason` | the model that would serve, and why when it isn't the one asked for |
 | `params` | the `GenerationParams` priced; a client that sends exactly these is charged `price_usd` |
-| `breakdown` | `usd_per_second`, `billable_seconds` (a storyboard's stitched seconds), `fps_multiplier`, `long_clip_over_s` (null unless the profile has a Private long-clip rule), `long_clip_multiplier`, `subtotal_usd`, `min_job_usd`, `minimum_applied` |
+| `breakdown` | `usd_per_second`, `billable_seconds` (a storyboard's stitched seconds), `fps_multiplier`, `long_clip_over_s` (null unless the profile has a Private long-clip rule), `long_clip_multiplier`, `subtotal_usd`, `min_job_usd`, `minimum_applied`. A plan's adds `plan_usd`, with `usd_per_second: null`, `billable_seconds: 0`, multipliers 1, `subtotal_usd` the flat price and `minimum_applied: false` |
 | `placeholder` | `/v1/models`' `pricing_placeholder`: true while prices are placeholders |
 | `balance_usd`, `balance_covers` | with a working credential, the account's balance and whether it covers the price; otherwise null |
 

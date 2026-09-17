@@ -331,6 +331,11 @@ def _standard_content(
         request["shots"] = standard_jobs.shots_json(row)
     archive.add_json(files[0], request)
     counts["standard_requests"] += 1
+    if row.plan is not None:
+        # A plan job: `prompt` is the brief, and this is the plan it delivered, as stored.
+        archive.add(f"{base}/plan.json", row.plan.encode("utf-8"), compress=True)
+        files.append(f"{base}/plan.json")
+        counts["standard_plans"] += 1
     if row.video_blob_id:
         try:
             video = standard_jobs.load_video(state, row)
@@ -418,7 +423,10 @@ def readme(account_id: str, now: float, key_sync: bool, elements: bool = False) 
         "  receipt, what happened to its content (stored, deleted, removed, or none if it never produced any) and the\n"
         "  files below that belong to it.\n\n"
         "standard/<job id>/request.json\n"
-        "  A Standard job's prompt, negative prompt, seed, options and input details, and a storyboard's shot prompts.\n\n"
+        "  A Standard job's prompt, negative prompt, seed, options and input details, and a storyboard's shot prompts.\n"
+        "  For a plan, the prompt is the brief.\n\n"
+        "standard/<job id>/plan.json\n"
+        "  The storyboard plan a Standard plan job wrote, as KunoWorld stores it.\n\n"
         "standard/<job id>/video.mp4 and standard/<job id>/thumbnail.jpg\n"
         "  The Standard video and its preview, decrypted exactly as your own download is.\n\n"
         "standard/<job id>/inputs/\n"
@@ -457,7 +465,7 @@ def write_export(
         has_elements, element_export = lifecycle_hooks.elements_export(s, account_id)
 
     counts = {
-        "jobs": len(jobs), "standard_requests": 0, "standard_videos": 0, "thumbnails": 0, "thumbnails_unavailable": 0,
+        "jobs": len(jobs), "standard_requests": 0, "standard_plans": 0, "standard_videos": 0, "thumbnails": 0, "thumbnails_unavailable": 0,
         "standard_inputs": 0, "private_outputs": 0, "left_out_deleted": 0, "left_out_removed": 0, "key_sync": key_sync,
         "wrapped_keys": None, "elements": None,
     }

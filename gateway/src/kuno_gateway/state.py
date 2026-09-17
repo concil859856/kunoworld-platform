@@ -367,10 +367,13 @@ class GatewayState:
         """Moves a job to a terminal state, releasing the enclave slot and refunding failures.
 
         A standard job's output is verified against its receipt and stored as it succeeds (standard_jobs.ingest_output);
-        an output that doesn't verify fails the job instead. Every safety_blocked failure is a strike on the account.
+        an output that doesn't verify fails the job instead. Every safety_blocked failure is a strike on the account,
+        except a Standard plan the gateway's content policy refused after the enclave delivered it (the planner wrote it).
+        `plan_failed`, like every failure, is refunded; validators don't count it against the miner.
         """
         was_running = job.status == JobState.RUNNING.value
         now = time.time()
+        strike = True
         if status is JobState.SUCCEEDED and job.privacy == "standard":
             from .standard_jobs import ingest_output
 
@@ -379,6 +382,7 @@ class GatewayState:
                 # A refused output (output_scan.OutputRefused) names its own code: safety_blocked for a hash-list match.
                 status, error_code = JobState.FAILED, getattr(problem, "error_code", "bad_output")
                 error = getattr(problem, "message", None) or f"The worker's output failed verification: {problem}."
+                strike = getattr(problem, "strike", True)
         job.status = status.value
         job.updated_at = job.finished_at = now
         job.error_code, job.error = error_code, error
@@ -395,7 +399,7 @@ class GatewayState:
             enclave = s.get(Enclave, job.enclave_id)
             if enclave is not None and enclave.inflight > 0:
                 enclave.inflight -= 1
-        if status is JobState.FAILED and error_code == "safety_blocked":
+        if status is JobState.FAILED and error_code == "safety_blocked" and strike:
             from .moderation import record_strike
 
             record_strike(s, self.settings, job.account_id, "safety_blocked", job_id=job.id, now=now)
@@ -485,6 +489,12 @@ def enclave_serves(enclave: Enclave, privacy: str) -> bool:
     return tier_serves(enclave_tier(enclave), privacy)
 
 
+def enclave_features(enclave: Enclave) -> list[str]:
+    from .standard_jobs import enclave_features as stored_features
+
+    return stored_features(enclave)
+
+
 def envelope_json(enclave: Enclave) -> dict | None:
     """The enclave's advertised serving envelope (envelopes.py), or None when it serves its profiles' full limits."""
     from .envelopes import stored
@@ -530,6 +540,8 @@ def enclave_public(enclave: Enclave, hardware: list[HardwareBinding] | None = No
         "gpu_count": enclave.gpu_count,
         # The worker's serving envelope (kuno_protocol.envelope), or None: its profiles' full limits.
         "envelope": envelope_json(enclave),
+        # The optional job kinds it serves (MinerRegistration.features), e.g. ["plan/1"]; empty when it listed none.
+        "features": enclave_features(enclave),
         "hardware_ids": [
             {"kind": b.kind, "token": b.token, "first_seen": b.first_seen, "last_seen": b.last_seen} for b in hardware or []
         ],

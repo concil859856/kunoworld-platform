@@ -132,7 +132,7 @@ def content_stored(s: Session, job: Job) -> bool:
     """Whether anything of the job's content is still stored. After a removal, only a preservation hold keeps it."""
     if job.privacy == STANDARD:
         row = s.get(StandardJob, job.id)
-        return row is not None and (row.video_blob_id is not None or row.prompt is not None)
+        return row is not None and (row.video_blob_id is not None or row.prompt is not None or row.plan is not None)
     return bool(job.output_blob_id) and s.get(Blob, job.output_blob_id) is not None
 
 

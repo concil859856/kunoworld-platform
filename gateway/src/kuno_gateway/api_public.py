@@ -115,12 +115,14 @@ async def route(
     (fallbacks) still follows per-profile capacity.
 
     For `mode=storyboard`, `duration_s` is the longest shot, not the stitched length: shots render one at a time, so that
-    is what a worker's envelope has to fit (`GenerationParams.render_duration_s`)."""
+    is what a worker's envelope has to fit (`GenerationParams.render_duration_s`). For `mode=plan`, `duration_s` is ignored:
+    a plan renders nothing, so any enclave serving the size and frame rate fits it. Plans (both privacy modes) list only
+    confidential enclaves that registered the `plan/1` feature, and are `503 no_capacity` when none is fresh."""
     from kuno_protocol.envelope import EnvelopeQuery
 
     from .envelopes import no_fit_error
 
-    fit = EnvelopeQuery(resolution, aspect_ratio, fps, duration_s)
+    fit = EnvelopeQuery(resolution, aspect_ratio, fps, None if mode is Mode.PLAN else duration_s)
     state = gw(request)
     account = await optional_account(request)
     if account is not None:
@@ -128,10 +130,11 @@ async def route(
             moderation.enforce(s, state.settings, account, privacy)
 
     tier = standard_jobs.routing_tier(privacy, mode)
+    feature = standard_jobs.required_feature(mode)
 
     def has_capacity(profile: ModelProfile) -> bool:
         with state.session() as s:
-            return bool(standard_jobs.enclaves_for(state, s, profile.id, tier))
+            return bool(standard_jobs.enclaves_for(state, s, profile.id, tier, feature=feature))
 
     # Only profiles sold in this mode can serve it, as the request or as a fallback: a profile with no Standard price is Private-only.
     offered = {pid: p for pid, p in state.profiles.items() if p.offers(privacy)}
@@ -150,9 +153,11 @@ async def route(
             raise _error(422, "privacy_mode_unavailable", f"No model offers {mode.value} in {privacy.capitalize()} mode. Use Private mode.") from None
         raise _error(exc.status, exc.code, exc.message) from None
     with state.session() as s:
-        candidates = standard_jobs.enclaves_for(state, s, chosen.profile.id, tier, fit=None if fit.empty else fit)
-        if not candidates and not fit.empty and (available := standard_jobs.enclaves_for(state, s, chosen.profile.id, tier)):
-            raise no_fit_error(chosen.profile, fit, available, storyboard=mode is Mode.STORYBOARD)
+        candidates = standard_jobs.enclaves_for(state, s, chosen.profile.id, tier, fit=None if fit.empty else fit, feature=feature)
+        if not candidates and not fit.empty and (
+            available := standard_jobs.enclaves_for(state, s, chosen.profile.id, tier, feature=feature)
+        ):
+            raise no_fit_error(chosen.profile, fit, available, storyboard=mode is Mode.STORYBOARD, plan=mode is Mode.PLAN)
         if account is not None:
             # A client seals to the first attested enclave listed, so the order is the routing (admission.py).
             candidates = admission.order_for_account(
@@ -218,14 +223,19 @@ async def download_blob(blob_id: str, request: Request, account: Account = Depen
     return byte_ranges.serve(request, body, media_type="application/octet-stream", etag=byte_ranges.strong_etag(blob.sha256))
 
 
-def check_job_rate(state: GatewayState, account: Account, privacy: str) -> None:
-    """Per-account job limits; private jobs also have their own, tighter one. Validators are exempt."""
+def check_job_rate(state: GatewayState, account: Account, privacy: str, mode: Mode | None = None) -> None:
+    """Per-account job limits; private jobs also have their own, tighter one, and so do plans (`plans_per_minute`, on top
+    of the others: a plan occupies a confidential GPU worker like a video). Validators are exempt."""
     if account.is_validator:
         return
+    plan = mode is Mode.PLAN
+    what = "plans" if plan else "videos"
     if not state.limiter.allow(f"jobs:{account.id}", state.settings.jobs_per_minute, 60):
-        raise _error(429, "rate_limited", "Too many videos started in the last minute. Wait a moment and try again.")
+        raise _error(429, "rate_limited", f"Too many {what} started in the last minute. Wait a moment and try again.")
     if privacy == "private" and not state.limiter.allow(f"private-jobs:{account.id}", state.settings.private_jobs_per_minute, 60):
-        raise _error(429, "rate_limited", "Too many private videos started in the last minute. Wait a moment and try again.")
+        raise _error(429, "rate_limited", f"Too many private {what} started in the last minute. Wait a moment and try again.")
+    if plan and not state.limiter.allow(f"plans:{account.id}", state.settings.plans_per_minute, 60):
+        raise _error(429, "rate_limited", "Too many plans started in the last minute. Wait a moment and try again.")
 
 
 async def validate_request(state: GatewayState, request: Request, params: GenerationParams, webhook_url: str | None) -> ModelProfile:
@@ -277,8 +287,9 @@ def admit_job(
             .select_from(Job)
             .where(Job.account_id == account.id, Job.status.in_([JobState.QUEUED.value, JobState.RUNNING.value]))
         )
+        # Plans count here too: each one holds a worker slot until it finishes.
         if active >= state.settings.max_active_jobs:
-            raise _error(429, "too_many_active_jobs", f"You already have {active} videos in progress. Wait for one to finish.")
+            raise _error(429, "too_many_active_jobs", f"You already have {active} jobs in progress. Wait for one to finish.")
     if webhook_url:
         webhooks.ensure_secret(s.get(Account, account.id))
     try:
@@ -325,11 +336,25 @@ def admit_job(
 
 @router.post("/videos", status_code=201, response_model=JobStatus)
 async def create_video(body: JobCreate, request: Request, account: Account = Depends(require_account)):
-    """A private job, sealed by the client. Needs an eligible account and a confidential-tier enclave."""
+    """A private job, sealed by the client. Needs an eligible account and a confidential-tier enclave; a plan
+    (`mode: "plan"`) also needs one that registered the `plan/1` feature."""
+    return await _create_private(body, request, account)
+
+
+@router.post("/plans", status_code=201, response_model=JobStatus)
+async def create_plan(body: JobCreate, request: Request, account: Account = Depends(require_account)):
+    """A private plan (PROTOCOL.md "Plans (Director)"): `POST /v1/videos` for `mode: "plan"` only. The output blob is the
+    sealed plan JSON (`kuno_protocol.plans.open_plan`), and the receipt carries `plan` instead of `video`."""
+    if body.params.mode is not Mode.PLAN:
+        raise _error(422, "invalid_params", "POST /v1/plans takes mode plan; send other jobs to POST /v1/videos.")
+    return await _create_private(body, request, account)
+
+
+async def _create_private(body: JobCreate, request: Request, account: Account) -> JobStatus:
     state = gw(request)
     with state.session() as s:
         moderation.enforce(s, state.settings, account, "private")
-    check_job_rate(state, account, "private")
+    check_job_rate(state, account, "private", body.params.mode)
     params = body.params
     profile = await validate_request(state, request, params, body.webhook_url)
     if len(body.input_blob_ids) != len(params.input_roles) or len(set(body.input_blob_ids)) != len(body.input_blob_ids):
@@ -356,6 +381,9 @@ async def create_video(body: JobCreate, request: Request, account: Account = Dep
                 409, "enclave_unavailable",
                 "That worker is not a confidential worker, and private jobs run only on confidential workers. Ask /v1/route again.",
             )
+        if not standard_jobs.has_feature(enclave, standard_jobs.required_feature(params.mode)):
+            # A worker from before plans can't parse the job and would leave it to time out.
+            raise _error(409, "enclave_unavailable", "That worker doesn't write plans. Ask /v1/route?mode=plan again.")
         for blob_id in body.input_blob_ids:
             blob = s.get(Blob, blob_id)
             if blob is None or blob.owner_kind != "account" or blob.owner_id != account.id or blob.job_id is not None:
@@ -387,6 +415,17 @@ async def get_video(job_id: str, request: Request, account: Account = Depends(re
         job = s.get(Job, job_id)
     if job is None or job.account_id != account.id:
         raise _error(404, "not_found", "No such video job.")
+    return job_status(job)
+
+
+@router.get("/plans/{job_id}", response_model=JobStatus)
+async def get_plan(job_id: str, request: Request, account: Account = Depends(require_account)):
+    """A plan job's status, either privacy mode: `GET /v1/videos/{job_id}` for plans only. A Standard plan's JSON is at
+    `GET /v1/standard/plans/{job_id}`; a private plan's sealed blob at `GET /v1/blobs/{output_blob_id}`."""
+    with gw(request).session() as s:
+        job = s.get(Job, job_id)
+    if job is None or job.account_id != account.id or not standard_jobs.is_plan(job):
+        raise _error(404, "not_found", "No such plan job.")
     return job_status(job)
 
 

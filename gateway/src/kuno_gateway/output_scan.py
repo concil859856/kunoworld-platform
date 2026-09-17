@@ -41,11 +41,15 @@ class OutputRefused(str):
 
     error_code: str
     message: str
+    # Whether a `safety_blocked` refusal is a strike on the account (state.finish_job). False for a plan the planner wrote
+    # (standard_jobs.ingest_plan), whose brief already passed the check.
+    strike: bool
 
     def __new__(cls, problem: str, error_code: str, message: str | None = None):
         refused = super().__new__(cls, problem)
         refused.error_code = error_code
         refused.message = message or f"The worker's output failed verification: {problem}."
+        refused.strike = True
         return refused
 
 

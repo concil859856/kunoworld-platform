@@ -25,6 +25,11 @@ class StandardJob(Base):
     # A storyboard's shot prompts, JSON `[{"prompt"}, ...]` in shot order (`SealedPayload.shots`); `prompt` is then the
     # scene they share, possibly empty. NULL for every other job, and cleared with the prompt. Migration 0020.
     shots: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # A plan job's delivered plan: the canonical Plan v1 JSON (kuno_protocol.plans.encode_plan) whose SHA-256 is the
+    # receipt's `content_digest`, checked against the content policy before it is kept. `prompt` is then the brief and
+    # `options` holds `{"plan": PlanOptions}`. NULL for every other job and until the plan arrives; cleared with the
+    # prompt. Migration 0022.
+    plan: Mapped[str | None] = mapped_column(Text, nullable=True)
     seed: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     options: Mapped[str | None] = mapped_column(Text, nullable=True)
     # JSON list: index, role, upload_id, sha256, size, mime and the per-input hints.

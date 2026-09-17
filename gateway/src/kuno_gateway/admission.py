@@ -58,7 +58,8 @@ def family_profile_ids(profiles: dict[str, ModelProfile], profile: ModelProfile)
 
 
 def served_recently(s: Session, hotkeys: set[str], profile_ids: Iterable[str], since: float) -> set[str]:
-    """Hotkeys whose confidential-tier enclaves finished a job of any of `profile_ids` since `since`, whoever sent it."""
+    """Hotkeys whose confidential-tier enclaves finished a job of any of `profile_ids` since `since`, whoever sent it.
+    Plans don't count: they render nothing, and validators' capacity gate doesn't count them either."""
     profile_ids = list(profile_ids)
     if not hotkeys or not profile_ids:
         return set()
@@ -68,6 +69,8 @@ def served_recently(s: Session, hotkeys: set[str], profile_ids: Iterable[str], s
         .where(
             Enclave.miner_hotkey.in_(hotkeys), Enclave.tee != "open", Job.profile_id.in_(profile_ids),
             Job.status == JobState.SUCCEEDED.value, Job.finished_at >= since,
+            # Params are stored as `GenerationParams.model_dump_json()`, compact, so a plan's always contain this.
+            Job.params.not_like('%"mode":"plan"%'),
         )
         .distinct()
     ).all()

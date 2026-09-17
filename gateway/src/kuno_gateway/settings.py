@@ -176,6 +176,8 @@ class Settings:
     # Unused standard uploads expire; uploads a job used stay with the job until the owner deletes it.
     standard_upload_ttl_s: int = 86400
     private_jobs_per_minute: int = 10
+    # Plan jobs per account per minute, both privacy modes, on top of jobs_per_minute (PROTOCOL.md "Plans (Director)").
+    plans_per_minute: int = 10
     # Private mode needs a credited top-up or an operator credit, and fewer than this many strikes in 30 days.
     private_requires_payment: bool = True
     private_max_strikes_30d: int = 2
@@ -338,6 +340,7 @@ class Settings:
             standard_storage_key=env.get("KUNO_STANDARD_STORAGE_KEY") or None,
             standard_upload_ttl_s=int(env.get("KUNO_STANDARD_UPLOAD_TTL_S", "86400")),
             private_jobs_per_minute=int(env.get("KUNO_PRIVATE_JOBS_PER_MINUTE", "10")),
+            plans_per_minute=int(env.get("KUNO_PLANS_PER_MINUTE", "10")),
             private_requires_payment=env.get("KUNO_PRIVATE_REQUIRES_PAYMENT", "1") == "1",
             private_max_strikes_30d=int(env.get("KUNO_PRIVATE_MAX_STRIKES_30D", "2")),
             strike_rules=parse_strike_rules(env["KUNO_STRIKE_RULES"]) if env.get("KUNO_STRIKE_RULES") else

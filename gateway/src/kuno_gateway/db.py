@@ -243,6 +243,9 @@ class Enclave(Base):
     # The registration's location proof and what it showed, as JSON: {"nonce", "proof", "verdicts": {policy: …}}.
     # None where no profile is bound to territory or the gateway has no landmarks. Migration 0019.
     location: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The optional job kinds the last registration listed (MinerRegistration.features), as a JSON list, e.g. ["plan/1"].
+    # None: none. Plan jobs go only to enclaves listing `plan/1` (standard_jobs.required_feature). Migration 0022.
+    features: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class HardwareBinding(Base):

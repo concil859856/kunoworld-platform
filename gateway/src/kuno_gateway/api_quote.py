@@ -2,7 +2,9 @@
 client seals or uploads anything.
 
 A quote takes only what a client knows before submitting: the model or family, the mode, the privacy mode, the size,
-frame rate and duration, and for a storyboard each shot's length and join. Never a prompt or an input. It routes the
+frame rate and duration, and for a storyboard each shot's length and join. Never a prompt or an input. A plan
+(`mode: "plan"`) takes its target length as `duration_s` and is priced flat (`pricing.plan_usd`, `standard_plan_usd`),
+routed like the job: confidential enclaves that registered `plan/1`. It routes the
 request exactly as `GET /v1/route` does (the owner's switch, licence regions, capacity and serving envelopes, and the
 account's standing when a credential is sent), fills in the defaults the SDKs fill in, checks the params as admission
 does, and prices them with `ModelProfile.price_usd`, the function admission charges with. So the price is the hold, and
@@ -34,7 +36,7 @@ from . import api_public, ledger, standard_jobs
 from .api_auth import _client_ip
 from .auth import gw
 from .db import Account
-from .envelopes import no_fit_error
+from .envelopes import no_fit_error, plan_query
 
 router = APIRouter(prefix="/v1", tags=["public"])
 
@@ -66,7 +68,7 @@ class QuoteRequest(BaseModel):
     # None: `storyboard` with shots, else inferred from `input_roles` as the SDKs infer it from the inputs given.
     mode: Mode | None = None
     privacy: PrivacyMode = "private"
-    # A clip's length. A storyboard's comes from its shots, so it takes none.
+    # A clip's length. A storyboard's comes from its shots, so it takes none. A plan's is its target length, required.
     duration_s: float | None = None
     shots: list[QuoteShot] | None = Field(default=None, max_length=64)
     resolution: str | None = None
@@ -124,7 +126,13 @@ def fit_params(
         return float(min(max(requested, lim.min_duration_s), max_duration) if lenient else requested)
 
     specs = None
-    if body.shots is not None:
+    if mode is Mode.PLAN:
+        # A plan's duration_s is the stitched length to aim for, within its own range rather than a clip's.
+        plan, board = lim.plan, lim.storyboard
+        duration_s = body.duration_s
+        if lenient and plan is not None and board is not None:
+            duration_s = min(max(duration_s, plan.min_target_s), board.max_total_s)
+    elif body.shots is not None:
         specs = [
             ShotSpec(duration_s=fit_duration(shot.duration_s), join=shot.join or ("fresh" if index == 0 else "continue"))
             for index, shot in enumerate(body.shots)
@@ -145,8 +153,22 @@ def fit_params(
 
 
 def breakdown(profile: ModelProfile, params: GenerationParams, privacy: str) -> dict:
-    """How `ModelProfile.price_usd` arrived at the price, step by step and in its order, so a client can show it."""
+    """How `ModelProfile.price_usd` arrived at the price, step by step and in its order, so a client can show it. A plan
+    is one flat price (`plan_usd`): no per-second rate, no multipliers, no minimum; the other keys keep their shape."""
     pricing = profile.pricing
+    if params.mode is Mode.PLAN:
+        flat = pricing.plan_usd if privacy == "private" else pricing.standard_plan_usd
+        return {
+            "plan_usd": flat,
+            "usd_per_second": None,
+            "billable_seconds": 0.0,
+            "fps_multiplier": 1.0,
+            "long_clip_over_s": None,
+            "long_clip_multiplier": 1.0,
+            "subtotal_usd": flat,
+            "min_job_usd": pricing.min_job_usd,
+            "minimum_applied": False,
+        }
     rates = pricing.usd_per_second if privacy == "private" else pricing.standard_usd_per_second or {}
     rate = rates[params.resolution]
     fps_multiplier = pricing.fps_multipliers.get(params.fps, 1.0)
@@ -205,6 +227,12 @@ async def quote(body: QuoteRequest, request: Request):
         mode, roles = Mode.STORYBOARD, []
     elif body.mode is Mode.STORYBOARD:
         raise _error(422, "invalid_shots", "A storyboard needs its shots: send each shot's duration_s and join.")
+    elif body.mode is Mode.PLAN:
+        if body.duration_s is None:
+            raise _error(422, "invalid_params", "A plan needs its target length: send duration_s.")
+        if body.input_roles:
+            raise _error(422, "invalid_inputs", "Plans take no inputs.")
+        mode, roles = Mode.PLAN, []
     else:
         roles = list(body.input_roles) if body.input_roles is not None else None
         mode = body.mode or infer_mode(roles or [])
@@ -230,13 +258,13 @@ async def quote(body: QuoteRequest, request: Request):
 
     # The filled-in params must fit some worker's serving envelope too, as a Standard job's routing and a private client's
     # enclave choice require: otherwise the job would be refused, and a quote for it would be a price nobody can pay.
-    tier = standard_jobs.routing_tier(body.privacy, mode)
-    fit = EnvelopeQuery.of(params)
+    tier, feature = standard_jobs.routing_tier(body.privacy, mode), standard_jobs.required_feature(mode)
+    fit = plan_query(params) if mode is Mode.PLAN else EnvelopeQuery.of(params)
     with state.session() as s:
-        if not standard_jobs.enclaves_for(state, s, profile.id, tier, fit=fit):
-            available = standard_jobs.enclaves_for(state, s, profile.id, tier)
+        if not standard_jobs.enclaves_for(state, s, profile.id, tier, fit=fit, feature=feature):
+            available = standard_jobs.enclaves_for(state, s, profile.id, tier, feature=feature)
             if available:
-                raise no_fit_error(profile, fit, available, storyboard=params.shots is not None)
+                raise no_fit_error(profile, fit, available, storyboard=params.shots is not None, plan=mode is Mode.PLAN)
             raise _error(503, "no_capacity", f"No workers are serving {profile.name} right now. Try again shortly.")
         balance = ledger.to_usd(s.get(Account, account.id).balance_micros) if account is not None else None
 

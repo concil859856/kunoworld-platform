@@ -18,7 +18,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from kuno_protocol.canonical import sha256_hex
 from kuno_protocol.crypto import DecryptionError
 from kuno_protocol.media import ROLE_TYPES, sniff_mime
-from kuno_protocol.profiles import InputRole, Mode, ModelProfile, shot_prompt
+from kuno_protocol.plans import PLAN_OPTION, PlanError, PlanOptions, check_revision, plan_context
+from kuno_protocol.profiles import InputRole, Mode, ModelProfile, ParamError, shot_prompt
 from kuno_protocol.schemas import JOB_ID_RE, GenerationParams, JobState, JobStatus
 from kuno_protocol.sealed_payload import PayloadTooLarge
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
@@ -39,6 +40,7 @@ log = logging.getLogger("kuno.standard")
 router = APIRouter(prefix="/v1", tags=["standard"])
 
 STANDARD = standard_jobs.STANDARD
+PLAN_PARAMS = '%"mode":"plan"%'
 
 
 def _error(status: int, code: str, message: str, **extra) -> HTTPException:
@@ -74,6 +76,21 @@ def check_content_policy(state, account: Account, prompt: str, negative_prompt: 
             moderation.record_strike(s, state.settings, account.id, "content_policy")
         # The prompt is never logged.
         log.info("refused a standard prompt under the content policy: account=%s", account.id)
+        raise _error(422, "content_policy", CONTENT_POLICY_MESSAGE) from None
+
+
+def check_texts_policy(state, account: Account, texts) -> None:
+    """The content policy on each text on its own, as `check_content_policy` refuses: `422 content_policy` and one strike."""
+    from kuno_protocol.content_policy import ContentPolicyViolation, check_prompt
+
+    try:
+        for text in texts:
+            if text.strip():
+                check_prompt(text)
+    except ContentPolicyViolation:
+        with state.session() as s, s.begin():
+            moderation.record_strike(s, state.settings, account.id, "content_policy")
+        log.info("refused a standard plan request under the content policy: account=%s", account.id)
         raise _error(422, "content_policy", CONTENT_POLICY_MESSAGE) from None
 
 
@@ -135,6 +152,31 @@ class StandardJobCreate(BaseModel):
         params = info.data.get("params")
         if not value and not (isinstance(params, GenerationParams) and params.mode is Mode.STORYBOARD):
             raise PydanticCustomError("string_too_short", "String should have at least 1 character", {"min_length": 1})
+        return value
+
+
+class StandardPlanCreate(BaseModel):
+    """`POST /v1/standard/plans` (PROTOCOL.md "Plans (Director)"): the gateway seals `brief` as the prompt and `options`
+    (with `style`) as `options.plan`, exactly as a client seals a private plan."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: str | None = None
+    # mode plan; duration_s is the target length.
+    params: GenerationParams
+    # What the video is about. Empty only in a revision (`options.revise`), which may carry just an instruction.
+    brief: str = Field(max_length=20_000)
+    # A look to keep to. Also accepted as `options.style`, but not both.
+    style: str | None = Field(default=None, max_length=20_000)
+    options: PlanOptions | None = None
+    seed: int | None = Field(default=None, ge=0, le=2**63 - 1)
+    webhook_url: str | None = None
+
+    @field_validator("job_id")
+    @classmethod
+    def _uuid4(cls, value: str | None) -> str | None:
+        if value is not None and not JOB_ID_RE.match(value):
+            raise ValueError("job_id must be a lowercase UUIDv4")
         return value
 
 
@@ -249,8 +291,10 @@ async def _create(body: StandardJobCreate, request: Request, account: Account) -
     store = _vault(state)
     with state.session() as s:
         moderation.enforce(s, state.settings, account, STANDARD)
-    check_job_rate(state, account, STANDARD)
     params = body.params
+    if params.mode is Mode.PLAN:
+        raise _error(422, "invalid_params", "Plans go to POST /v1/standard/plans, which takes a brief.")
+    check_job_rate(state, account, STANDARD)
     profile = await validate_request(state, request, params, body.webhook_url)
     if not profile.offers(STANDARD):
         # Before the content check, so asking for a mode the model isn't sold in is never a strike.
@@ -380,15 +424,24 @@ async def my_create(body: StandardJobCreate, request: Request, account: Account 
     return await _create(body, request, account)
 
 
-def _list(request: Request, account: Account, limit: int) -> list[dict]:
+def _rows(request: Request, account: Account, limit: int, plans: bool) -> list[tuple[Job, StandardJob]]:
+    """The account's Standard jobs, newest first: plan jobs only, or every job but plans."""
+    # Params are stored as `GenerationParams.model_dump_json()`, compact, so a plan's always contain this.
+    plan = Job.params.like(PLAN_PARAMS)
     with gw(request).session() as s:
         rows = s.execute(
             select(Job, StandardJob)
             .join(StandardJob, StandardJob.job_id == Job.id)
-            .where(Job.account_id == account.id, Job.privacy == STANDARD)
+            .where(Job.account_id == account.id, Job.privacy == STANDARD, plan if plans else ~plan)
             .order_by(Job.created_at.desc())
             .limit(min(max(limit, 1), 200))
         ).all()
+    return list(rows)
+
+
+def _list(request: Request, account: Account, limit: int) -> list[dict]:
+    """Standard videos; plans are listed at `GET /v1/standard/plans`."""
+    rows = _rows(request, account, limit, plans=False)
     return [
         {
             "job_id": job.id,
@@ -430,6 +483,8 @@ def _owned(s, account: Account, job_id: str) -> tuple[Job, StandardJob]:
 
 
 def _available(job: Job, row: StandardJob) -> None:
+    if standard_jobs.is_plan(job):
+        raise _error(404, "not_a_video", f"This job wrote a plan: GET /v1/standard/plans/{job.id}.")
     if row.deleted_at is not None:
         code = row.delete_reason or "deleted"
         raise _error(410, code, {"expired": "This video expired under an earlier storage policy.",
@@ -506,4 +561,202 @@ async def delete(job_id: str, request: Request, account: Account = Depends(requi
 
 @router.delete("/me/standard/videos/{job_id}", status_code=204)
 async def my_delete(job_id: str, request: Request, account: Account = Depends(require_me_account)):
+    return _delete(request, account, job_id)
+
+
+# ------------------------------------------------------------------ plans (PROTOCOL.md "Plans (Director)")
+
+
+def _plan_options(body: StandardPlanCreate) -> PlanOptions:
+    options = body.options or PlanOptions()
+    if body.style is not None:
+        if options.style is not None:
+            raise _error(422, "invalid_options", "Send the style once: as style or as options.style.")
+        options = options.model_copy(update={"style": body.style})
+    return options
+
+
+async def _create_plan(body: StandardPlanCreate, request: Request, account: Account) -> JobStatus:
+    """A Standard plan: the brief, style and any revision checked like a Standard prompt (a violation is one strike), sealed
+    to a confidential enclave that registered `plan/1`, and charged the flat `standard_plan_usd`. When it succeeds the
+    gateway decrypts the plan, checks it and its text again (standard_jobs.ingest_plan) and keeps it for the owner."""
+    state = gw(request)
+    store = _vault(state)
+    with state.session() as s:
+        moderation.enforce(s, state.settings, account, STANDARD)
+    params = body.params
+    if params.mode is not Mode.PLAN:
+        raise _error(422, "invalid_params", "POST /v1/standard/plans takes mode plan; send videos to POST /v1/standard/videos.")
+    check_job_rate(state, account, STANDARD, params.mode)
+    profile = await validate_request(state, request, params, body.webhook_url)
+    if not profile.offers(STANDARD):
+        raise _error(
+            422, "privacy_mode_unavailable",
+            f"{profile.name} is offered in Private mode only. Use Private mode, or a model that offers Standard.",
+            privacy_modes=profile.privacy_modes,
+        )
+    try:
+        profile.price_usd(params, STANDARD)
+    except ParamError as exc:  # no Standard plan price
+        raise _error(422, "invalid_params", str(exc)) from None
+    limits = profile.limits.plan
+    assert limits is not None  # validate_params refuses plan mode without it
+    # Every shape check before the content check, so a malformed request is never a strike.
+    options = _plan_options(body)
+    if len(body.brief) > limits.max_brief_chars:
+        raise _error(422, "prompt_too_long", f"Briefs are limited to {limits.max_brief_chars} characters.")
+    if len(options.style or "") > limits.max_style_chars:
+        raise _error(422, "prompt_too_long", f"Styles are limited to {limits.max_style_chars} characters.")
+    if not body.brief.strip() and options.revise is None:
+        raise _error(422, "invalid_brief", "A plan needs a brief. Only a revision (options.revise) may leave it empty.")
+    try:
+        # The profile's longest shot here; the worker narrows it to its own envelope when options.max_shot_s is unset.
+        context = plan_context(profile, params, options)
+        if options.revise is not None:
+            check_revision(options.revise, context)
+    except PlanError as exc:
+        raise _error(422, "invalid_options", f"The plan options don't fit this job: {exc}.") from None
+    texts = [body.brief, options.style or ""]
+    if options.revise is not None:
+        # The earlier plan goes to the planner too, and the shots a partial revision keeps come back as they are.
+        texts += [options.revise.instruction, *standard_jobs.plan_texts(options.revise.plan)]
+    check_texts_policy(state, account, texts)
+
+    job_id = body.job_id or str(uuid.uuid4())
+    now = time.time()
+    with state.session() as s:
+        if s.get(Job, job_id) is not None:
+            raise _error(409, "duplicate_job", "A job with this id already exists.")
+        from .admission import family_profile_ids, order_for_account
+        from .envelopes import no_fit_error, plan_query
+
+        fit = plan_query(params)
+        tier, feature = standard_jobs.routing_tier(STANDARD, params.mode), standard_jobs.required_feature(params.mode)
+        routable = standard_jobs.enclaves_for(state, s, profile.id, tier, fit=fit, feature=feature)
+        if not routable and (available := standard_jobs.enclaves_for(state, s, profile.id, tier, feature=feature)):
+            raise no_fit_error(profile, fit, available, plan=True)
+        candidates = order_for_account(
+            s, state.settings, routable, account, profile_ids=family_profile_ids(state.profiles, profile),
+        )
+    if not candidates:
+        raise _error(503, "no_capacity", f"No workers are writing plans for {profile.name} right now. Try again shortly.")
+    enclave = candidates[0]
+    seed = body.seed if body.seed is not None else secrets.randbelow(2**31)
+    sealed_options = {PLAN_OPTION: options.model_dump(mode="json", exclude_none=True)}
+
+    def seal():
+        return standard_jobs.seal_job(
+            state, job_id=job_id, enclave_id=enclave.id, hpke_public_key=enclave.hpke_public_key, params=params,
+            prompt=body.brief, negative_prompt=None, seed=seed, options=sealed_options, inputs=[],
+        )
+
+    try:
+        sealed = await asyncio.to_thread(seal)
+    except PayloadTooLarge:
+        raise _error(422, "request_too_large", "The brief and options are too large to seal into one request.") from None
+    try:
+        with state.session() as s, s.begin():
+            current = s.get(Enclave, enclave.id)
+            if (
+                current is None or not state.is_fresh(current) or not standard_jobs.serves(current, tier)
+                or not standard_jobs.has_feature(current, feature)
+            ):
+                raise _error(409, "enclave_unavailable", "The chosen worker went away. Submit again.")
+            job = admit_job(
+                s, state, account, job_id=job_id, profile=profile, params=params, enclave=current, enc=sealed.enc,
+                ciphertext=sealed.ciphertext, input_blob_ids=[], webhook_url=body.webhook_url, privacy=STANDARD, now=now,
+            )
+            s.add(
+                StandardJob(
+                    job_id=job_id, account_id=account.id, prompt=body.brief, negative_prompt=None, seed=seed,
+                    options=json.dumps(sealed_options, separators=(",", ":")), inputs="[]",
+                    output_key=store.seal_secret(standard_jobs.output_key_label(job_id), sealed.output_key),
+                    created_at=now, expires_at=NEVER_EXPIRES,
+                )
+            )
+    except BaseException:
+        standard_jobs.discard_blobs(state, sealed.blob_ids)
+        raise
+    return job_status(job)
+
+
+@router.post("/standard/plans", status_code=201, response_model=JobStatus)
+async def create_plan(body: StandardPlanCreate, request: Request, account: Account = Depends(require_account)):
+    return await _create_plan(body, request, account)
+
+
+@router.post("/me/standard/plans", status_code=201, response_model=JobStatus)
+async def my_create_plan(body: StandardPlanCreate, request: Request, account: Account = Depends(require_me_account)):
+    return await _create_plan(body, request, account)
+
+
+def _plan_entry(job: Job, row: StandardJob) -> dict:
+    hidden = row.deleted_at is not None
+    try:
+        style = standard_jobs.plan_options(row).style if not hidden and row.options else None
+    except ValueError:
+        style = None
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "profile_id": job.profile_id,
+        "params": json.loads(job.params),
+        # Content a hold preserves after deletion stays hidden from its owner.
+        "brief": row.prompt if not hidden else None,
+        "style": style,
+        "plan": standard_jobs.plan_json(row) if not hidden else None,
+        "created_at": job.created_at,
+        "finished_at": job.finished_at,
+        "error_code": job.error_code,
+        "deleted": hidden,
+    }
+
+
+def _list_plans(request: Request, account: Account, limit: int) -> list[dict]:
+    return [_plan_entry(job, row) for job, row in _rows(request, account, limit, plans=True)]
+
+
+@router.get("/standard/plans")
+async def list_plans(request: Request, account: Account = Depends(require_account), limit: int = 50):
+    return _list_plans(request, account, limit)
+
+
+@router.get("/me/standard/plans")
+async def my_list_plans(request: Request, account: Account = Depends(require_me_account), limit: int = 50):
+    return _list_plans(request, account, limit)
+
+
+def _plan(request: Request, account: Account, job_id: str) -> Response:
+    """The delivered plan: Plan v1 JSON, byte for byte the JSON whose SHA-256 is the receipt's `content_digest`."""
+    state = gw(request)
+    with state.session() as s:
+        job = s.get(Job, job_id)
+        row = s.get(StandardJob, job_id)
+    if job is None or row is None or job.account_id != account.id or not standard_jobs.is_plan(job):
+        raise _error(404, "not_found", "No such standard plan.")
+    if row.deleted_at is not None:
+        raise _error(410, "removed" if row.delete_reason == "removed" else "deleted",
+                     "This plan was removed." if row.delete_reason == "removed" else "This plan was deleted.")
+    if job.status != JobState.SUCCEEDED.value or row.plan is None:
+        raise _error(404, "not_ready", "The plan isn't ready.")
+    return Response(content=row.plan.encode("utf-8"), media_type="application/json")
+
+
+@router.get("/standard/plans/{job_id}")
+async def plan(job_id: str, request: Request, account: Account = Depends(require_account)):
+    return _plan(request, account, job_id)
+
+
+@router.get("/me/standard/plans/{job_id}")
+async def my_plan(job_id: str, request: Request, account: Account = Depends(require_me_account)):
+    return _plan(request, account, job_id)
+
+
+@router.delete("/standard/plans/{job_id}", status_code=204)
+async def delete_plan(job_id: str, request: Request, account: Account = Depends(require_account)):
+    return _delete(request, account, job_id)
+
+
+@router.delete("/me/standard/plans/{job_id}", status_code=204)
+async def my_delete_plan(job_id: str, request: Request, account: Account = Depends(require_me_account)):
     return _delete(request, account, job_id)

@@ -561,6 +561,7 @@ Given a video file, `GET /v1/provenance/{sha256}` identifies the job, model and 
 | `KUNO_STANDARD_UPLOAD_TTL_S` | 86400 | lifetime of a Standard upload no job used |
 | `KUNO_UPLOAD_TTL_S` | 86400 | lifetime of a private ciphertext upload no job used |
 | `KUNO_PRIVATE_JOBS_PER_MINUTE` | 10 | private job limit per account |
+| `KUNO_PLANS_PER_MINUTE` | 10 | plan job limit per account, both modes, on top of the job limits |
 | `KUNO_PRIVATE_REQUIRES_PAYMENT` | 1 | private mode needs a credited top-up or operator credit |
 | `KUNO_PRIVATE_MAX_STRIKES_30D` | 2 | private mode needs fewer strikes than this in 30 days |
 | `KUNO_STRIKE_RULES` | `3/86400/3600,5/604800/604800,10/2592000/review` | strikes/window s/restriction s or `review` |
