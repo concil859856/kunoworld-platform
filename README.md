@@ -101,6 +101,8 @@ CI checks out `kunoworld-subnet` and `kunoworld-sdk` beside this repo.
 
 - **Works end to end on the local network and in the Compose stack:** accounts, quotes, Private and Standard jobs,
   storyboards, plans, Elements, moderation. Top-ups are built but not tested against live payment providers.
-- **Through a real gateway on rented GPUs, without confidential computing:** LTX-2.5 clips, storyboards and plans.
+- **Through a real gateway on rented GPUs, without confidential computing:**
+  - LTX-2.5 clips, storyboards, plans in both modes, retakes and audio-to-video;
+  - MiniMax H3 and H3 Turbo, including one-GPU Turbo at 10 s and two GPU groups on one server.
 - **Not run on live services:** real payments, confidential-computing attestation (TDX and NVIDIA CC), and a production
   deployment.

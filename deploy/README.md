@@ -356,4 +356,5 @@ An owner's deletion must survive backups: a restore must not bring back a video 
 - Use `KUNO_RATE_LIMIT_BACKEND=database` when more than one gateway shares the database.
 - Operators: grant the first admin with `kuno-gateway grant-role --email ... --role admin` against
   the production database; don't set `KUNO_ADMIN_TOKEN` at all.
-- Prices are placeholders until the owner sets them (`platform/gateway/PAYMENTS.md`).
+- Prices are launch estimates until they are benchmarked on confidential hardware, and the API marks them
+  `pricing_placeholder` (`platform/gateway/PAYMENTS.md`).
