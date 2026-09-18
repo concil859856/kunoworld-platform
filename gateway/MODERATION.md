@@ -158,8 +158,31 @@ Account tools: `POST /admin/v1/accounts/{id}/restrict {until|null, reason}` and 
 One strike for every job that fails with `safety_blocked` (either mode, including a Standard video refused by output
 scanning), every blocked Standard upload
 (`upload_blocked`) and every Standard prompt the gateway refuses under the content policy (`content_policy`). Strikes
-record a code and, where there is one, a job id, never content. Default rules (`KUNO_STRIKE_RULES`), checked on every
-strike:
+record a code and, where there is one, a job id, never content.
+
+A `safety_blocked` job is **not** a strike when the customer wrote none of what was blocked:
+
+- the worker reported `"strike": false` (PROTOCOL.md, "Failure reports and strikes"): its check blocked text a model
+  inside the enclave wrote (a prompt the enhancer rewrote, or a plan's shot prompts, title, notes or beats), or its
+  planner refused a brief our checks had passed;
+- the gateway's content policy refused a Standard plan the enclave delivered ("Plans" in STANDARD_MODE.md).
+
+Everything the customer wrote was checked before any model wrote, and a block there strikes as always. So does a block
+of the rendered frames, enhanced prompt or not. The job still fails as `safety_blocked`, is refunded and counts as
+`safety_blocked` everywhere else, including for validators. A customer gets nothing out of it, since every such job is
+refused. But a prompt or brief that keeps steering a model into blocked text costs its owner no strikes, and no rule
+restricts an account for such jobs.
+
+What this tells the gateway about a Private job: a `safety_blocked` job with no strike row had its blocked text written
+by a model in the enclave. For a video, that means the customer asked for prompt enhancement, which is sealed and which
+the gateway otherwise never learns; for a plan, that the brief passed and the planner's output didn't. One with a strike
+row had the customer's own text, or the frames, blocked. That is the one bit a strike decision needs. The report carries
+no reason, and the customer's message is the same either way. The worker's word is trusted here as it is for the code
+itself: a miner that left the hint out could strike an innocent customer, but so could a false `safety_blocked`, and
+sending the hint gains a miner nothing. Gateways from before the hint ignore it and strike; workers from before it never
+send it.
+
+Default rules (`KUNO_STRIKE_RULES`), checked on every strike:
 
 - 3 strikes in 24 h: restricted for 1 hour;
 - 5 in 7 days: restricted for 7 days;

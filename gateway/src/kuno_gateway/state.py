@@ -363,17 +363,21 @@ class GatewayState:
                 input_blob_ids=json.loads(job.input_blob_ids),
             )
 
-    def finish_job(self, s: Session, job: Job, status: JobState, error_code: str | None = None, error: str | None = None) -> None:
+    def finish_job(
+        self, s: Session, job: Job, status: JobState, error_code: str | None = None, error: str | None = None, *, strike: bool = True,
+    ) -> None:
         """Moves a job to a terminal state, releasing the enclave slot and refunding failures.
 
         A standard job's output is verified against its receipt and stored as it succeeds (standard_jobs.ingest_output);
-        an output that doesn't verify fails the job instead. Every safety_blocked failure is a strike on the account,
-        except a Standard plan the gateway's content policy refused after the enclave delivered it (the planner wrote it).
-        `plan_failed`, like every failure, is refunded; validators don't count it against the miner.
+        an output that doesn't verify fails the job instead. Every safety_blocked failure is a strike on the account unless
+        the customer wrote none of what was blocked: `strike=False`, from a worker's failure report (api_miner.FailBody:
+        text a model inside the enclave wrote, or its planner's refusal), or a Standard plan the gateway's content policy
+        refused after the enclave delivered it (the planner wrote it). Either way the job fails as safety_blocked, is
+        refunded and counts as safety_blocked everywhere else. `plan_failed`, like every failure, is refunded; validators
+        don't count it against the miner.
         """
         was_running = job.status == JobState.RUNNING.value
         now = time.time()
-        strike = True
         if status is JobState.SUCCEEDED and job.privacy == "standard":
             from .standard_jobs import ingest_output
 

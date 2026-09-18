@@ -164,7 +164,9 @@ checks, before keeping anything:
 The plan is then stored readable (`standard_jobs.plan`, migration 0022), like the prompt: returned by
 `GET /v1/standard/plans/{job_id}`, in the owner's list, the validator record, an operator's review and the data export
 (`plan.json`), and deleted with the prompt. No C2PA manifest, thumbnail or output scan: a plan isn't media. A plan job
-can't be shared. `plan_failed` (the planner wrote nothing usable) fails the job, refunded, and is not a strike.
+can't be shared. `plan_failed` (the planner wrote nothing usable) fails the job, refunded, and is not a strike. Nor is a
+`safety_blocked` the worker reports for the planner's own text or refusal (`strike: false`, PROTOCOL.md "Failure reports
+and strikes"): the brief passed the gateway's check and the worker's before the planner ran.
 
 ## Deleting a video (both modes)
 
@@ -202,7 +204,9 @@ can't be shared. `plan_failed` (the planner wrote nothing usable) fails the job,
   instead of `video`.
 
 **Strikes.** One strike for each job that fails with `safety_blocked` (either mode), each blocked Standard upload
-(`upload_blocked`) and each refused Standard prompt (`content_policy`). Defaults: 3 strikes in 24 h restrict the
+(`upload_blocked`) and each refused Standard prompt (`content_policy`). A `safety_blocked` job whose blocked text a model
+wrote, not the customer, is refunded without a strike: an enhanced prompt, a plan's text, or a planner's refusal
+(MODERATION.md, "Strikes and automatic restrictions"). Defaults: 3 strikes in 24 h restrict the
 account for 1 h; 5 in 7 days, for 7 days; 10 in 30 days, until an operator reviews it. Strikes carry a code, never
 content. Validators and seeded accounts collect strikes but are never restricted automatically. A strike overturned on
 appeal is voided (`strikes.voided_at`) and no longer counts toward the rules or private eligibility.
@@ -523,8 +527,12 @@ answer HTTP byte ranges (RFC 9110), which iOS Safari needs to seek, and sometime
   `413 too_large`.
 - Standard job failures from output scanning: `safety_blocked` (a hash-list match; the video is held under
   `output_match`), `scan_unavailable` (not kept, refunded); a video that doesn't decode for scanning fails as `bad_output`.
-- Standard plan failures: `plan_failed` (refunded, no strike), `safety_blocked` (the gateway's content policy refused the
-  delivered plan; refunded, no strike), `bad_output` (the plan doesn't match its receipt or the protocol's rules).
+- Standard plan failures: `plan_failed` (refunded, no strike), `safety_blocked` (refunded; no strike when the worker's
+  check blocked the planner's text, the planner refused the brief, or the gateway's content policy refused the delivered
+  plan; a strike when the worker's check blocked the brief, style or instruction), `bad_output` (the plan doesn't match
+  its receipt or the protocol's rules).
+- A Standard video whose enhanced prompt (`options.enhance_prompt`) the worker blocks fails `safety_blocked`, refunded,
+  without a strike; a prompt of the customer's own the worker blocks is a strike.
 - Standard plan creation errors beyond the ones below: `422 invalid_brief`, `422 invalid_options`.
 - Standard job creation errors beyond `/v1/videos`'s: `422 content_policy`, `422 invalid_inputs`, `422 invalid_shots`,
   `422 privacy_mode_unavailable` (a Private-only model), `422 prompt_too_long`, `422 unsupported_option`,

@@ -1,6 +1,7 @@
 """Account safety: strikes, restrictions, private-mode eligibility, the moderation queue and the operator audit log.
 
-Strikes never carry content. A job that fails with `safety_blocked` is one strike, whichever mode it ran in,
+Strikes never carry content. A job that fails with `safety_blocked` is one strike, whichever mode it ran in, unless
+the blocked text was written by a model inside the enclave rather than by the customer (state.finish_job's `strike`),
 and a Standard upload that matches a blocked hash is another. The rules in `Settings.strike_rules` turn
 strikes into restrictions; operators can add, lift and escalate restrictions by hand.
 """

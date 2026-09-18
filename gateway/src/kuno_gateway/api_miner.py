@@ -10,7 +10,7 @@ import time
 from functools import partial
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, StrictBool, ValidationError
 from sqlalchemy import select
 
 from kuno_protocol.attestation import AttestationEvidence
@@ -46,6 +46,11 @@ class CompleteBody(BaseModel):
 class FailBody(BaseModel):
     code: str = Field(max_length=64)
     message: str = Field(max_length=500)
+    # False: a `safety_blocked` whose blocked text a model inside the enclave wrote (an enhanced prompt, a plan) or whose
+    # planner refused a brief that passed the checks. The job fails and is refunded all the same, with no strike on the
+    # account (PROTOCOL.md "Failure reports and strikes"). Absent, as from workers before it: a strike, as before.
+    # Meaningless for any other code. Strict, so a malformed value is refused rather than read as either answer.
+    strike: StrictBool = True
 
 
 class ChallengeAnswer(BaseModel):
@@ -401,7 +406,9 @@ async def fail(job_id: str, request: Request, auth=Depends(require_enclave)):
         if not JobState(job.status).terminal:
             # capacity_refused inside the envelope this enclave advertised is recorded as internal_error, a miner fault.
             code, message = failure_code(s.get(Enclave, enclave.id) or enclave, job.params, body.code, body.message)
-            state.finish_job(s, job, JobState.FAILED, code, message)
+            # `strike` is taken on the miner's word, like the code itself: leaving it out strikes an account no more than a
+            # false `safety_blocked` already could, and sending it gains a miner nothing.
+            state.finish_job(s, job, JobState.FAILED, code, message, strike=body.strike)
     return {"ok": True}
 
 
