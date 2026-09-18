@@ -1,8 +1,9 @@
 """A profile with no Standard price is sold in Private mode only. The gateway says so in /v1/models, routes Standard
 requests around it, and refuses a Standard job for it before anything is charged or counted as a strike.
 
-Every shipped profile has a Standard price since 2026-09-16 (H3's matches fal's list prices), so these tests take
-MiniMax H3 and H3 Director's Standard prices away in the gateway's profile table."""
+MiniMax H3 and H3 Director are shipped that way since 2026-09-17: full H3 costs about $0.142 a second to render on
+4 H200s, so fal's $0.06 list price would be a fifth of cost, and Private covers it at $0.30. These tests assert the
+shipped catalog says so, rather than editing the gateway's profile table."""
 
 from __future__ import annotations
 
@@ -38,8 +39,9 @@ def gw(tmp_path):
     app = create_app(settings)
     profiles = app.state.gw.profiles
     for profile_id in PRIVATE_ONLY:
-        shipped = profiles[profile_id]
-        profiles[profile_id] = shipped.model_copy(update={"pricing": shipped.pricing.model_copy(update={"standard_usd_per_second": None})})
+        # The shipped catalog sells these in Private mode only; if that ever changes, these tests must be rewritten
+        # rather than quietly testing a state nobody ships.
+        assert not profiles[profile_id].offers("standard"), f"{profile_id} now has a Standard price"
     return SimpleNamespace(
         client=TestClient(app), state=app.state.gw, settings=settings,
         dev={"authorization": f"Bearer {settings.dev_api_key}", **JP},
