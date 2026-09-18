@@ -153,8 +153,8 @@ export default function Terms() {
             video, so you are responsible for who you share it with. You can revoke a link at any time.
           </p>
           <p>
-            Sexual content and nudity are banned in both modes. Jobs blocked by the content checks count as strikes, and
-            strikes can restrict your account. KunoWorld staff can open a video only in a few narrow cases, and every
+            Sexual content and nudity are banned in both modes. Jobs blocked by the content checks count as strikes (except
+            jobs blocked only for text our own model wrote for you), and strikes can restrict your account. KunoWorld staff can open a video only in a few narrow cases, and every
             view is logged.
           </p>
           <p>
@@ -635,7 +635,8 @@ export default function Terms() {
         <LegalSubheading id="enforcement-strikes">Strikes and restrictions</LegalSubheading>
         <p>
           Every job blocked by a content check, in either mode, and every Standard upload refused by a check, is one
-          strike on your account. By default:
+          strike on your account. A job blocked only because of text a model wrote inside the service for you, such as
+          an enhanced prompt or a Director plan, is refused and refunded without a strike. By default:
         </p>
         <ul>
           <li>3 strikes in 24 hours restrict your account for 1 hour;</li>

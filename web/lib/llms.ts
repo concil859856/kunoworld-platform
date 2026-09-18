@@ -180,7 +180,7 @@ ${h3.map(modelLine).join("\n")}
 - **Ban.** All sexual or explicit content is banned in both modes, and no setting allows it.
 - **Checks.** Prompts are checked against a shared content policy at the gateway (Standard) and inside the enclave (both modes). A prompt classifier and frame classifiers over the rendered video also run inside the enclave, before anything is signed or sealed. All checks fail closed.
 - **Errors.** A Standard request that breaks the policy is refused with \`422 content_policy\`; a Private job blocked inside the enclave fails with \`safety_blocked\`.
-- **Consequences.** Blocked jobs count as strikes, and repeated strikes restrict the account.
+- **Consequences.** Blocked jobs count as strikes, and repeated strikes restrict the account. A job blocked only for text a model wrote inside the enclave (an enhanced prompt or a Director plan) is refused and refunded without a strike.
 - **Reports.** Anyone can report a video at ${url("/report")}.
 - **Tracing.** Private content can't be reviewed. Enforcement relies on in-enclave checks, account strikes, reports, and signed provenance that traces a surfaced copy back to its job.
 

@@ -202,12 +202,12 @@ function privacyCopy(code: string, privacy: PrivacyMode): Copy | null {
     return privacy === "standard"
       ? {
           title: "Blocked by the content policy",
-          detail: "The content check stopped this request before rendering. Blocked takes count as strikes on your account.",
+          detail: "The content check stopped this request before rendering. Blocked takes count as strikes on your account, unless the blocked text was written by our model for you.",
         }
       : {
           title: "Blocked by the content policy",
           detail:
-            "The content check inside the sealed stage stopped this request before rendering. It runs inside the stage, so no person read your prompt. Blocked takes count as strikes on your account.",
+            "The content check inside the sealed stage stopped this request before rendering. It runs inside the stage, so no person read your prompt. Blocked takes count as strikes on your account, unless the blocked text was written by our model for you (an enhanced prompt or a plan).",
         };
   }
   return null;
